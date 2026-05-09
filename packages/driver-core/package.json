@@ -1,0 +1,20 @@
+{
+  "name": "@galleryos/driver-core",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@types/json-schema": "^7.0.15"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

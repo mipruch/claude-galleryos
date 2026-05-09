@@ -1,0 +1,21 @@
+{
+  "name": "galleryos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GalleryOS — local control system for multimedia gallery (Home Assistant + Crestron + Bitfocus Companion).",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,35 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: dev
+    volumes:
+      - ./apps/server/src:/app/apps/server/src
+      - ./packages:/app/packages
+    command: pnpm --filter @galleryos/server dev
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+
+  admin-ui:
+    build:
+      context: .
+      dockerfile: apps/admin-ui/Dockerfile
+      target: dev
+    volumes:
+      - ./apps/admin-ui/src:/app/apps/admin-ui/src
+    command: pnpm --filter @galleryos/admin-ui dev --host 0.0.0.0
+    ports:
+      - "4000:4000"
+
+  user-ui:
+    build:
+      context: .
+      dockerfile: apps/user-ui/Dockerfile
+      target: dev
+    volumes:
+      - ./apps/user-ui/src:/app/apps/user-ui/src
+    command: pnpm --filter @galleryos/user-ui dev --host 0.0.0.0
+    ports:
+      - "5000:5000"

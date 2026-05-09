@@ -1,0 +1,90 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "8765:8765/udp"
+      - "8766:8766"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://gallery:${DB_PASSWORD:-gallery_dev_password}@postgres:5432/gallery
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - OSC_PORT=8765
+      - TCP_INPUT_PORT=8766
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gallery_net
+    volumes:
+      - server_logs:/app/logs
+
+  admin-ui:
+    build:
+      context: .
+      dockerfile: apps/admin-ui/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4000:80"
+    depends_on:
+      - server
+    networks:
+      - gallery_net
+
+  user-ui:
+    build:
+      context: .
+      dockerfile: apps/user-ui/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5000:80"
+    depends_on:
+      - server
+    networks:
+      - gallery_net
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gallery
+      POSTGRES_USER: gallery
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gallery_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gallery"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gallery_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gallery_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  server_logs:
+
+networks:
+  gallery_net:
+    driver: bridge
