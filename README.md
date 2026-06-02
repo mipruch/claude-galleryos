@@ -769,14 +769,14 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 
 |Driver ID      |Zařízení                              |Protokol    |Subscriptions         |Discovery |
 |---------------|--------------------------------------|------------|----------------------|----------|
-|`bss-soundweb` |BSS SoundWeb London procesory         |TCP/HiQnet  |Ano (SUBSCRIBE)       |Ne (v1)   |
-|`dali`         |DALI gateway (Helvar, Tridonic, …)    |TCP         |Ne                    |Ano (sken)|
+|`bss-soundweb` |BSS SoundWeb London procesory         |TCP/HiQnet  |Ano (SUBSCRIBE)       |Ne        |
+|`dali`         |Lunatone DALI gateway                 |TCP         |Ne                    |Ano (sken)|
 |`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
 |`extron-matrix`|Extron video matice                   |TCP/SIS     |Ne                    |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
-|`pixera`       |Pixera media server                   |TCP/JSON API|Ano                   |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
+|`pixera`       |Pixera media server *(odloženo)*      |TCP/JSON API|Ano                   |Ne        |
 
 -----
 
@@ -844,21 +844,22 @@ Vykonává scény. Nejkomplexnější modul systému.
 
 Spuštění scény (`executeScene(sceneId, source)`):
 
+**Zjednodušení oproti původnímu návrhu:** bez verzování scén, bez rollbacku, bez recovery po pádu serveru. Systém je nekritický.
+
 1. **Validace a pre-flight:**
 - Načíst scénu + akce z DB
-- Ověřit, že všechna dotčená zařízení existují a jsou online
-- Zkontrolovat, zda scéna není už spuštěna (Redis `scene:{id}:active` key)
-- Pokud `on_failure` = `rollback` u jakékoli akce: zaznamenat pre-state dotčených zařízení voláním `DeviceManager.readState()` pro každé
+- Zkontrolovat, zda scéna není už spuštěna (Redis `scene:{id}:active` key) — pokud ano, vrátit 409
+- Ověřit, že všechna dotčená zařízení existují (online check je informativní, nikoli blokující)
 1. **Zápis do DB:**
 - Vytvořit `SceneExecution` záznam se statusem `running`
 - Emitovat `scene.execute.started` na `EventBus`
-- Nastavit Redis `scene:{id}:active = "1"`
+- Nastavit Redis `scene:{id}:active = “1”`
 1. **Execution plán:**
 - Skupinovat akce podle `parallel_group` (stejná čísla = skupina)
 - Třídit skupiny vzestupně
 - Pro každou skupinu: spustit všechny akce v ní paralelně (`Promise.all`)
-- Pokud skupina selže a `on_failure = abort`: okamžitě přerušit a přejít na krok 5
-- Pokud skupina selže a `on_failure = rollback`: přejít na rollback rutinu
+- Pokud skupina selže a `on_failure = abort`: okamžitě přerušit
+- `on_failure = continue`: logovat chybu a pokračovat dál
 - Respektovat `delay_ms` uvnitř skupiny (každá akce před spuštěním počká svůj delay)
 1. **Vykonání jedné akce:**
    
@@ -871,11 +872,6 @@ Spuštění scény (`executeScene(sceneId, source)`):
 - Aktualizovat `SceneExecution` na `completed` / `failed` / `aborted`
 - Emitovat `scene.execute.completed` nebo `scene.execute.failed`
 - Smazat Redis `scene:{id}:active`
-1. **Rollback rutina:**
-- Iterovat přes pre-state (opačné pořadí než akce)
-- Pro každou `reversible: true` akci: zavolat `DeviceManager.execute` s původní hodnotou
-- Logovat každý rollback krok
-- Akce s `reversible: false` přeskočit, logovat varování “manual recovery needed”
 
 **Parallel group příklad:**
 
@@ -890,12 +886,14 @@ Scéna "Přednáška sál A":
 
 `apps/server/src/core/Scheduler.ts`
 
-Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a registruje je do `bun cron`.
+Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a naplánuje je.
+
+**Timezone handling:** `Bun.cron` je UTC-only. Scheduler proto počítá přesný UTC čas příštího spuštění pomocí `Temporal.ZonedDateTime` (vestavěné v Bun) a používá `setTimeout`. Po každém spuštění se čas přepočítá znovu — tím je správně ošetřen přechod letního/zimního času.
 
 Klíčové vlastnosti:
 
-- Dynamický reload — Admin UI může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
-- Timezone-aware — každý job má vlastní timezone.
+- Dynamický reload — Admin může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
+- Timezone-aware — každý job má vlastní timezone; DST je ošetřeno přepočtem po každém spuštění.
 - Po každém spuštění: aktualizuje `last_run_at` a `next_run_at` v DB.
 - Job spouští scénu přes `SceneEngine.executeScene(sceneId, 'scheduler')`.
 - Při výpadku a restartu serveru: při startu ověří, zda neproběhl missed job (job měl proběhnout a neproběhl), a pokud ano, loguje varování. Automatické doplnění vynechaných jobů se **nespouští** — je to galerie, ne kritická infrastruktura.
