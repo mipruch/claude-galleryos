@@ -1,11 +1,36 @@
-# GalleryOS infrastructure.
+# GalleryOS stack.
 #
-# For now this brings up the stateful backing services (TimescaleDB + Redis)
-# used by local development. The application services (server, UIs) are added in
-# the deployment step. Ports are published so a host-side `bun --watch` dev
-# server can connect for the simplest hot-reload DX.
+# Brings up the server plus its backing services (TimescaleDB + Redis). DB/Redis
+# ports are published so a host-side `bun --watch` dev server can also connect
+# for the simplest hot-reload DX (see RUNNING.md).
+#
+#   Production-like:  docker compose up -d --build
+#   In-container dev: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000" # HTTP API + WebSocket
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://gallery:${DB_PASSWORD:-gallery_dev_password}@postgres:5432/gallery
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - server_logs:/app/apps/server/logs
+    networks:
+      - gallery_net
+
   postgres:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
@@ -44,6 +69,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  server_logs:
 
 networks:
   gallery_net:
