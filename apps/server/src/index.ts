@@ -17,6 +17,7 @@ import { redisDriverStore, redisStateStore } from "./redis/state.ts";
 import { driverRegistry } from "./core/DriverRegistry.ts";
 import { eventBus, type GalleryEvent } from "./core/EventBus.ts";
 import { DeviceManager } from "./core/DeviceManager.ts";
+import { Watchdog } from "./core/Watchdog.ts";
 import { startApiServer } from "./api/server.ts";
 
 const log = logger.child("bootstrap");
@@ -58,6 +59,16 @@ async function main(): Promise<void> {
 
   await deviceManager.start();
 
+  const watchdog = new Watchdog({
+    target: deviceManager,
+    state: redisStateStore,
+    eventBus,
+    logger,
+    connectionIntervalMs: config.watchdog.connectionIntervalMs,
+    endpointIntervalMs: config.watchdog.endpointIntervalMs,
+  });
+  watchdog.start();
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -79,6 +90,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    watchdog.stop();
     await apiServer.stop(true);
     await deviceManager.stop();
     await closeRedis();

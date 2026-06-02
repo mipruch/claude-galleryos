@@ -321,6 +321,41 @@ export class DeviceManager {
     return device ? (this.hosts.get(device.connectionId)?.isConnected() ?? false) : false;
   }
 
+  // ── Watchdog API ───────────────────────────────────────────
+
+  /** All connection IDs with a running DriverHost. Used by Watchdog layer 1. */
+  listRunningConnectionIds(): string[] {
+    return [...this.hosts.keys()];
+  }
+
+  /** Active health check against a connection's driver subprocess. Used by Watchdog layer 1. */
+  healthCheckConnection(connectionId: string): Promise<import("@gallery/driver-core").HealthStatus> {
+    const host = this.hosts.get(connectionId);
+    if (!host) throw new Error(`no running host for connection ${connectionId}`);
+    return host.healthCheck();
+  }
+
+  /** Devices registered under a connection (in-memory cache). Used by Watchdog layer 2. */
+  devicesForConnection(connectionId: string): DeviceRecord[] {
+    return this.devicesByConnection.get(connectionId) ?? [];
+  }
+
+  /**
+   * Per-endpoint health check. Returns null when the driver does not support it
+   * (endpointHealthCheck IPC call times out or errors). Used by Watchdog layer 2.
+   */
+  async endpointHealthCheck(deviceId: string): Promise<import("@gallery/driver-core").HealthStatus | null> {
+    const device = this.deviceCache.get(deviceId);
+    if (!device) return null;
+    const host = this.hosts.get(device.connectionId);
+    if (!host) return null;
+    try {
+      return await host.endpointHealthCheck(toEndpoint(device));
+    } catch {
+      return null;
+    }
+  }
+
   // ── internals ──────────────────────────────────────────────
 
   private async resolveDevice(deviceId: string): Promise<DeviceRecord> {

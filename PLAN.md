@@ -29,16 +29,16 @@ Mark items `[x]` as they are implemented and tested.
 
 Small pieces that unblock everything; land first.
 
-### 0.1 Watchdog `src/core/Watchdog.ts`
-- [ ] **Layer 1 — Connection health** (interval: `WATCHDOG_CONNECTION_INTERVAL_MS`, default 10 s)
+### 0.1 Watchdog `src/core/Watchdog.ts` ✓
+- [x] **Layer 1 — Connection health** (interval: `WATCHDOG_CONNECTION_INTERVAL_MS`, default 10 s)
   - Call `DriverHost.healthCheck()` for every running host
   - Write `connection:{id}:status` to Redis
   - Emit `connection.connected` / `connection.disconnected` on state change (DeviceManager already handles these to mark endpoints)
-- [ ] **Layer 2 — Endpoint health** (interval: `WATCHDOG_ENDPOINT_INTERVAL_MS`, default 60 s)
+- [x] **Layer 2 — Endpoint health** (interval: `WATCHDOG_ENDPOINT_INTERVAL_MS`, default 60 s)
   - Only for drivers that implement `endpointHealthCheck`
   - Stagger: spread checks evenly across the interval instead of all at once
   - Write `device:{id}:status` to Redis; emit `device.online` / `device.offline`
-- [ ] Wire into `src/index.ts` (start/stop with the rest of the core)
+- [x] Wire into `src/index.ts` (start/stop with the rest of the core)
 
 ### 0.2 DB log transport `src/db/log-transport.ts`
 - [ ] Winston transport that async-inserts into the `logs` hypertable via Drizzle
