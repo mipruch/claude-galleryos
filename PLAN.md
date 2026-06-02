@@ -41,9 +41,8 @@ Small pieces that unblock everything; land first.
 - [x] Wire into `src/index.ts` (start/stop with the rest of the core)
 
 ### 0.2 DB log transport `src/db/log-transport.ts`
-- [ ] Winston transport that async-inserts into the `logs` hypertable via Drizzle
+- [ ] Winston transport that async-inserts into the `logs` hypertable
 - [ ] Batch inserts (flush every 500 ms or 50 records, whichever comes first) to avoid write pressure
-- [ ] Wire into `src/logger.ts` (`winstonRoot.add(...)`)
 
 ### 0.3 Logs REST API `src/api/routes/logs.ts`
 - [ ] `GET /api/v1/logs` — `?level=` `?source=` `?entity_id=` `?from=` `?to=` `?limit=` `?offset=`
