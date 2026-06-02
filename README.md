@@ -179,7 +179,7 @@ gallery-control/
     │       ├── types.ts
     │       └── index.ts
     └── drivers/
-        ├── driver-bss-soundweb/
+        ├── driver-bss/             # BSS Soundweb London (London DI / TCP)
         ├── driver-dali-lunatone/   # Lunatone DALI-2 IoT (REST/HTTP)
         ├── driver-pjlink/
         ├── driver-extron-matrix/
@@ -763,20 +763,44 @@ type DriverToCoreMessage =
 
 `apps/server/src/core/DriverRegistry.ts` — čte manifesty všech nainstalovaných driverů bez jejich instanciace.
 
-Manifest každého driveru je staticky exportovaný z balíčku (`packages/drivers/driver-bss-soundweb/src/manifest.ts`). Registry ho načte při startu serveru, uloží do paměti. Admin UI pak volá `GET /api/v1/drivers` a dostane seznam driverů s jejich manifesty pro generování formulářů.
+Manifest každého driveru je staticky exportovaný z balíčku (`packages/drivers/driver-bss/src/manifest.ts`). Registry ho načte při startu serveru, uloží do paměti. Admin UI pak volá `GET /api/v1/drivers` a dostane seznam driverů s jejich manifesty pro generování formulářů.
 
 ### Přehled implementovaných driverů
 
 |Driver ID      |Zařízení                              |Protokol    |Subscriptions         |Discovery |
 |---------------|--------------------------------------|------------|----------------------|----------|
-|`bss-soundweb` |BSS SoundWeb London procesory         |TCP/HiQnet  |Ano (SUBSCRIBE)       |Ne        |
-|`dali`         |Lunatone DALI gateway                 |TCP         |Ne                    |Ano (sken)|
+|`bss-soundweb` |BSS Soundweb London procesory ✓       |TCP/London DI|Ano (SUBSCRIBE)      |Ne        |
+|`dali-lunatone`|Lunatone DALI-2 IoT gateway ✓         |HTTP/REST   |Ne                    |Ano (sken)|
 |`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
 |`extron-matrix`|Extron video matice                   |TCP/SIS     |Ne                    |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
 |`pixera`       |Pixera media server *(odloženo)*      |TCP/JSON API|Ano                   |Ne        |
+
+#### `driver-bss` — BSS Soundweb London (implementováno)
+
+Balíček `packages/drivers/driver-bss` (driver id `bss-soundweb`). Mluví **London DI
+protokolem** přes TCP 1023 — ne HiQnet network model, jak původně odhadoval PLAN.
+Protokol je odvozen z přiloženého manuálu (`manuals/Soundweb-London-Third-Party-Control.pdf`)
+a ověřeného skriptu `manuals/bss.js`.
+
+- **`src/london-di.ts`** — čistý, samostatně testovaný kodek. Rámec
+  `STX(0x02) │ substitute( body │ checksum ) │ ETX(0x03)`; `body = typ(1) │ node(2) │
+  virtualDevice(1) │ object(3) │ param(2) │ value(4)`; checksum = XOR `body` **před**
+  byte-substitucí; 5 rezervovaných bytů se escapuje (`0x02 0x03 0x06 0x15 0x1B → 0x1B 0x8x`).
+  Hodnoty jsou 32-bit signed BE; percent-raw = `percent × 65536`. Obsahuje `FrameDecoder`
+  pro streamované dekódování (rozdělené i slepené rámce). Unit test ověřuje shodu
+  s přesným výstupem `bss.js`.
+- **`src/BssSoundwebDriver.ts`** — jeden perzistentní socket na connection sdílený všemi
+  fadery. Na `connect()` (a po reconnectu s exponenciálním backoffem) se **re-subscribuje**
+  každý sledovaný endpoint. Příchozí SET / SET PERCENT pushe se routují přes mapu
+  `node:vd:object:param → {endpointId, field}` a emitují jako `state` událost.
+  - **Žádný GET** — `readState` použije SUBSCRIBE (zařízení okamžitě pošle aktuální hodnotu).
+  - **Žádný app-level keepalive** — manuál říká nechat TCP socket trvale otevřený.
+  - `setLevel (0..1)` → SET PERCENT (0x8D), `setMute (bool)` → SET (0x88).
+- **Endpoint `bss-soundweb.fader`**, adresa `{ node, object, virtualDevice?=3, gainParam?=0,
+  muteParam?=1 }` — fader potřebuje dva parametry (gain + mute), proto adresa nese oba.
 
 -----
 

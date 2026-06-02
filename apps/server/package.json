@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@gallery/driver-bss": "workspace:*",
     "@gallery/driver-core": "workspace:*",
     "@gallery/driver-dali-lunatone": "workspace:*",
     "@gallery/driver-pjlink": "workspace:*",

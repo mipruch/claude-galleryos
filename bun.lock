@@ -13,6 +13,7 @@
       "name": "@gallery/server",
       "version": "0.1.0",
       "dependencies": {
+        "@gallery/driver-bss": "workspace:*",
         "@gallery/driver-core": "workspace:*",
         "@gallery/driver-dali-lunatone": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
@@ -28,6 +29,13 @@
     "packages/driver-core": {
       "name": "@gallery/driver-core",
       "version": "0.1.0",
+    },
+    "packages/drivers/driver-bss": {
+      "name": "@gallery/driver-bss",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
     },
     "packages/drivers/driver-dali-lunatone": {
       "name": "@gallery/driver-dali-lunatone",
@@ -120,6 +128,8 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
+
+    "@gallery/driver-bss": ["@gallery/driver-bss@workspace:packages/drivers/driver-bss"],
 
     "@gallery/driver-core": ["@gallery/driver-core@workspace:packages/driver-core"],
 

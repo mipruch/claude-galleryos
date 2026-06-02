@@ -66,30 +66,40 @@ all live together so a developer copies one folder to bootstrap a new driver. Th
 skeleton is a runnable toy ASCII line-protocol driver (not a non-compiling stub),
 so the tests pass out of the box.
 
-### 1.2 `driver-bss-soundweb` — BSS SoundWeb London (HiQnet / TCP 1023)
+### 1.2 `driver-bss` — BSS Soundweb London (London DI protocol / TCP 1023) ✓
 
-Simplified implementation: set, get, and subscribe. Full HiQnet network model not needed.
+⚠️ **Protocol correction:** the original plan guessed a `SOF|len|…` HiQnet framing
+with 2-byte message types and a `GET_VALUE 0x010F`. The actual protocol (per the
+bundled `manuals/Soundweb-London-Third-Party-Control.pdf` and the field-tested
+`manuals/bss.js`) is the **London DI protocol** — implemented against the manual.
 
-**Protocol** (binary framing):
-- Frame: `SOF(1) | len(2) | destAddr(5) | srcAddr(5) | msgType(2) | flags(1) | payload | checksum(1)`
-- `SET_VALUE  0x0088` — set a parameter
-- `GET_VALUE  0x010F` — request current value (response arrives async)
-- `SUBSCRIBE  0x0088` — request push notifications for a parameter
-- `UNSUBSCRIBE 0x0089`
-- `KEEPALIVE  0x006E` — send every ~15 s to keep socket alive
+**Protocol** (binary, `STX … ETX` framed):
+- Frame: `STX(0x02) │ substitute( body │ checksum ) │ ETX(0x03)`
+- `body = type(1) │ node(2) │ virtualDevice(1) │ object(3) │ param(2) │ value(4)`
+- `checksum` = single-byte XOR of `body`, computed **before** byte substitution
+- Byte substitution escapes 5 reserved bytes: `0x02 0x03 0x06 0x15 0x1B` → `0x1B 0x8x`
+- 1-byte message types: `0x88 SET`, `0x89 SUBSCRIBE`, `0x8A UNSUBSCRIBE`,
+  `0x8D SET PERCENT`, `0x8E SUBSCRIBE PERCENT`, `0x8F UNSUBSCRIBE PERCENT`, `0x8C RECALL PRESET`
+- **No GET** — reads use SUBSCRIBE (device pushes the current value immediately)
+- **No app-level keepalive** — manual says leave the TCP socket open indefinitely
+  (no ACKs over Ethernet); the guessed `0x006E` keepalive was dropped
+- Values are 32-bit signed BE; percent-raw = `percent × 65536` (faders use SET PERCENT)
 
-**Multi-endpoint**: one TCP socket per BSS processor, shared by all faders/mics. Driver maintains `subscriptionKey → endpointId` map to route inbound pushes.
+**Multi-endpoint**: one TCP socket per BSS processor, shared by all faders. Driver
+maintains a `node:vd:object:param → {endpointId, field}` route map for inbound pushes.
 
 **Endpoint type:** `bss-soundweb.fader`  
-**Address:** `{ node: number, virtualDevice: number, object: number, parameter: number }`  
-**Commands:** `setLevel (0..1)`, `setMute (bool)`, `readState`  
-**Capabilities:** `subscriptions: true`, `bidirectional: true`
+**Address:** `{ node, object, virtualDevice?=3, gainParam?=0, muteParam?=1 }` — a fader
+needs *two* params (gain + mute), so the address carries both rather than the single
+`parameter` the plan sketched.  
+**Commands:** `setLevel (0..1)` → SET PERCENT, `setMute (bool)` → SET; `readState` via SUBSCRIBE  
+**Capabilities:** `subscriptions: true`, `bidirectional: true`, `discovery: false`
 
-- [ ] Binary frame builder/parser (`src/hiqnet.ts`)
-- [ ] `BssSoundwebDriver.ts` — connect, keepalive, subscribe on connect, route inbound events
-- [ ] Reconnect resubscribes all active endpoints
-- [ ] Mock TCP server for tests
-- [ ] Register in `apps/server/src/drivers/registry.ts`
+- [x] Binary frame builder/parser (`src/london-di.ts`) — pure, unit-tested (incl. exact `bss.js` frame)
+- [x] `BssSoundwebDriver.ts` — persistent socket, subscribe on connect, route inbound events
+- [x] Reconnect (internal backoff) resubscribes all active endpoints
+- [x] Mock TCP server for tests (`test/mock-device.ts`)
+- [x] Register in `apps/server/src/drivers/registry.ts` (id `bss-soundweb`, pkg `@gallery/driver-bss`)
 
 ### 1.3 `driver-dali-lunatone` — Lunatone DALI-2 IoT gateway ✓
 
