@@ -1,0 +1,50 @@
+# GalleryOS infrastructure.
+#
+# For now this brings up the stateful backing services (TimescaleDB + Redis)
+# used by local development. The application services (server, UIs) are added in
+# the deployment step. Ports are published so a host-side `bun --watch` dev
+# server can connect for the simplest hot-reload DX.
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gallery
+      POSTGRES_USER: gallery
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gallery_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gallery"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gallery_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gallery_net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  gallery_net:
+    driver: bridge

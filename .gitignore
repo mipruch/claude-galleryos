@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Env
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Build output (we run TS directly, but keep this for safety)
+dist/
+build/
+
+# Bun
+.bun/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

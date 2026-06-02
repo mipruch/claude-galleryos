@@ -1,0 +1,29 @@
+{
+  // Shared TypeScript settings for every workspace package.
+  // Bun runs .ts directly (no build step), so these options target type-checking
+  // and editor experience rather than emit.
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "target": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Strictness — the codebase is fully typed.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Interop / DX
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["bun"]
+  }
+}

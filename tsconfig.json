@@ -1,0 +1,19 @@
+{
+  // Root project — used by `tsc --noEmit` (full-monorepo type-check) and editors.
+  // Workspace packages are resolved through bun's node_modules symlinks; the
+  // `paths` mapping below makes `tsc` resolve them without a build step too.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@gallery/driver-core": ["./packages/driver-core/src/index.ts"],
+      "@gallery/driver-pjlink": ["./packages/drivers/driver-pjlink/src/index.ts"],
+      "@gallery/driver-tcp-generic": ["./packages/drivers/driver-tcp-generic/src/index.ts"]
+    }
+  },
+  "include": [
+    "apps/*/src/**/*.ts",
+    "packages/driver-core/src/**/*.ts",
+    "packages/drivers/*/src/**/*.ts"
+  ]
+}
