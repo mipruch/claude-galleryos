@@ -13,7 +13,14 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import { EventBus } from "../../src/core/EventBus.ts";
 import { driverRegistry } from "../../src/core/DriverRegistry.ts";
-import { connectionsRepo, dbRepo, devicesRepo, roomsRepo } from "../../src/db/repositories.ts";
+import {
+  connectionsRepo,
+  dbRepo,
+  devicesRepo,
+  logsRepo,
+  roomsRepo,
+  sceneExecutionsRepo,
+} from "../../src/db/repositories.ts";
 import { redisDriverStore, redisStateStore } from "../../src/redis/state.ts";
 import { startApiServer } from "../../src/api/server.ts";
 import { logger } from "../../src/logger.ts";
@@ -60,6 +67,8 @@ beforeAll(async () => {
       rooms: roomsRepo,
       connections: connectionsRepo,
       devices: devicesRepo,
+      logs: logsRepo,
+      sceneExecutions: sceneExecutionsRepo,
       startedAt: Date.now(),
     },
     0,

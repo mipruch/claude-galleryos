@@ -9,9 +9,17 @@
  */
 
 import { config } from "./config.ts";
-import { logger } from "./logger.ts";
+import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
-import { connectionsRepo, dbRepo, devicesRepo, roomsRepo } from "./db/repositories.ts";
+import { dbLogTransport } from "./db/log-transport.ts";
+import {
+  connectionsRepo,
+  dbRepo,
+  devicesRepo,
+  logsRepo,
+  roomsRepo,
+  sceneExecutionsRepo,
+} from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
 import { redisDriverStore, redisStateStore } from "./redis/state.ts";
 import { driverRegistry } from "./core/DriverRegistry.ts";
@@ -38,6 +46,13 @@ async function main(): Promise<void> {
   });
 
   wireAuditLog();
+
+  // Wire DB log transport — early so startup logs are captured too. Early
+  // flushes may fail if the DB isn't ready yet; they are discarded gracefully.
+  // Cast needed: winston-transport is a transitive dep so TS can't verify
+  // stream.Writable structural compatibility, but the runtime works correctly.
+  winstonRoot.add(dbLogTransport as unknown as Parameters<typeof winstonRoot.add>[0]);
+  dbLogTransport.start();
 
   // Fail fast if Redis is unreachable.
   await connectRedis();
@@ -78,6 +93,8 @@ async function main(): Promise<void> {
     rooms: roomsRepo,
     connections: connectionsRepo,
     devices: devicesRepo,
+    logs: logsRepo,
+    sceneExecutions: sceneExecutionsRepo,
     startedAt: Date.now(),
   });
 
@@ -94,6 +111,8 @@ async function main(): Promise<void> {
     await apiServer.stop(true);
     await deviceManager.stop();
     await closeRedis();
+    // Drain buffered logs before the DB connection closes.
+    await dbLogTransport.stop();
     await closeDb();
     log.info("Shutdown complete");
     process.exit(0);

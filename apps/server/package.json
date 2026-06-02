@@ -15,10 +15,12 @@
   },
   "dependencies": {
     "@gallery/driver-core": "workspace:*",
+    "@gallery/driver-dali-lunatone": "workspace:*",
     "@gallery/driver-pjlink": "workspace:*",
     "@gallery/driver-tcp-generic": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "winston-transport": "^4.9.0"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10"

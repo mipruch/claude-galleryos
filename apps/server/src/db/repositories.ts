@@ -6,7 +6,7 @@
  * repositories (scenes, schedules, logs) arrive with their feature steps.
  */
 
-import { type SQL, and, count, eq } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "./client.ts";
 import {
   type Connection,
@@ -15,7 +15,10 @@ import {
   type NewDevice,
   connections,
   devices,
+  logs,
   rooms,
+  sceneExecutions,
+  scenes,
 } from "./schema.ts";
 import type {
   ConnectionRecord,
@@ -95,6 +98,87 @@ export const devicesRepo = {
   update: (id: string, values: Partial<NewDevice>) =>
     first(db.update(devices).set({ ...values, updatedAt: new Date() }).where(eq(devices.id, id)).returning()),
   remove: (id: string) => first(db.delete(devices).where(eq(devices.id, id)).returning()),
+};
+
+// ── logs (read-only; written by DbLogTransport) ──────────────
+
+export interface LogFilter {
+  level?: string;
+  source?: string;
+  entityId?: string;
+  /** Inclusive lower bound on `ts`. */
+  from?: Date;
+  /** Inclusive upper bound on `ts`. */
+  to?: Date;
+  limit?: number;
+  offset?: number;
+}
+
+/** Counts grouped by level since a point in time. */
+export interface LevelCount {
+  level: string;
+  count: number;
+}
+
+export const logsRepo = {
+  /** Newest-first list with optional filters and pagination. */
+  list(filter: LogFilter = {}) {
+    const where: SQL[] = [];
+    if (filter.level) where.push(eq(logs.level, filter.level));
+    if (filter.source) where.push(eq(logs.source, filter.source));
+    if (filter.entityId) where.push(eq(logs.entityId, filter.entityId));
+    if (filter.from) where.push(gte(logs.ts, filter.from));
+    if (filter.to) where.push(lte(logs.ts, filter.to));
+
+    const limit = Math.min(Math.max(filter.limit ?? 100, 1), 1000);
+    const offset = Math.max(filter.offset ?? 0, 0);
+
+    const base = db.select().from(logs);
+    const filtered = where.length ? base.where(and(...where)) : base;
+    return filtered.orderBy(desc(logs.ts)).limit(limit).offset(offset);
+  },
+
+  /** Count of rows grouped by level since `since`. */
+  async statsByLevel(since: Date): Promise<LevelCount[]> {
+    const rows = await db
+      .select({ level: logs.level, count: count() })
+      .from(logs)
+      .where(gte(logs.ts, since))
+      .groupBy(logs.level);
+    return rows.map((r) => ({ level: r.level, count: Number(r.count) }));
+  },
+};
+
+// ── scene executions (read-only here; full repo lands with Scenes) ──
+
+export const sceneExecutionsRepo = {
+  /** Newest-first execution history, with the scene name joined in. */
+  list(opts: { sceneId?: string; status?: string; limit?: number } = {}) {
+    const where: SQL[] = [];
+    if (opts.sceneId) where.push(eq(sceneExecutions.sceneId, opts.sceneId));
+    if (opts.status) where.push(eq(sceneExecutions.status, opts.status));
+
+    const limit = Math.min(Math.max(opts.limit ?? 100, 1), 1000);
+
+    const base = db
+      .select({
+        id: sceneExecutions.id,
+        sceneId: sceneExecutions.sceneId,
+        sceneName: scenes.name,
+        status: sceneExecutions.status,
+        source: sceneExecutions.source,
+        sourceDetail: sceneExecutions.sourceDetail,
+        errorMessage: sceneExecutions.errorMessage,
+        startedAt: sceneExecutions.startedAt,
+        completedAt: sceneExecutions.completedAt,
+        durationMs: sceneExecutions.durationMs,
+      })
+      .from(sceneExecutions)
+      .leftJoin(scenes, eq(sceneExecutions.sceneId, scenes.id));
+
+    const filtered = where.length ? base.where(and(...where)) : base;
+    return filtered.orderBy(desc(sceneExecutions.startedAt)).limit(limit);
+  },
 };
 
 // ── DeviceManager adapter (read-only) ────────────────────────

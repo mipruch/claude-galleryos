@@ -40,24 +40,31 @@ Small pieces that unblock everything; land first.
   - Write `device:{id}:status` to Redis; emit `device.online` / `device.offline`
 - [x] Wire into `src/index.ts` (start/stop with the rest of the core)
 
-### 0.2 DB log transport `src/db/log-transport.ts`
-- [ ] Winston transport that async-inserts into the `logs` hypertable
-- [ ] Batch inserts (flush every 500 ms or 50 records, whichever comes first) to avoid write pressure
+### 0.2 DB log transport `src/db/log-transport.ts` ✓
+- [x] Winston transport that async-inserts into the `logs` hypertable
+- [x] Batch inserts (flush every 500 ms or 50 records, whichever comes first) to avoid write pressure
+- [x] Wire into `src/index.ts` (`winstonRoot.add(...)` + drain remaining entries on shutdown)
 
-### 0.3 Logs REST API `src/api/routes/logs.ts`
-- [ ] `GET /api/v1/logs` — `?level=` `?source=` `?entity_id=` `?from=` `?to=` `?limit=` `?offset=`
-- [ ] `GET /api/v1/logs/stats` — counts by level for last 24 h / 7 d
-- [ ] `GET /api/v1/logs/executions` — scene execution history with outcome + duration
+### 0.3 Logs REST API `src/api/routes/logs.ts` ✓
+- [x] `GET /api/v1/logs` — `?level=` `?source=` `?entity_id=` `?from=` `?to=` `?limit=` `?offset=`
+- [x] `GET /api/v1/logs/stats` — counts by level for last 24 h / 7 d
+- [x] `GET /api/v1/logs/executions` — scene execution history with outcome + duration
 
 ---
 
 ## Priority 1 — Drivers
 
-### 1.1 `driver-template`
-- [ ] Fully-commented manifest with placeholder JSON schemas
-- [ ] Skeleton driver class with `// TODO` guide in every method
-- [ ] Template test file (6 standard cases: connect, command, readState, dry-run, unknown-command, disconnect)
-- [ ] `mock-device.ts` helper template
+### 1.1 `driver-template` ✓
+- [x] Fully-commented manifest with placeholder JSON schemas
+- [x] Skeleton driver class with `// TODO` guide in every method
+- [x] Template test file (6 standard cases: connect, command, readState, dry-run, unknown-command, disconnect)
+- [x] `mock-device.ts` helper template
+
+Self-contained package (`packages/drivers/driver-template/`): the working driver,
+its mock (`test/mock-device.ts`), and its 6-case test (`test/template.test.ts`)
+all live together so a developer copies one folder to bootstrap a new driver. The
+skeleton is a runnable toy ASCII line-protocol driver (not a non-compiling stub),
+so the tests pass out of the box.
 
 ### 1.2 `driver-bss-soundweb` — BSS SoundWeb London (HiQnet / TCP 1023)
 
@@ -84,24 +91,32 @@ Simplified implementation: set, get, and subscribe. Full HiQnet network model no
 - [ ] Mock TCP server for tests
 - [ ] Register in `apps/server/src/drivers/registry.ts`
 
-### 1.3 `driver-dali` — Lunatone DALI gateway (TCP)
+### 1.3 `driver-dali-lunatone` — Lunatone DALI-2 IoT gateway ✓
 
-Target: **Lunatone DALI gateway**. Lunatone uses a text-based TCP protocol.
+Target: **Lunatone DALI-2 IoT** module (Art.Nr. 89453886). ⚠️ **Protocol correction:**
+the original plan assumed a text-based TCP protocol (`>A {addr} ...<`); the actual
+device (per the bundled manual) exposes an **HTTP REST + JSON API on port 80** with
+no authentication. Implemented against the real API.
 
-**Protocol** (ASCII, CR-LF terminated):
-- `>A {addr} {cmd}<` — send DALI command to address (e.g. `>A 0 DAPC 200<`)
-- `>A {addr} QUERY ACTUAL LEVEL<` → response: `>A {addr} YES {value}<`
-- Discovery: scan addresses 0–63 with `QUERY ACTUAL LEVEL`; any that respond with a value exist
+**Protocol** (HTTP REST, base `http://<ip>:80`):
+- `GET  /info` — reachability / health probe
+- `GET  /devices` — list registered fixtures + their feature state
+- `GET  /device/{id}` — single fixture state
+- `POST /device/{id}/control` — apply a `ControlData` object, e.g. `{ "switchable": true }`,
+  `{ "dimmable": 50 }` (percent 0..100), `{ "scene": 4 }`
+- `POST /dali/scan` + `GET /dali/scan` — bus scan for discovery (~1 min, polled)
 
 **Endpoint type:** `dali.fixture`  
-**Address:** `{ daliAddress: 0..63 }`  
-**Commands:** `on`, `off`, `setBrightness { level: 0..1 }` (→ DAPC 0..254), `recall { scene: 0..15 }`  
+**Address:** `{ deviceId: number, daliAddress?: 0..63 }` — fixtures are controlled by the
+gateway's *identifying number* (`deviceId`, assigned during a scan), which differs from
+the raw DALI short address; the short address is kept as read-only metadata.  
+**Commands:** `on`, `off`, `setBrightness { level: 0..1 }` (→ `dimmable` 0..100), `recall { scene: 0..15 }`  
 **Capabilities:** `discovery: true`
 
-- [ ] `DaliDriver.ts`
-- [ ] `discoverEndpoints()` — scan 0-63, return found fixtures
-- [ ] Mock Lunatone TCP server for tests
-- [ ] Register in registry
+- [x] `DaliLunatoneDriver.ts` — Bun-native `fetch`, no extra deps
+- [x] `discoverEndpoints()` — GET /devices (optional bus scan first via `scanOnDiscover`)
+- [x] Mock DALI-2 IoT HTTP server for tests (`test/mocks/mock-dali-iot.ts`)
+- [x] Register in registry (id `dali-lunatone`)
 
 ### 1.4 `driver-extron-matrix` — Extron video matrix (SIS / TCP 23)
 

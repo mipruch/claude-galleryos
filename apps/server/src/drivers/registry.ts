@@ -10,6 +10,7 @@
  */
 
 import type { DriverManifest, IDeviceDriver } from "@gallery/driver-core";
+import DaliLunatoneDriver, { manifest as daliLunatoneManifest } from "@gallery/driver-dali-lunatone";
 import PjlinkDriver, { manifest as pjlinkManifest } from "@gallery/driver-pjlink";
 import TcpGenericDriver, { manifest as tcpGenericManifest } from "@gallery/driver-tcp-generic";
 
@@ -22,6 +23,7 @@ export interface DriverRegistration {
 export const DRIVERS: readonly DriverRegistration[] = [
   { manifest: pjlinkManifest, DriverClass: PjlinkDriver },
   { manifest: tcpGenericManifest, DriverClass: TcpGenericDriver },
+  { manifest: daliLunatoneManifest, DriverClass: DaliLunatoneDriver },
 ];
 
 /** Look up a driver registration by its manifest id. */

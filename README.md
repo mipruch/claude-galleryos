@@ -180,7 +180,7 @@ gallery-control/
     │       └── index.ts
     └── drivers/
         ├── driver-bss-soundweb/
-        ├── driver-dali/
+        ├── driver-dali-lunatone/   # Lunatone DALI-2 IoT (REST/HTTP)
         ├── driver-pjlink/
         ├── driver-extron-matrix/
         ├── driver-samsung-mdc/
@@ -927,7 +927,7 @@ Winston logger s transporty:
 
 1. **Console** (dev mode) — čitelný formát
 1. **File** — `logs/gallery.log`, rotace po 10MB, max 5 souborů
-1. **TimescaleDB** — async insert do hypertable `logs` přes connection pool; komprese a retention policy řeší databáze sama
+1. **TimescaleDB** — async insert do hypertable `logs` přes Drizzle; komprese a retention policy řeší databáze sama
 
 Každý modul dostane instanci loggeru s `source` již vyplněným:
 
@@ -935,6 +935,16 @@ Každý modul dostane instanci loggeru s `source` již vyplněným:
 const log = logger.child({ source: 'scene_engine' });
 log.info('Scene started', { sceneId, executionId, source: 'userui' });
 ```
+
+#### DbLogTransport — `apps/server/src/db/log-transport.ts`
+
+Implementováno (Step 0.2). Vlastní Winston transport (`winston-transport`), který strukturované log záznamy **dávkově** zapisuje do hypertable `logs` přes Drizzle:
+
+- **Batching:** flush proběhne každých `flushIntervalMs` (default 500 ms) **nebo** jakmile se nasbírá `batchSize` záznamů (default 50) — podle toho, co nastane dřív. Tím se zabrání tlaku jednotlivých zápisů při log burstech.
+- **Mapování polí:** vyhrazená pole (`level`, `message`, `source`, `entityType`, `entityId`, `durationMs`) jdou do sloupců; veškerá ostatní meta data se složí do `metadata` JSONB.
+- **Serializovaný flush chain:** flushe se nikdy nepřekrývají (žádné souběžné DB zápisy), i když batch a interval spadnou současně.
+- **Odolnost vůči chybám:** selhání insertu se zaloguje na stderr a dávka se zahodí (žádné retry smyčky) — stejná data drží console + file transport.
+- **Lifecycle:** `start()` ozbrojí flush timer, `stop()` zruší timer a vyprázdní zbylé záznamy. Ve `src/index.ts` se přidá přes `winstonRoot.add(...)` a při shutdownu se `stop()` zavolá **před** uzavřením DB spojení, aby se buffer stihl zapsat.
 
 ### 7.7 Protocol Input Bus
 
@@ -1063,8 +1073,15 @@ PATCH  /layouts/:id/default      - nastavit jako výchozí
 ```
 GET    /logs                     - seznam logů (?level=, ?source=, ?entity_id=, ?from=, ?to=, ?limit=, ?offset=)
 GET    /logs/stats               - statistiky (počty dle level za posledních 24h, 7d)
-GET    /logs/executions          - přehled spuštění scén s výsledky
+GET    /logs/executions          - přehled spuštění scén s výsledky (?scene_id=, ?status=, ?limit=)
 ```
+
+**Implementováno (Step 0.3)** — `apps/server/src/api/routes/logs.ts`, read-only nad hypertable `logs` (plněnou přes `DbLogTransport`) a tabulkou `scene_executions`:
+
+- `GET /logs` — filtry `level`/`source`/`entity_id` + časové meze `from`/`to` (ISO-8601) + stránkování. `limit` se clampuje na 1–1000 (default 100), výstup řazen `ts DESC`. Neplatný integer nebo datum → `400 BAD_REQUEST`.
+- `GET /logs/stats` — `statsByLevel` agregace (`GROUP BY level`) pro dvě okna: posledních 24 h a 7 dní; obě se počítají paralelně (`Promise.all`).
+- `GET /logs/executions` — historie spuštění scén s `LEFT JOIN` na `scenes` (kvůli `sceneName`); funguje i bez SceneEngine, protože čte jen tabulku.
+- Data se přistupují přes nové repozitáře `logsRepo` a `sceneExecutionsRepo` (`src/db/repositories.ts`), injektované do route přes `ApiContext` — stejný vzor jako rooms/devices, takže route jde testovat s fake repo bez DB.
 
 ### Systém
 
@@ -1726,6 +1743,41 @@ Po restartu serveru je driver dostupný v Admin UI.
 - Driver **nesmí** importovat z `@gallery/server` ani přistupovat do DB
 - Driver **musí** logovat smysluplně přes `ctx.logger`, ne přes `console.log`
 - Timeout pro `executeCommand` by měl být konfigurovatelný (default 500ms pro synchronní příkazy)
+
+### Implementované drivery
+
+| Driver (id) | Zařízení | Transport | Capabilities |
+|---|---|---|---|
+| `pjlink` | PJLink projektory (Class 1) | TCP 4352, ASCII | bidirectional |
+| `tcp-generic` | Libovolné jednoduché TCP zařízení | TCP, raw | bidirectional |
+| `dali-lunatone` | Lunatone DALI-2 IoT gateway | HTTP REST, port 80 | discovery, bidirectional |
+
+**`driver-template`** — kostra pro nový driver. Na rozdíl od většiny šablon je to
+**funkční** mini-driver (hračkový ASCII line-protokol) s `// TODO` komentářem v každé
+metodě. Balíček je soběstačný: driver, jeho mock (`test/mock-device.ts`) i 6 testů
+(`test/template.test.ts` — connect, command, readState, dry-run, unknown-command,
+disconnect) leží pohromadě, takže nový driver vznikne zkopírováním jediné složky a
+testy projdou hned po startu.
+
+**`driver-dali-lunatone`** — Lunatone **DALI-2 IoT** modul (Art.Nr. 89453886).
+⚠️ **Korekce protokolu oproti plánu:** plán předpokládal textový TCP protokol
+(`>A {addr} ...<`), ale reálné zařízení (dle přiloženého manuálu v
+`manuals/`) komunikuje přes **HTTP REST + JSON API na portu 80** bez autentizace.
+Driver je implementován proti skutečnému API (Bun-native `fetch`, žádné externí
+závislosti):
+
+- `GET /info` — health/reachability probe (connect i `healthCheck`)
+- `POST /device/{id}/control` — `ControlData` objekt: `on`/`off` → `{switchable}`,
+  `setBrightness {level 0..1}` → `{dimmable 0..100}`, `recall {scene 0..15}` → `{scene}`
+- `GET /device/{id}` + `GET /devices` — čtení stavu (`switchable.status`,
+  `dimmable.status`) a discovery
+- `POST /dali/scan` + `GET /dali/scan` — sken sběrnice (volitelně přes `scanOnDiscover`,
+  ~1 min, pollováno)
+
+**Klíčové rozhodnutí — adresace:** zařízení se ovládá přes *identifikační číslo*
+gateway (`deviceId`, přidělené při skenu), které se **liší** od raw DALI short
+adresy (0..63). Endpoint adresa je proto `{ deviceId, daliAddress? }`, kde
+`daliAddress` je jen read-only metadata z discovery.
 
 -----
 

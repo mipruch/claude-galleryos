@@ -14,10 +14,12 @@
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
+        "@gallery/driver-dali-lunatone": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
         "@gallery/driver-tcp-generic": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "winston": "^3.19.0",
+        "winston-transport": "^4.9.0",
       },
       "devDependencies": {
         "drizzle-kit": "^0.31.10",
@@ -26,6 +28,13 @@
     "packages/driver-core": {
       "name": "@gallery/driver-core",
       "version": "0.1.0",
+    },
+    "packages/drivers/driver-dali-lunatone": {
+      "name": "@gallery/driver-dali-lunatone",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
     },
     "packages/drivers/driver-pjlink": {
       "name": "@gallery/driver-pjlink",
@@ -36,6 +45,13 @@
     },
     "packages/drivers/driver-tcp-generic": {
       "name": "@gallery/driver-tcp-generic",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-template": {
+      "name": "@gallery/driver-template",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -107,9 +123,13 @@
 
     "@gallery/driver-core": ["@gallery/driver-core@workspace:packages/driver-core"],
 
+    "@gallery/driver-dali-lunatone": ["@gallery/driver-dali-lunatone@workspace:packages/drivers/driver-dali-lunatone"],
+
     "@gallery/driver-pjlink": ["@gallery/driver-pjlink@workspace:packages/drivers/driver-pjlink"],
 
     "@gallery/driver-tcp-generic": ["@gallery/driver-tcp-generic@workspace:packages/drivers/driver-tcp-generic"],
+
+    "@gallery/driver-template": ["@gallery/driver-template@workspace:packages/drivers/driver-template"],
 
     "@gallery/server": ["@gallery/server@workspace:apps/server"],
 

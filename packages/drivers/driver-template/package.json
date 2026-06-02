@@ -1,0 +1,16 @@
+{
+  "name": "@gallery/driver-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Copy-me skeleton driver for GalleryOS. Demonstrates the IDeviceDriver contract end-to-end.",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gallery/driver-core": "workspace:*"
+  }
+}
