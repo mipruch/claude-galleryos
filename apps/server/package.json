@@ -1,0 +1,26 @@
+{
+  "name": "@gallery/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GalleryOS core server (Bun).",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "migrate": "bun src/db/migrate.ts",
+    "seed": "bun src/db/seed.ts",
+    "db:generate": "bunx drizzle-kit generate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gallery/driver-core": "workspace:*",
+    "@gallery/driver-pjlink": "workspace:*",
+    "@gallery/driver-tcp-generic": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
+  }
+}

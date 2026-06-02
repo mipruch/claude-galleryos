@@ -1,0 +1,19 @@
+# Development override: run the server in a container with hot reload.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# The source is bind-mounted and `bun --watch` restarts on change. node_modules
+# stay inside the image (we only mount source dirs, not all of /app). Run
+# migrations once first: `docker compose run --rm server bun src/db/migrate.ts`.
+
+services:
+  server:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    volumes:
+      - ./apps/server/src:/app/apps/server/src
+      - ./packages:/app/packages
+    command: ["bun", "--watch", "src/index.ts"]

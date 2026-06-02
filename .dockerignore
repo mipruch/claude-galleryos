@@ -1,0 +1,16 @@
+# Keep the build context small and avoid leaking local state.
+node_modules
+**/node_modules
+.git
+.env
+.env.local
+logs
+**/logs
+*.log
+dist
+build
+.DS_Store
+.vscode
+.idea
+README.md
+RUNNING.md

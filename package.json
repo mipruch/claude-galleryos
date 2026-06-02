@@ -1,0 +1,23 @@
+{
+  "name": "galleryos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GalleryOS — local control system for multimedia gallery AV devices (Bun)",
+  "workspaces": [
+    "apps/*",
+    "packages/driver-core",
+    "packages/drivers/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run apps/server/src/db/seed.ts && bun run --filter @gallery/server dev",
+    "start": "bun run --filter @gallery/server start",
+    "migrate": "bun run --filter @gallery/server migrate",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

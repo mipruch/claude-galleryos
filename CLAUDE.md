@@ -1,0 +1,9 @@
+The Architecture of the App is in @README.md, but here are some key points:
+- The app is structured as a monorepo with Bun workspaces. The main packages are `server` (the backend API and core logic) and `drivers` (device drivers).
+- The `server` package is a Bun application that exposes an HTTP API for managing devices,rooms, and connections. It also includes a device manager that handles the lifecycle of connected devices.
+- The `drivers` package contains individual device drivers, each in its own subpackage (e.g. `driver-pjlink`). Drivers implement a common interface and can be dynamically loaded by the server.
+- The server uses a PostgreSQL database for persistent storage and Redis for caching and pub/sub. The database schema includes tables for devices, rooms, connections, and driver configurations.
+- The server also includes an event bus for internal communication between components, and a registry for managing available drivers and their capabilities.
+- The app is designed to be extensible, allowing new drivers to be added without modifying the core server code. Drivers can define their own configuration and state management logic, and can expose custom commands that can be invoked via the API.
+
+- The app is written in TypeScript and uses modern language features. It is structured in a modular way, with clear separation of concerns between different components. The codebase includes comprehensive type definitions and documentation to facilitate development and maintenance.
