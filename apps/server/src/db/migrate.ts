@@ -11,7 +11,7 @@
  */
 
 import { migrate } from "drizzle-orm/bun-sql/migrator";
-import { config } from "../config.ts";
+import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db, sqlClient } from "./client.ts";
 
@@ -29,7 +29,7 @@ async function setupTimescale(): Promise<void> {
         timescaledb.compress_segmentby = 'source, level'
       )`;
     await sqlClient`SELECT add_compression_policy('logs', INTERVAL '7 days', if_not_exists => TRUE)`;
-    await sqlClient`SELECT add_retention_policy('logs', make_interval(days => ${config.log.retentionDays}), if_not_exists => TRUE)`;
+    await sqlClient`SELECT add_retention_policy('logs', make_interval(days => ${appConfig.log.retentionDays}), if_not_exists => TRUE)`;
     log.info("TimescaleDB hypertable configured for 'logs'");
   } catch (err) {
     log.warn("TimescaleDB setup skipped (extension unavailable?)", {

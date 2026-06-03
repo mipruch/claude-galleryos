@@ -6,6 +6,7 @@
       "name": "galleryos",
       "devDependencies": {
         "@types/bun": "latest",
+        "fallow": "^2.88.2",
         "typescript": "^5.6.0",
       },
     },
@@ -145,6 +146,22 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
+    "@fallow-cli/darwin-arm64": ["@fallow-cli/darwin-arm64@2.88.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-NeOEdICMEiWcoeh0XvsRYIt6fncb/PH+ucmLQh9prsSF1Jgj5fK3O2B7PAfNiEWOM0I0o6oxgeTuWorgDt5NVA=="],
+
+    "@fallow-cli/darwin-x64": ["@fallow-cli/darwin-x64@2.88.2", "", { "os": "darwin", "cpu": "x64" }, "sha512-ml38maL3kTDcrqeF+PNsoxWPE/rbMSBbSXaTvJ5WEuiUndR2ogO7Y9xIKvqZAp8mgpw4Nd7+n5QaD3ffnRyvzg=="],
+
+    "@fallow-cli/linux-arm64-gnu": ["@fallow-cli/linux-arm64-gnu@2.88.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-M2Q9zBUyknVYCTewamKqpWPaX5QWVfMmoGsL5QuZ/Nwla1aw/wAMxGsZnnT8I/795hnBKXNBe2a52HKm76dPVA=="],
+
+    "@fallow-cli/linux-arm64-musl": ["@fallow-cli/linux-arm64-musl@2.88.2", "", { "os": "linux", "cpu": "arm64" }, "sha512-TexUWUG8MQkYObMY2tONNHTaOKy6O55T5G68KakAMUhKWcQcrwM3cd/O/RLB5U0D8hjb26rV1O/5Kvf9Wa50jg=="],
+
+    "@fallow-cli/linux-x64-gnu": ["@fallow-cli/linux-x64-gnu@2.88.2", "", { "os": "linux", "cpu": "x64" }, "sha512-kQbG9ovmBwNv4IvVLrIgJz+RxcL66Au3snAAQn9108CSBdG6vCqk9RrqY57p1Cv9fF1GfPJrS0ddvUuEG4Zdkg=="],
+
+    "@fallow-cli/linux-x64-musl": ["@fallow-cli/linux-x64-musl@2.88.2", "", { "os": "linux", "cpu": "x64" }, "sha512-9x9XPq5Qpnud2CpVfEB8IytvLUebSpAebK3TMdZlbMKNwmE+yq79EmVOD97FN/PGp8FtKAe4YTX3FHnpvZjaCQ=="],
+
+    "@fallow-cli/win32-arm64-msvc": ["@fallow-cli/win32-arm64-msvc@2.88.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-Xdiv5uKL6P8YgrBZKS6yKAowU2BeAivFbIyjTdWI53puBFb+WMZcY5M+yE5lHFt8SDxoirWys5OHZTpp1KfABA=="],
+
+    "@fallow-cli/win32-x64-msvc": ["@fallow-cli/win32-x64-msvc@2.88.2", "", { "os": "win32", "cpu": "x64" }, "sha512-FugfOmcLsWUIn9wb0odQm9mTMXUoPgaaJpxdrtcqe82/W8zUx5TEgsAgNuvKNZu3gu49kcneBQ3FBD+NjvAzcQ=="],
+
     "@gallery/driver-bss": ["@gallery/driver-bss@workspace:packages/drivers/driver-bss"],
 
     "@gallery/driver-core": ["@gallery/driver-core@workspace:packages/driver-core"],
@@ -185,6 +202,8 @@
 
     "color-string": ["color-string@2.1.4", "", { "dependencies": { "color-name": "^2.0.0" } }, "sha512-Bb6Cq8oq0IjDOe8wJmi4JeNn763Xs9cfrBcaylK1tPypWzyoy2G3l90v9k64kjphl/ZJjPIShFztenRomi8WTg=="],
 
+    "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
+
     "drizzle-kit": ["drizzle-kit@0.31.10", "", { "dependencies": { "@drizzle-team/brocli": "^0.10.2", "@esbuild-kit/esm-loader": "^2.5.5", "esbuild": "^0.25.4", "tsx": "^4.21.0" }, "bin": { "drizzle-kit": "bin.cjs" } }, "sha512-7OZcmQUrdGI+DUNNsKBn1aW8qSoKuTH7d0mYgSP8bAzdFzKoovxEFnoGQp2dVs82EOJeYycqRtciopszwUf8bw=="],
 
     "drizzle-orm": ["drizzle-orm@0.45.2", "", { "peerDependencies": { "@aws-sdk/client-rds-data": ">=3", "@cloudflare/workers-types": ">=4", "@electric-sql/pglite": ">=0.2.0", "@libsql/client": ">=0.10.0", "@libsql/client-wasm": ">=0.10.0", "@neondatabase/serverless": ">=0.10.0", "@op-engineering/op-sqlite": ">=2", "@opentelemetry/api": "^1.4.1", "@planetscale/database": ">=1.13", "@prisma/client": "*", "@tidbcloud/serverless": "*", "@types/better-sqlite3": "*", "@types/pg": "*", "@types/sql.js": "*", "@upstash/redis": ">=1.34.7", "@vercel/postgres": ">=0.8.0", "@xata.io/client": "*", "better-sqlite3": ">=7", "bun-types": "*", "expo-sqlite": ">=14.0.0", "gel": ">=2", "knex": "*", "kysely": "*", "mysql2": ">=2", "pg": ">=8", "postgres": ">=3", "prisma": "*", "sql.js": ">=1", "sqlite3": ">=5" }, "optionalPeers": ["@aws-sdk/client-rds-data", "@cloudflare/workers-types", "@electric-sql/pglite", "@libsql/client", "@libsql/client-wasm", "@neondatabase/serverless", "@op-engineering/op-sqlite", "@opentelemetry/api", "@planetscale/database", "@prisma/client", "@tidbcloud/serverless", "@types/better-sqlite3", "@types/pg", "@types/sql.js", "@upstash/redis", "@vercel/postgres", "@xata.io/client", "better-sqlite3", "bun-types", "expo-sqlite", "gel", "knex", "kysely", "mysql2", "pg", "postgres", "prisma", "sql.js", "sqlite3"] }, "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q=="],
@@ -192,6 +211,8 @@
     "enabled": ["enabled@2.0.0", "", {}, "sha512-AKrN98kuwOzMIdAizXGI86UFBoo26CL21UM763y1h/GMSJ4/OHU9k2YlsmBpyScFo/wbLzWQJBMCW4+IO3/+OQ=="],
 
     "esbuild": ["esbuild@0.25.12", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.25.12", "@esbuild/android-arm": "0.25.12", "@esbuild/android-arm64": "0.25.12", "@esbuild/android-x64": "0.25.12", "@esbuild/darwin-arm64": "0.25.12", "@esbuild/darwin-x64": "0.25.12", "@esbuild/freebsd-arm64": "0.25.12", "@esbuild/freebsd-x64": "0.25.12", "@esbuild/linux-arm": "0.25.12", "@esbuild/linux-arm64": "0.25.12", "@esbuild/linux-ia32": "0.25.12", "@esbuild/linux-loong64": "0.25.12", "@esbuild/linux-mips64el": "0.25.12", "@esbuild/linux-ppc64": "0.25.12", "@esbuild/linux-riscv64": "0.25.12", "@esbuild/linux-s390x": "0.25.12", "@esbuild/linux-x64": "0.25.12", "@esbuild/netbsd-arm64": "0.25.12", "@esbuild/netbsd-x64": "0.25.12", "@esbuild/openbsd-arm64": "0.25.12", "@esbuild/openbsd-x64": "0.25.12", "@esbuild/openharmony-arm64": "0.25.12", "@esbuild/sunos-x64": "0.25.12", "@esbuild/win32-arm64": "0.25.12", "@esbuild/win32-ia32": "0.25.12", "@esbuild/win32-x64": "0.25.12" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg=="],
+
+    "fallow": ["fallow@2.88.2", "", { "dependencies": { "detect-libc": "2.1.2" }, "optionalDependencies": { "@fallow-cli/darwin-arm64": "2.88.2", "@fallow-cli/darwin-x64": "2.88.2", "@fallow-cli/linux-arm64-gnu": "2.88.2", "@fallow-cli/linux-arm64-musl": "2.88.2", "@fallow-cli/linux-x64-gnu": "2.88.2", "@fallow-cli/linux-x64-musl": "2.88.2", "@fallow-cli/win32-arm64-msvc": "2.88.2", "@fallow-cli/win32-x64-msvc": "2.88.2" }, "bin": { "fallow": "bin/fallow", "fallow-lsp": "bin/fallow-lsp", "fallow-mcp": "bin/fallow-mcp" } }, "sha512-yMi8qYC2ftkAV0wFfSCU4htACMdbfc8o3h+OFzyVPI76savgLaMSdfjMJWXxeO3mHSUzoCf7ggY7GLA4z+TqDg=="],
 
     "fecha": ["fecha@4.2.3", "", {}, "sha512-OP2IUU6HeYKJi3i0z4A19kHMQoLVs4Hc+DPqqxI2h/DPZHTm/vjsfC6P0b4jCMy14XizLBqvndQ+UilD7707Jw=="],
 

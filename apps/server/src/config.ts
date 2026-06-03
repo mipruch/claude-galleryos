@@ -17,9 +17,9 @@ function int(key: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n;
 }
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
-export const config = {
+export const appConfig = {
   env: str("NODE_ENV", "development"),
   isProd: str("NODE_ENV", "development") === "production",
 
@@ -32,7 +32,7 @@ export const config = {
     filePath: str("LOG_FILE_PATH", "./logs/gallery.log"),
     retentionDays: int("LOG_RETENTION_DAYS", 90),
   },
-
+  
   db: {
     url: str("DATABASE_URL", "postgresql://gallery:gallery_dev_password@localhost:5432/gallery"),
   },
@@ -58,5 +58,3 @@ export const config = {
     commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 2_000),
   },
 } as const;
-
-export type Config = typeof config;

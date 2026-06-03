@@ -38,9 +38,10 @@
  * DAPC: first byte = addr*2, second = arc power level 0–254
  */
 
+
 // ── framing constants ─────────────────────────────────────────
-export const SOH = 0x01;
-export const ETB = 0x17;
+ const SOH = 0x01;
+ const ETB = 0x17;
 
 // ── message type codes ────────────────────────────────────────
 export const MsgType = {
@@ -66,7 +67,7 @@ export const DaliCmd = {
 // ── checksum ──────────────────────────────────────────────────
 
 /** Foxtron frame checksum: bitwise-NOT of sum modulo 0x100. */
-export function calcChecksum(dataBytes: readonly number[]): number {
+function calcChecksum(dataBytes: readonly number[]): number {
   const sum = dataBytes.reduce((a, b) => a + b, 0);
   return (~sum) & 0xFF;
 }
@@ -131,10 +132,6 @@ export class FrameDecoder {
     return results;
   }
 
-  reset(): void {
-    this.buf = "";
-    this.inFrame = false;
-  }
 }
 
 // ── message builders ──────────────────────────────────────────
@@ -172,7 +169,7 @@ export function buildConfigQuery(item: number): number[] {
 
 // ── DALI addressing helpers ───────────────────────────────────
 
-export const DaliAddr = {
+ const DaliAddr = {
   /** DAPC individual: addr*2 (direct level command). */
   unicastDapc: (addr: number): number => (addr & 0x3F) * 2,
   /** Standard command/query to individual address: addr*2+1. */

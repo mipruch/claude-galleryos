@@ -8,16 +8,15 @@
 
 import { SQL } from "bun";
 import { drizzle } from "drizzle-orm/bun-sql";
-import { config } from "../config.ts";
+import { appConfig } from "../config.ts";
 import * as schema from "./schema.ts";
 
 /** Underlying Bun SQL connection (use `.end()` on shutdown). */
-export const sqlClient = new SQL(config.db.url);
+export const sqlClient = new SQL(appConfig.db.url);
 
 /** Type-safe Drizzle database handle, schema-aware. */
 export const db = drizzle(sqlClient, { schema });
 
-export type DB = typeof db;
 
 /** Close the database connection pool. */
 export async function closeDb(): Promise<void> {

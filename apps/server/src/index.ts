@@ -8,7 +8,7 @@
  * Migrations are NOT run here — run `bun run migrate` explicitly first.
  */
 
-import { config } from "./config.ts";
+import { appConfig } from "./config.ts";
 import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
@@ -43,7 +43,7 @@ function wireAuditLog(): void {
 
 async function main(): Promise<void> {
   log.info("GalleryOS server starting", {
-    env: config.env,
+    env: appConfig.env,
     drivers: driverRegistry.list().map((d) => `${d.id}@${d.version}`),
   });
 
@@ -69,11 +69,11 @@ async function main(): Promise<void> {
     supportsSubscriptions: (driverId) =>
       driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
     restart: {
-      maxAttempts: config.driver.restartMaxAttempts,
-      baseDelayMs: config.driver.restartBaseDelayMs,
-      maxDelayMs: config.driver.restartMaxDelayMs,
+      maxAttempts: appConfig.driver.restartMaxAttempts,
+      baseDelayMs: appConfig.driver.restartBaseDelayMs,
+      maxDelayMs: appConfig.driver.restartMaxDelayMs,
     },
-    commandTimeoutMs: config.driver.commandTimeoutMs,
+    commandTimeoutMs: appConfig.driver.commandTimeoutMs,
   });
 
   await deviceManager.start();
@@ -83,8 +83,8 @@ async function main(): Promise<void> {
     state: redisStateStore,
     eventBus,
     logger,
-    connectionIntervalMs: config.watchdog.connectionIntervalMs,
-    endpointIntervalMs: config.watchdog.endpointIntervalMs,
+    connectionIntervalMs: appConfig.watchdog.connectionIntervalMs,
+    endpointIntervalMs: appConfig.watchdog.endpointIntervalMs,
   });
   watchdog.start();
 

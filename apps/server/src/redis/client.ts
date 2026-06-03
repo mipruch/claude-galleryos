@@ -6,10 +6,10 @@
  */
 
 import { RedisClient } from "bun";
-import { config } from "../config.ts";
+import { appConfig } from "../config.ts";
 
 /** Shared Redis client. Bun connects lazily on first command. */
-export const redis = new RedisClient(config.redis.url);
+export const redis = new RedisClient(appConfig.redis.url);
 
 /** Eagerly connect (for fail-fast startup) and return the client. */
 export async function connectRedis(): Promise<RedisClient> {

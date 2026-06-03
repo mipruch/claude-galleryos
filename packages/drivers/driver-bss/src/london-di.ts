@@ -61,7 +61,6 @@ export const MsgType = {
   SET_STRING: 0x91,
 } as const;
 
-export type MsgTypeValue = (typeof MsgType)[keyof typeof MsgType];
 
 /** Hierarchical address of one parameter inside a Soundweb device. */
 export interface ParameterAddress {
@@ -85,12 +84,12 @@ export interface DiMessage extends ParameterAddress {
 // ── checksum & substitution ──────────────────────────────────
 
 /** Single-byte XOR of all bytes (the London DI checksum). */
-export function xorChecksum(bytes: readonly number[]): number {
+function xorChecksum(bytes: readonly number[]): number {
   return bytes.reduce((acc, b) => acc ^ (b & 0xff), 0);
 }
 
 /** Escape reserved control bytes. Operates on body+checksum. */
-export function substitute(bytes: readonly number[]): number[] {
+function substitute(bytes: readonly number[]): number[] {
   const out: number[] = [];
   for (const b of bytes) {
     const sub = SUBSTITUTE[b & 0xff];
@@ -101,7 +100,7 @@ export function substitute(bytes: readonly number[]): number[] {
 }
 
 /** Reverse {@link substitute}. Throws on a malformed escape sequence. */
-export function unsubstitute(bytes: readonly number[]): number[] {
+function unsubstitute(bytes: readonly number[]): number[] {
   const out: number[] = [];
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i]! & 0xff;
@@ -121,13 +120,13 @@ export function unsubstitute(bytes: readonly number[]): number[] {
 // ── value helpers ────────────────────────────────────────────
 
 /** Encode a 32-bit signed integer as 4 big-endian bytes. */
-export function encodeInt32(value: number): number[] {
+function encodeInt32(value: number): number[] {
   const v = value | 0; // coerce to int32
   return [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
 }
 
 /** Decode 4 big-endian bytes as a 32-bit signed integer. */
-export function decodeInt32(bytes: readonly number[]): number {
+function decodeInt32(bytes: readonly number[]): number {
   const v = ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>> 0;
   return v | 0; // reinterpret as signed
 }
@@ -142,7 +141,7 @@ export function percentRawToLevel(raw: number): number {
   return clamp01(raw / 65536 / 100);
 }
 
-export function clamp01(n: number): number {
+function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(1, Math.max(0, n));
 }
@@ -165,7 +164,7 @@ function encodeAddress(addr: ParameterAddress): number[] {
 // ── message encoding ─────────────────────────────────────────
 
 /** Build a complete framed message (with STX/ETX, checksum, substitution). */
-export function encodeMessage(msg: DiMessage): Buffer {
+function encodeMessage(msg: DiMessage): Buffer {
   const body = [msg.type & 0xff, ...encodeAddress(msg), ...encodeInt32(msg.value)];
   return frameBody(body);
 }
@@ -183,6 +182,7 @@ export function encodeAddressMessage(
 }
 
 /** Build a PARAMETER PRESET RECALL message (no addressing; value = preset id). */
+// fallow-ignore-next-line
 export function encodePresetRecall(presetId: number): Buffer {
   const body = [MsgType.RECALL_PRESET, ...encodeInt32(presetId)];
   return frameBody(body);

@@ -1,24 +1,14 @@
-/* 
-    <DaliMessage Version="1.0">
-	<Query>
-		<Screen ScreenType="Scene" />
-		<Screen ScreenType="Device" />
-		<Screen ScreenType="Group" />
-	</Query>
-</DaliMessage>;
-
-*/
-
 // I need to send the xml above to 10.54.17.93:5566 using TCP
 
 import net from "net";
-import xml2js from "xml2js";
 import {Buffer} from "buffer";
 import fs from "fs";
 
 const xml = `
 <DaliMessage Version="1.0">
- <Command><Button Index="M84" State="1" /></Command>
+ <Command>
+    <Button Index="M86" State="1" />
+ </Command>
 </DaliMessage>
 `;
 
@@ -47,6 +37,9 @@ client.on("data", (data) => {
 	// 		console.log("Response saved to response.xml");
 	// 	}
 	// });
+});
+client.on("error", (err) => {
+	console.error("Socket error:", err);
 });
 
 // Handle connection close
