@@ -13,7 +13,7 @@
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import winston from "winston";
-import { config } from "./config.ts";
+import { appConfig } from "./config.ts";
 
 /** Render a meta object defensively (never throw from the logger). */
 function safeJson(value: unknown): string {
@@ -38,15 +38,15 @@ const devFormat = winston.format.combine(
 const prodFormat = winston.format.combine(winston.format.timestamp(), winston.format.json());
 
 const transports: winston.transport[] = [
-  new winston.transports.Console({ format: config.isProd ? prodFormat : devFormat }),
+  new winston.transports.Console({ format: appConfig.isProd ? prodFormat : devFormat }),
 ];
 
 // Rotating file transport (best-effort — never block startup on FS issues).
 try {
-  mkdirSync(dirname(config.log.filePath), { recursive: true });
+  mkdirSync(dirname(appConfig.log.filePath), { recursive: true });
   transports.push(
     new winston.transports.File({
-      filename: config.log.filePath,
+      filename: appConfig.log.filePath,
       maxsize: 10 * 1024 * 1024, // 10 MB
       maxFiles: 5,
       format: prodFormat,
@@ -56,7 +56,7 @@ try {
   // Console transport alone is fine.
 }
 
-const root = winston.createLogger({ level: config.log.level, transports });
+const root = winston.createLogger({ level: appConfig.log.level, transports });
 
 /** Ergonomic wrapper around a Winston logger with a bound `source`. */
 export class Logger {

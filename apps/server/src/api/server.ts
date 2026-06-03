@@ -7,19 +7,21 @@
  */
 
 import type { Server } from "bun";
-import { config } from "../config.ts";
+import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { ApiContext } from "./context.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { devicesRoutes } from "./routes/devices.ts";
 import { driversRoutes } from "./routes/drivers.ts";
+import { logsRoutes } from "./routes/logs.ts";
 import { roomsRoutes } from "./routes/rooms.ts";
+import { scenesRoutes } from "./routes/scenes.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { makeWebSocketHandlers, setupBroadcast } from "./ws.ts";
 
 const log = logger.child("api");
 
-export function startApiServer(ctx: ApiContext, port = config.server.port): Server<unknown> {
+export function startApiServer(ctx: ApiContext, port = appConfig.server.port): Server<unknown> {
   const server = Bun.serve({
     port,
     routes: {
@@ -28,6 +30,8 @@ export function startApiServer(ctx: ApiContext, port = config.server.port): Serv
       ...connectionsRoutes(ctx),
       ...devicesRoutes(ctx),
       ...systemRoutes(ctx),
+      ...logsRoutes(ctx),
+      ...scenesRoutes(ctx),
       // WebSocket upgrade endpoint.
       "/ws": (req, server) => {
         if (server.upgrade(req, { data: {} })) return undefined;

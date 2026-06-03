@@ -6,7 +6,15 @@
 import type { DeviceManager, LiveStateStore } from "../core/DeviceManager.ts";
 import type { DriverRegistry } from "../core/DriverRegistry.ts";
 import type { EventBus } from "../core/EventBus.ts";
-import type { connectionsRepo, devicesRepo, roomsRepo } from "../db/repositories.ts";
+import type { SceneEngine } from "../core/SceneEngine.ts";
+import type {
+  connectionsRepo,
+  devicesRepo,
+  logsRepo,
+  roomsRepo,
+  sceneExecutionsRepo,
+  scenesRepo,
+} from "../db/repositories.ts";
 
 export interface ApiContext {
   deviceManager: DeviceManager;
@@ -16,6 +24,10 @@ export interface ApiContext {
   rooms: typeof roomsRepo;
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
+  logs: typeof logsRepo;
+  scenes: typeof scenesRepo;
+  sceneExecutions: typeof sceneExecutionsRepo;
+  sceneEngine: SceneEngine;
   /** Server start time (epoch ms) for uptime reporting. */
   startedAt: number;
 }

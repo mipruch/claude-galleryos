@@ -22,3 +22,4 @@ build/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+.fallow/

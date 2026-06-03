@@ -8,15 +8,26 @@
  * Migrations are NOT run here — run `bun run migrate` explicitly first.
  */
 
-import { config } from "./config.ts";
-import { logger } from "./logger.ts";
+import { appConfig } from "./config.ts";
+import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
-import { connectionsRepo, dbRepo, devicesRepo, roomsRepo } from "./db/repositories.ts";
+import { dbLogTransport } from "./db/log-transport.ts";
+import {
+  connectionsRepo,
+  dbRepo,
+  devicesRepo,
+  logsRepo,
+  roomsRepo,
+  sceneExecutionsRepo,
+  scenesRepo,
+} from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
-import { redisDriverStore, redisStateStore } from "./redis/state.ts";
+import { redisDriverStore, redisSceneStore, redisStateStore } from "./redis/state.ts";
 import { driverRegistry } from "./core/DriverRegistry.ts";
 import { eventBus, type GalleryEvent } from "./core/EventBus.ts";
 import { DeviceManager } from "./core/DeviceManager.ts";
+import { Watchdog } from "./core/Watchdog.ts";
+import { SceneEngine } from "./core/SceneEngine.ts";
 import { startApiServer } from "./api/server.ts";
 
 const log = logger.child("bootstrap");
@@ -32,11 +43,18 @@ function wireAuditLog(): void {
 
 async function main(): Promise<void> {
   log.info("GalleryOS server starting", {
-    env: config.env,
+    env: appConfig.env,
     drivers: driverRegistry.list().map((d) => `${d.id}@${d.version}`),
   });
 
   wireAuditLog();
+
+  // Wire DB log transport — early so startup logs are captured too. Early
+  // flushes may fail if the DB isn't ready yet; they are discarded gracefully.
+  // Cast needed: winston-transport is a transitive dep so TS can't verify
+  // stream.Writable structural compatibility, but the runtime works correctly.
+  winstonRoot.add(dbLogTransport as unknown as Parameters<typeof winstonRoot.add>[0]);
+  dbLogTransport.start();
 
   // Fail fast if Redis is unreachable.
   await connectRedis();
@@ -48,15 +66,40 @@ async function main(): Promise<void> {
     eventBus,
     logger,
     driverKVStore: redisDriverStore,
+    supportsSubscriptions: (driverId) =>
+      driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
     restart: {
-      maxAttempts: config.driver.restartMaxAttempts,
-      baseDelayMs: config.driver.restartBaseDelayMs,
-      maxDelayMs: config.driver.restartMaxDelayMs,
+      maxAttempts: appConfig.driver.restartMaxAttempts,
+      baseDelayMs: appConfig.driver.restartBaseDelayMs,
+      maxDelayMs: appConfig.driver.restartMaxDelayMs,
     },
-    commandTimeoutMs: config.driver.commandTimeoutMs,
+    commandTimeoutMs: appConfig.driver.commandTimeoutMs,
   });
 
   await deviceManager.start();
+
+  const watchdog = new Watchdog({
+    target: deviceManager,
+    state: redisStateStore,
+    eventBus,
+    logger,
+    connectionIntervalMs: appConfig.watchdog.connectionIntervalMs,
+    endpointIntervalMs: appConfig.watchdog.endpointIntervalMs,
+  });
+  watchdog.start();
+
+  // Scene engine: executes scenes against devices; also listens for
+  // `scene.execute.requested` so the WebSocket layer can trigger runs.
+  const sceneEngine = new SceneEngine({
+    scenes: scenesRepo,
+    executions: sceneExecutionsRepo,
+    state: redisSceneStore,
+    deviceManager,
+    devices: devicesRepo,
+    eventBus,
+    logger,
+  });
+  sceneEngine.start();
 
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
@@ -67,6 +110,10 @@ async function main(): Promise<void> {
     rooms: roomsRepo,
     connections: connectionsRepo,
     devices: devicesRepo,
+    logs: logsRepo,
+    scenes: scenesRepo,
+    sceneExecutions: sceneExecutionsRepo,
+    sceneEngine,
     startedAt: Date.now(),
   });
 
@@ -79,9 +126,13 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    sceneEngine.stop();
+    watchdog.stop();
     await apiServer.stop(true);
     await deviceManager.stop();
     await closeRedis();
+    // Drain buffered logs before the DB connection closes.
+    await dbLogTransport.stop();
     await closeDb();
     log.info("Shutdown complete");
     process.exit(0);

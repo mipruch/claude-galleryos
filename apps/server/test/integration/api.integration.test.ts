@@ -13,8 +13,17 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import { EventBus } from "../../src/core/EventBus.ts";
 import { driverRegistry } from "../../src/core/DriverRegistry.ts";
-import { connectionsRepo, dbRepo, devicesRepo, roomsRepo } from "../../src/db/repositories.ts";
-import { redisDriverStore, redisStateStore } from "../../src/redis/state.ts";
+import {
+  connectionsRepo,
+  dbRepo,
+  devicesRepo,
+  logsRepo,
+  roomsRepo,
+  sceneExecutionsRepo,
+  scenesRepo,
+} from "../../src/db/repositories.ts";
+import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/redis/state.ts";
+import { SceneEngine } from "../../src/core/SceneEngine.ts";
 import { startApiServer } from "../../src/api/server.ts";
 import { logger } from "../../src/logger.ts";
 import { startPjlinkMock, type PjlinkMockServer } from "../mocks/mock-devices.ts";
@@ -29,10 +38,11 @@ let mock: PjlinkMockServer;
 let base = "";
 let connId = "";
 let devId = "";
+let sceneId = "";
 
-async function waitFor(pred: () => boolean, timeoutMs = 4_000): Promise<void> {
+async function waitFor(pred: () => boolean | Promise<boolean>, timeoutMs = 4_000): Promise<void> {
   const start = Date.now();
-  while (!pred()) {
+  while (!(await pred())) {
     if (Date.now() - start > timeoutMs) throw new Error("waitFor timed out");
     await Bun.sleep(25);
   }
@@ -51,6 +61,16 @@ beforeAll(async () => {
     commandTimeoutMs: 5_000,
   });
   await dm.start();
+  const sceneEngine = new SceneEngine({
+    scenes: scenesRepo,
+    executions: sceneExecutionsRepo,
+    state: redisSceneStore,
+    deviceManager: dm,
+    devices: devicesRepo,
+    eventBus: bus,
+    logger,
+  });
+  sceneEngine.start();
   server = startApiServer(
     {
       deviceManager: dm,
@@ -60,6 +80,10 @@ beforeAll(async () => {
       rooms: roomsRepo,
       connections: connectionsRepo,
       devices: devicesRepo,
+      logs: logsRepo,
+      scenes: scenesRepo,
+      sceneExecutions: sceneExecutionsRepo,
+      sceneEngine,
       startedAt: Date.now(),
     },
     0,
@@ -69,6 +93,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!ENABLED) return;
+  if (sceneId) await fetch(`${base}/api/v1/scenes/${sceneId}`, { method: "DELETE" }).catch(() => {});
   if (devId) await fetch(`${base}/api/v1/devices/${devId}`, { method: "DELETE" }).catch(() => {});
   if (connId) await fetch(`${base}/api/v1/connections/${connId}`, { method: "DELETE" }).catch(() => {});
   server?.stop(true);
@@ -151,4 +176,49 @@ it("broadcasts state changes over WebSocket and accepts device:command", async (
   expect(mock.state().power).toBe("0");
   await waitFor(() => messages.some((m) => m.event === "device:state"));
   ws.close();
+}, 30_000);
+
+it("creates, dry-runs, and executes a scene (real repos + engine)", async () => {
+  // Create a scene whose single action powers the device on.
+  let res = await fetch(`${base}/api/v1/scenes`, {
+    method: "POST",
+    headers: J,
+    body: JSON.stringify({
+      name: "itest-scene",
+      actions: [{ deviceId: devId, command: "on", parallelGroup: 0 }],
+    }),
+  });
+  expect(res.status).toBe(201);
+  const created = (await res.json()) as { id: string; actions: unknown[] };
+  sceneId = created.id;
+  expect(created.actions).toHaveLength(1);
+
+  // GET returns the scene with its ordered actions.
+  res = await fetch(`${base}/api/v1/scenes/${sceneId}`);
+  expect(res.status).toBe(200);
+  expect(((await res.json()) as { actions: unknown[] }).actions).toHaveLength(1);
+
+  // Dry-run touches no hardware but returns the plan.
+  res = await fetch(`${base}/api/v1/scenes/${sceneId}/execute/dry-run`, { method: "POST" });
+  expect(res.status).toBe(200);
+  expect(((await res.json()) as { actions: unknown[]; dryRun: boolean }).actions).toHaveLength(1);
+
+  // Real execution: powers the device on and records an execution row.
+  res = await fetch(`${base}/api/v1/scenes/${sceneId}/execute`, {
+    method: "POST",
+    headers: J,
+    body: JSON.stringify({ source: "itest" }),
+  });
+  expect(res.status).toBe(202);
+  const ack = (await res.json()) as { executionId: string; status: string };
+  expect(ack.status).toBe("running");
+
+  await waitFor(() => mock.state().power === "1");
+
+  // The execution history eventually shows a completed run.
+  await waitFor(async () => {
+    const r = await fetch(`${base}/api/v1/scenes/${sceneId}/executions`);
+    const rows = (await r.json()) as Array<{ status: string }>;
+    return rows.some((x) => x.status === "completed");
+  });
 }, 30_000);

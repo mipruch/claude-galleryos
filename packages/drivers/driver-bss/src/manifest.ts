@@ -1,0 +1,147 @@
+/**
+ * BSS Soundweb London driver manifest.
+ *
+ * One connection = one TCP socket to a Soundweb processor (port 1023). Many
+ * fader endpoints share that socket; each endpoint addresses one Gain object's
+ * level + mute parameters. Fader endpoint is compatible with matrix Gain/Mute block also.
+ *
+ * Addressing follows the London DI hierarchy (see london-di.ts):
+ *   node (device) → virtualDevice (Audio=3) → object (the Gain block) →
+ *   parameter ids for gain and mute.
+ *
+ * The PLAN.md sketched `address: { node, virtualDevice, object, parameter }`
+ * (a single parameter). A real fader needs *two* parameters — gain and mute —
+ * so the address carries `gainParam` and `muteParam` instead. Param ids come
+ * from Audio Architect's Venue Explorer for the specific object.
+ */
+
+import type { DriverManifest } from "@gallery/driver-core";
+
+export const manifest: DriverManifest = {
+  id: "bss-soundweb",
+  name: "BSS Soundweb London",
+  version: "0.1.0",
+  vendor: "BSS Audio (Harman)",
+  description:
+    "BSS Soundweb London (BLU-series) DSP over the London DI protocol (TCP 1023). " +
+    "Per-fader level + mute with live subscriptions.",
+
+  connectionSchema: {
+    type: "object",
+    required: ["host"],
+    properties: {
+      host: { type: "string", title: "Host / IP", format: "hostname" },
+      port: { type: "integer", title: "Port", default: 1023, minimum: 1, maximum: 65535 },
+      responseTimeoutMs: {
+        type: "integer",
+        title: "Response timeout (ms)",
+        description: "Max wait for a SUBSCRIBE reply when reading state.",
+        default: 2000,
+        minimum: 200,
+        maximum: 10000,
+      },
+      reconnectMs: {
+        type: "integer",
+        title: "Reconnect delay (ms)",
+        description: "Base delay before reconnecting after a dropped socket.",
+        default: 2000,
+        minimum: 250,
+        maximum: 60000,
+      },
+    },
+  },
+
+  capabilities: {
+    // No auto-discovery: addresses are configured from Audio Architect.
+    discovery: false,
+    // The device pushes value changes after SUBSCRIBE.
+    subscriptions: true,
+    // Current values can be read back (via SUBSCRIBE).
+    bidirectional: true,
+  },
+
+  endpointTypes: [
+    {
+      type: "bss-soundweb.fader",
+      name: "Fader (Gain object)",
+      description: "A single Gain processing object: level (0..1) + mute.",
+
+      addressSchema: {
+        type: "object",
+        required: ["node", "object"],
+        properties: {
+          node: {
+            type: "integer",
+            title: "Node address",
+            description: "Physical device id (Venue Explorer).",
+            minimum: 1,
+            maximum: 65534,
+          },
+          virtualDevice: {
+            type: "integer",
+            title: "Virtual device",
+            description: "Object category — Audio = 3, Logic = 2.",
+            default: 3,
+            minimum: 0,
+            maximum: 255,
+          },
+          object: {
+            type: "integer",
+            title: "Object id",
+            description: "24-bit Processing Object id (the Gain block).",
+            minimum: 0,
+            maximum: 16777215,
+          },
+          gainParam: {
+            type: "integer",
+            title: "Gain parameter id",
+            description: "Parameter id for the gain/level value.",
+            default: 0,
+            minimum: 0,
+            maximum: 65535,
+          },
+          muteParam: {
+            type: "integer",
+            title: "Mute parameter id",
+            description: "Parameter id for the mute switch.",
+            default: 1,
+            minimum: 0,
+            maximum: 65535,
+          },
+        },
+        additionalProperties: false,
+      },
+
+      stateSchema: {
+        type: "object",
+        properties: {
+          level: { type: "number", minimum: 0, maximum: 1, description: "Fader level 0..1." },
+          muted: { type: "boolean", description: "Whether the channel is muted." },
+        },
+      },
+
+      commands: [
+        {
+          command: "setLevel",
+          description: "Set the fader level (0..1) via SET PERCENT.",
+          reversible: true,
+          paramsSchema: {
+            type: "object",
+            required: ["level"],
+            properties: { level: { type: "number", title: "Level", minimum: 0, maximum: 1 } },
+          },
+        },
+        {
+          command: "setMute",
+          description: "Mute or unmute the channel.",
+          reversible: true,
+          paramsSchema: {
+            type: "object",
+            required: ["muted"],
+            properties: { muted: { type: "boolean", title: "Muted" } },
+          },
+        },
+      ],
+    },
+  ],
+};

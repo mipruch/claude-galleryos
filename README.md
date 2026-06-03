@@ -179,8 +179,8 @@ gallery-control/
     │       ├── types.ts
     │       └── index.ts
     └── drivers/
-        ├── driver-bss-soundweb/
-        ├── driver-dali/
+        ├── driver-bss/             # BSS Soundweb London (London DI / TCP)
+        ├── driver-dali-lunatone/   # Lunatone DALI-2 IoT (REST/HTTP)
         ├── driver-pjlink/
         ├── driver-extron-matrix/
         ├── driver-samsung-mdc/
@@ -763,20 +763,87 @@ type DriverToCoreMessage =
 
 `apps/server/src/core/DriverRegistry.ts` — čte manifesty všech nainstalovaných driverů bez jejich instanciace.
 
-Manifest každého driveru je staticky exportovaný z balíčku (`packages/drivers/driver-bss-soundweb/src/manifest.ts`). Registry ho načte při startu serveru, uloží do paměti. Admin UI pak volá `GET /api/v1/drivers` a dostane seznam driverů s jejich manifesty pro generování formulářů.
+Manifest každého driveru je staticky exportovaný z balíčku (`packages/drivers/driver-bss/src/manifest.ts`). Registry ho načte při startu serveru, uloží do paměti. Admin UI pak volá `GET /api/v1/drivers` a dostane seznam driverů s jejich manifesty pro generování formulářů.
 
 ### Přehled implementovaných driverů
 
 |Driver ID      |Zařízení                              |Protokol    |Subscriptions         |Discovery |
 |---------------|--------------------------------------|------------|----------------------|----------|
-|`bss-soundweb` |BSS SoundWeb London procesory         |TCP/HiQnet  |Ano (SUBSCRIBE)       |Ne (v1)   |
-|`dali`         |DALI gateway (Helvar, Tridonic, …)    |TCP         |Ne                    |Ano (sken)|
+|`bss-soundweb` |BSS Soundweb London procesory ✓       |TCP/London DI|Ano (SUBSCRIBE)      |Ne        |
+|`dali-lunatone`|Lunatone DALI-2 IoT gateway ✓         |HTTP/REST   |Ne                    |Ano (sken)|
+|`dali-foxtron` |Foxtron DALInet / DALI2net brána ✓    |TCP/ASCII   |Ne (poll)             |Ne        |
+|`netio`        |NETIO chytré zásuvky (PowerBOX/PDU) ✓ |HTTP/JSON   |Ne (poll)             |Ne        |
 |`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
 |`extron-matrix`|Extron video matice                   |TCP/SIS     |Ne                    |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
-|`pixera`       |Pixera media server                   |TCP/JSON API|Ano                   |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
+|`pixera`       |Pixera media server *(odloženo)*      |TCP/JSON API|Ano                   |Ne        |
+
+#### `driver-bss` — BSS Soundweb London (implementováno)
+
+Balíček `packages/drivers/driver-bss` (driver id `bss-soundweb`). Mluví **London DI
+protokolem** přes TCP 1023 — ne HiQnet network model, jak původně odhadoval PLAN.
+Protokol je odvozen z přiloženého manuálu (`manuals/Soundweb-London-Third-Party-Control.pdf`)
+a ověřeného skriptu `manuals/bss.js`.
+
+- **`src/london-di.ts`** — čistý, samostatně testovaný kodek. Rámec
+  `STX(0x02) │ substitute( body │ checksum ) │ ETX(0x03)`; `body = typ(1) │ node(2) │
+  virtualDevice(1) │ object(3) │ param(2) │ value(4)`; checksum = XOR `body` **před**
+  byte-substitucí; 5 rezervovaných bytů se escapuje (`0x02 0x03 0x06 0x15 0x1B → 0x1B 0x8x`).
+  Hodnoty jsou 32-bit signed BE; percent-raw = `percent × 65536`. Obsahuje `FrameDecoder`
+  pro streamované dekódování (rozdělené i slepené rámce). Unit test ověřuje shodu
+  s přesným výstupem `bss.js`.
+- **`src/BssSoundwebDriver.ts`** — jeden perzistentní socket na connection sdílený všemi
+  fadery. Na `connect()` (a po reconnectu s exponenciálním backoffem) se **re-subscribuje**
+  každý sledovaný endpoint. Příchozí SET / SET PERCENT pushe se routují přes mapu
+  `node:vd:object:param → {endpointId, field}` a emitují jako `state` událost.
+  - **Žádný GET** — `readState` použije SUBSCRIBE (zařízení okamžitě pošle aktuální hodnotu).
+  - **Žádný app-level keepalive** — manuál říká nechat TCP socket trvale otevřený.
+  - `setLevel (0..1)` → SET PERCENT (0x8D), `setMute (bool)` → SET (0x88).
+- **Endpoint `bss-soundweb.fader`**, adresa `{ node, object, virtualDevice?=3, gainParam?=0,
+  muteParam?=1 }` — fader potřebuje dva parametry (gain + mute), proto adresa nese oba.
+
+#### `driver-dali-foxtron` — Foxtron DALInet / DALI2net (implementováno)
+
+Balíček `packages/drivers/driver-dali-foxtron` (driver id `dali-foxtron`). Ovládá
+DALI svítidla přes bránu Foxtron přes její **ASCII protokol nad TCP** (manuál
+`manuals/DALI232-komunikacni-protokol.pdf`, ověřeno proti funkčnímu skriptu zákazníka).
+
+- **`src/foxtron-codec.ts`** — čistý, samostatně testovaný kodek. Rámec
+  `SOH(0x01) │ hex( data │ checksum ) │ ETB(0x17)`; každý byte se posílá jako dva
+  ASCII hex znaky; checksum = `(~Σ data) & 0xFF`. Unit test ověřuje shodu s
+  příkladem z manuálu (`01 00 10 FF 10 → 0xDF`). Obsahuje `FrameDecoder` a DALI
+  adresovací pomocníky (DAPC `addr*2`, příkaz `addr*2+1`, broadcast `0xFE/0xFF`).
+- **`src/DaliFoxtronDriver.ts`** — ⚠️ **transport: krátkožijící TCP spojení na každý
+  příkaz** (connect → send → close). Brána totiž zavírá nečinná spojení po ~1–2 s,
+  takže perzistentní socket vede k nekonečnému reconnect loopu. Operace jsou
+  serializovány (jedno spojení v jeden čas).
+  - `on` → Recall Max Level, `off` → Off, `setBrightness` → DAPC (0–254), `recall` → scéna 0–15 (Type 1, fire-and-forget).
+  - `readState` → DALI Query Actual Level přes **Type 11** (odpověď přijde jako
+    Type 13/14 přiřazená nám, ne Type 3/4 = aktivita jiných masterů na sběrnici).
+  - `healthCheck` → Type 6 dotaz na stav napájení DALI sběrnice (položka 3).
+- **Endpoint `dali-foxtron.fixture`** podporuje tři režimy adresování (`addressMode`):
+  - `"address"` → jedno svítidlo: `{ daliAddress: 0..63 }` (DAPC `addr*2`, příkaz `addr*2+1`)
+  - `"group"` → DALI skupina: `{ group: 0..15 }` (DAPC `g*2+0x80`, příkaz `g*2+0x81`)
+  - `"broadcast"` → všechna svítidla najednou (`0xFE` / `0xFF`)
+  - Když `addressMode` chybí, odvodí se z přítomnosti `daliAddress`/`group` (zpětná kompatibilita).
+  - `readState` přes skupinu/broadcast vrací poslední optimistický stav (více svítidel
+    nelze spolehlivě dotázat — odpovědi kolidují); jen individuální adresa dělá reálný dotaz.
+- Pro DALI2net použij port 23 (sběrnice 1) nebo 24 (sběrnice 2) jako dvě samostatné connections.
+
+#### `driver-netio` — NETIO chytré zásuvky (implementováno)
+
+Balíček `packages/drivers/driver-netio` (driver id `netio`). Ovládá NETIO síťové
+zásuvky (PowerBOX, PowerPDU, PowerDIN) přes **JSON M2M API nad HTTP** (manuál
+`manuals/NETIO-M2M-API-Protocol-JSON.pdf`).
+
+- **`src/NetioDriver.ts`** — `GET /netio.json` pro čtení stavu všech výstupů,
+  `POST /netio.json` pro ovládání; HTTP Basic auth (`username`/`password` z configu).
+  Metering pole (`load`/`current`/`energy`) se přidají do stavu jen u modelů, které je vrací.
+- **Endpoint `netio.socket`**, adresa `{ outputId: 1..8 }`. Příkazy: `on`, `off`,
+  `toggle`, `shortOn`/`shortOff` (s volitelným `delayMs` — krátký impuls / power-cycle,
+  Action 1/0/4/3/2 dle protokolu).
 
 -----
 
@@ -844,21 +911,22 @@ Vykonává scény. Nejkomplexnější modul systému.
 
 Spuštění scény (`executeScene(sceneId, source)`):
 
+**Zjednodušení oproti původnímu návrhu:** bez verzování scén, bez rollbacku, bez recovery po pádu serveru. Systém je nekritický.
+
 1. **Validace a pre-flight:**
 - Načíst scénu + akce z DB
-- Ověřit, že všechna dotčená zařízení existují a jsou online
-- Zkontrolovat, zda scéna není už spuštěna (Redis `scene:{id}:active` key)
-- Pokud `on_failure` = `rollback` u jakékoli akce: zaznamenat pre-state dotčených zařízení voláním `DeviceManager.readState()` pro každé
+- Zkontrolovat, zda scéna není už spuštěna (Redis `scene:{id}:active` key) — pokud ano, vrátit 409
+- Ověřit, že všechna dotčená zařízení existují (online check je informativní, nikoli blokující)
 1. **Zápis do DB:**
 - Vytvořit `SceneExecution` záznam se statusem `running`
 - Emitovat `scene.execute.started` na `EventBus`
-- Nastavit Redis `scene:{id}:active = "1"`
+- Nastavit Redis `scene:{id}:active = “1”`
 1. **Execution plán:**
 - Skupinovat akce podle `parallel_group` (stejná čísla = skupina)
 - Třídit skupiny vzestupně
 - Pro každou skupinu: spustit všechny akce v ní paralelně (`Promise.all`)
-- Pokud skupina selže a `on_failure = abort`: okamžitě přerušit a přejít na krok 5
-- Pokud skupina selže a `on_failure = rollback`: přejít na rollback rutinu
+- Pokud skupina selže a `on_failure = abort`: okamžitě přerušit
+- `on_failure = continue`: logovat chybu a pokračovat dál
 - Respektovat `delay_ms` uvnitř skupiny (každá akce před spuštěním počká svůj delay)
 1. **Vykonání jedné akce:**
    
@@ -871,11 +939,6 @@ Spuštění scény (`executeScene(sceneId, source)`):
 - Aktualizovat `SceneExecution` na `completed` / `failed` / `aborted`
 - Emitovat `scene.execute.completed` nebo `scene.execute.failed`
 - Smazat Redis `scene:{id}:active`
-1. **Rollback rutina:**
-- Iterovat přes pre-state (opačné pořadí než akce)
-- Pro každou `reversible: true` akci: zavolat `DeviceManager.execute` s původní hodnotou
-- Logovat každý rollback krok
-- Akce s `reversible: false` přeskočit, logovat varování “manual recovery needed”
 
 **Parallel group příklad:**
 
@@ -886,16 +949,42 @@ Scéna "Přednáška sál A":
   group 2: [přepni vstup projektoru na HDMI1, odmutuj mic] ← čeká na group 1
 ```
 
+**Implementováno (Priorita 2)** — `apps/server/src/core/SceneEngine.ts`:
+
+- **Dependency injection:** engine dostává úzká rozhraní (`scenes`, `executions`,
+  `state`, `deviceManager`, `devices`, `eventBus`, `logger`), takže je plně
+  testovatelný s in-memory fakes (bez DB / Redis / subprocess).
+- **Dva vstupní body:** `executeScene(...)` doběhne do konce a vrátí výsledek
+  (scheduler, testy); `startScene(...)` provede pre-flight synchronně (kvůli
+  409/404/400), spustí plán na pozadí a hned vrátí `{ executionId, status: "running" }`
+  (REST). `start()` navíc naslouchá `scene.execute.requested` (trigger z WebSocketu).
+- **Typed chyby:** `SceneNotFoundError` → 404, `SceneConflictError` → 409,
+  `SceneValidationError` → 400. Vyhozeny v pre-flightu před jakýmkoli side-effectem.
+- **`planGroups()`** je čistá funkce (grupování dle `parallel_group`, vzestupně).
+- **Dry-run (`dryRun(sceneId)`):** ⚠️ oprava návrhu — `dryRun` se **nepropaguje** do
+  DeviceManageru per-příkaz (driver subprocess má `dryRun` fixní z `init`, a živé
+  connectiony běží naostro). Engine proto v dry-runu hardware vůbec nevolá: jen
+  zvaliduje scénu + zařízení a vrátí naplánované akce (žádný zámek, žádný DB zápis,
+  žádné EventBus události).
+- **Redis zámek:** `redisSceneStore` (`scene:{id}:active`) v `src/redis/state.ts`.
+- **REST** `src/api/routes/scenes.ts` a **WS** `scene:execute` handler v `src/api/ws.ts`
+  (validuje scénu → emituje `scene.execute.requested` → ack `{ executionId }`).
+- **Testy:** 13 hermetických testů enginu (grupování, on_failure abort/continue,
+  konflikt/404/validace, dry-run, background `startScene`, event trigger),
+  12 testů REST routes (incl. mapování chyb), 2 WS testy + rozšířený DB integration test.
+
 ### 7.4 Scheduler
 
 `apps/server/src/core/Scheduler.ts`
 
-Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a registruje je do `bun cron`.
+Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a naplánuje je.
+
+**Timezone handling:** `Bun.cron` je UTC-only. Scheduler proto počítá přesný UTC čas příštího spuštění pomocí `Temporal.ZonedDateTime` (vestavěné v Bun) a používá `setTimeout`. Po každém spuštění se čas přepočítá znovu — tím je správně ošetřen přechod letního/zimního času.
 
 Klíčové vlastnosti:
 
-- Dynamický reload — Admin UI může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
-- Timezone-aware — každý job má vlastní timezone.
+- Dynamický reload — Admin může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
+- Timezone-aware — každý job má vlastní timezone; DST je ošetřeno přepočtem po každém spuštění.
 - Po každém spuštění: aktualizuje `last_run_at` a `next_run_at` v DB.
 - Job spouští scénu přes `SceneEngine.executeScene(sceneId, 'scheduler')`.
 - Při výpadku a restartu serveru: při startu ověří, zda neproběhl missed job (job měl proběhnout a neproběhl), a pokud ano, loguje varování. Automatické doplnění vynechaných jobů se **nespouští** — je to galerie, ne kritická infrastruktura.
@@ -929,7 +1018,7 @@ Winston logger s transporty:
 
 1. **Console** (dev mode) — čitelný formát
 1. **File** — `logs/gallery.log`, rotace po 10MB, max 5 souborů
-1. **TimescaleDB** — async insert do hypertable `logs` přes connection pool; komprese a retention policy řeší databáze sama
+1. **TimescaleDB** — async insert do hypertable `logs` přes Drizzle; komprese a retention policy řeší databáze sama
 
 Každý modul dostane instanci loggeru s `source` již vyplněným:
 
@@ -937,6 +1026,16 @@ Každý modul dostane instanci loggeru s `source` již vyplněným:
 const log = logger.child({ source: 'scene_engine' });
 log.info('Scene started', { sceneId, executionId, source: 'userui' });
 ```
+
+#### DbLogTransport — `apps/server/src/db/log-transport.ts`
+
+Implementováno (Step 0.2). Vlastní Winston transport (`winston-transport`), který strukturované log záznamy **dávkově** zapisuje do hypertable `logs` přes Drizzle:
+
+- **Batching:** flush proběhne každých `flushIntervalMs` (default 500 ms) **nebo** jakmile se nasbírá `batchSize` záznamů (default 50) — podle toho, co nastane dřív. Tím se zabrání tlaku jednotlivých zápisů při log burstech.
+- **Mapování polí:** vyhrazená pole (`level`, `message`, `source`, `entityType`, `entityId`, `durationMs`) jdou do sloupců; veškerá ostatní meta data se složí do `metadata` JSONB.
+- **Serializovaný flush chain:** flushe se nikdy nepřekrývají (žádné souběžné DB zápisy), i když batch a interval spadnou současně.
+- **Odolnost vůči chybám:** selhání insertu se zaloguje na stderr a dávka se zahodí (žádné retry smyčky) — stejná data drží console + file transport.
+- **Lifecycle:** `start()` ozbrojí flush timer, `stop()` zruší timer a vyprázdní zbylé záznamy. Ve `src/index.ts` se přidá přes `winstonRoot.add(...)` a při shutdownu se `stop()` zavolá **před** uzavřením DB spojení, aby se buffer stihl zapsat.
 
 ### 7.7 Protocol Input Bus
 
@@ -1017,14 +1116,19 @@ POST   /scenes                   - vytvorit scénu
 GET    /scenes/:id               - detail scény včetně akcí
 PUT    /scenes/:id               - aktualizovat scénu (vytvoří novou scene_version)
 DELETE /scenes/:id               - smazat scénu
-POST   /scenes/:id/execute       - spustit scénu { source?: string }
+POST   /scenes/:id/execute       - spustit scénu { source?: string } → 202 { executionId, status }
 POST   /scenes/:id/execute/dry-run - simulovat bez reálných akcí
 GET    /scenes/:id/executions    - historie spuštění
-GET    /scenes/:id/versions      - seznam verzí
-GET    /scenes/:id/versions/:version - konkrétní verze (snapshot)
-POST   /scenes/:id/versions/:version/restore - obnovit starší verzi
+GET    /scenes/:id/versions      - seznam verzí                       (odloženo)
+GET    /scenes/:id/versions/:version - konkrétní verze (snapshot)     (odloženo)
+POST   /scenes/:id/versions/:version/restore - obnovit starší verzi   (odloženo)
 PATCH  /scenes/:id/favorite      - toggle oblíbená { is_favorite: bool }
 ```
+
+> **Implementováno (Priorita 2):** vše výše kromě `*/versions*` — verzování scén je
+> odloženo (tabulka `scene_versions` v schématu zůstává, ale bez logiky). PUT scény
+> tedy **nevytváří** novou `scene_version`, jen nahradí metadata + akce. `on_failure`
+> podporuje `continue` a `abort` (žádný `rollback`).
 
 ### Scheduled Jobs
 
@@ -1065,8 +1169,15 @@ PATCH  /layouts/:id/default      - nastavit jako výchozí
 ```
 GET    /logs                     - seznam logů (?level=, ?source=, ?entity_id=, ?from=, ?to=, ?limit=, ?offset=)
 GET    /logs/stats               - statistiky (počty dle level za posledních 24h, 7d)
-GET    /logs/executions          - přehled spuštění scén s výsledky
+GET    /logs/executions          - přehled spuštění scén s výsledky (?scene_id=, ?status=, ?limit=)
 ```
+
+**Implementováno (Step 0.3)** — `apps/server/src/api/routes/logs.ts`, read-only nad hypertable `logs` (plněnou přes `DbLogTransport`) a tabulkou `scene_executions`:
+
+- `GET /logs` — filtry `level`/`source`/`entity_id` + časové meze `from`/`to` (ISO-8601) + stránkování. `limit` se clampuje na 1–1000 (default 100), výstup řazen `ts DESC`. Neplatný integer nebo datum → `400 BAD_REQUEST`.
+- `GET /logs/stats` — `statsByLevel` agregace (`GROUP BY level`) pro dvě okna: posledních 24 h a 7 dní; obě se počítají paralelně (`Promise.all`).
+- `GET /logs/executions` — historie spuštění scén s `LEFT JOIN` na `scenes` (kvůli `sceneName`); funguje i bez SceneEngine, protože čte jen tabulku.
+- Data se přistupují přes nové repozitáře `logsRepo` a `sceneExecutionsRepo` (`src/db/repositories.ts`), injektované do route přes `ApiContext` — stejný vzor jako rooms/devices, takže route jde testovat s fake repo bez DB.
 
 ### Systém
 
@@ -1728,6 +1839,41 @@ Po restartu serveru je driver dostupný v Admin UI.
 - Driver **nesmí** importovat z `@gallery/server` ani přistupovat do DB
 - Driver **musí** logovat smysluplně přes `ctx.logger`, ne přes `console.log`
 - Timeout pro `executeCommand` by měl být konfigurovatelný (default 500ms pro synchronní příkazy)
+
+### Implementované drivery
+
+| Driver (id) | Zařízení | Transport | Capabilities |
+|---|---|---|---|
+| `pjlink` | PJLink projektory (Class 1) | TCP 4352, ASCII | bidirectional |
+| `tcp-generic` | Libovolné jednoduché TCP zařízení | TCP, raw | bidirectional |
+| `dali-lunatone` | Lunatone DALI-2 IoT gateway | HTTP REST, port 80 | discovery, bidirectional |
+
+**`driver-template`** — kostra pro nový driver. Na rozdíl od většiny šablon je to
+**funkční** mini-driver (hračkový ASCII line-protokol) s `// TODO` komentářem v každé
+metodě. Balíček je soběstačný: driver, jeho mock (`test/mock-device.ts`) i 6 testů
+(`test/template.test.ts` — connect, command, readState, dry-run, unknown-command,
+disconnect) leží pohromadě, takže nový driver vznikne zkopírováním jediné složky a
+testy projdou hned po startu.
+
+**`driver-dali-lunatone`** — Lunatone **DALI-2 IoT** modul (Art.Nr. 89453886).
+⚠️ **Korekce protokolu oproti plánu:** plán předpokládal textový TCP protokol
+(`>A {addr} ...<`), ale reálné zařízení (dle přiloženého manuálu v
+`manuals/`) komunikuje přes **HTTP REST + JSON API na portu 80** bez autentizace.
+Driver je implementován proti skutečnému API (Bun-native `fetch`, žádné externí
+závislosti):
+
+- `GET /info` — health/reachability probe (connect i `healthCheck`)
+- `POST /device/{id}/control` — `ControlData` objekt: `on`/`off` → `{switchable}`,
+  `setBrightness {level 0..1}` → `{dimmable 0..100}`, `recall {scene 0..15}` → `{scene}`
+- `GET /device/{id}` + `GET /devices` — čtení stavu (`switchable.status`,
+  `dimmable.status`) a discovery
+- `POST /dali/scan` + `GET /dali/scan` — sken sběrnice (volitelně přes `scanOnDiscover`,
+  ~1 min, pollováno)
+
+**Klíčové rozhodnutí — adresace:** zařízení se ovládá přes *identifikační číslo*
+gateway (`deviceId`, přidělené při skenu), které se **liší** od raw DALI short
+adresy (0..63). Endpoint adresa je proto `{ deviceId, daliAddress? }`, kde
+`daliAddress` je jen read-only metadata z discovery.
 
 -----
 

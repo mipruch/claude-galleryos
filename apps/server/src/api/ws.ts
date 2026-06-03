@@ -104,10 +104,27 @@ async function handleClientMessage(
     case "device:unsubscribe":
       ws.unsubscribe(`device:${String(data.deviceId ?? "")}`);
       return;
-    case "scene:execute":
-      // The scene engine arrives in a later step.
-      ws.send(envelope("scene:execute:ack", { error: "scene engine not implemented yet" }));
+    case "scene:execute": {
+      const sceneId = String(data.sceneId ?? "");
+      if (!sceneId) {
+        ws.send(envelope("scene:execute:ack", { error: "sceneId required" }));
+        return;
+      }
+      // Validate the scene exists, then trigger the run via the EventBus. The
+      // SceneEngine (subscribed to `scene.execute.requested`) does the work and
+      // emits scene:started / scene:completed / scene:failed, which the broadcast
+      // bridge relays to all clients. We ack immediately with the executionId.
+      const scene = await ctx.scenes.get(sceneId);
+      if (!scene) {
+        ws.send(envelope("scene:execute:ack", { sceneId, error: "scene not found" }));
+        return;
+      }
+      const executionId = crypto.randomUUID();
+      const source = data.source ? String(data.source) : "websocket";
+      ctx.eventBus.emit({ type: "scene.execute.requested", sceneId, source, executionId });
+      ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
       return;
+    }
     default:
       ws.send(envelope("error", { message: `unknown event: ${msg.event ?? "(none)"}` }));
       return;

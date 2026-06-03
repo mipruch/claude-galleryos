@@ -10,6 +10,10 @@
  */
 
 import type { DriverManifest, IDeviceDriver } from "@gallery/driver-core";
+import BssSoundwebDriver, { manifest as bssSoundwebManifest } from "@gallery/driver-bss";
+import DaliFoxtronDriver, { manifest as daliFoxtronManifest } from "@gallery/driver-dali-foxtron";
+import DaliLunatoneDriver, { manifest as daliLunatoneManifest } from "@gallery/driver-dali-lunatone";
+import NetioDriver, { manifest as netioManifest } from "@gallery/driver-netio";
 import PjlinkDriver, { manifest as pjlinkManifest } from "@gallery/driver-pjlink";
 import TcpGenericDriver, { manifest as tcpGenericManifest } from "@gallery/driver-tcp-generic";
 
@@ -22,6 +26,10 @@ export interface DriverRegistration {
 export const DRIVERS: readonly DriverRegistration[] = [
   { manifest: pjlinkManifest, DriverClass: PjlinkDriver },
   { manifest: tcpGenericManifest, DriverClass: TcpGenericDriver },
+  { manifest: daliLunatoneManifest, DriverClass: DaliLunatoneDriver },
+  { manifest: bssSoundwebManifest, DriverClass: BssSoundwebDriver },
+  { manifest: netioManifest, DriverClass: NetioDriver },
+  { manifest: daliFoxtronManifest, DriverClass: DaliFoxtronDriver },
 ];
 
 /** Look up a driver registration by its manifest id. */
