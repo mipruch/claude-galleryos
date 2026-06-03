@@ -16,6 +16,7 @@
         "@gallery/driver-bss": "workspace:*",
         "@gallery/driver-core": "workspace:*",
         "@gallery/driver-dali-lunatone": "workspace:*",
+        "@gallery/driver-netio": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
         "@gallery/driver-tcp-generic": "workspace:*",
         "drizzle-orm": "^0.45.2",
@@ -39,6 +40,13 @@
     },
     "packages/drivers/driver-dali-lunatone": {
       "name": "@gallery/driver-dali-lunatone",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-netio": {
+      "name": "@gallery/driver-netio",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -134,6 +142,8 @@
     "@gallery/driver-core": ["@gallery/driver-core@workspace:packages/driver-core"],
 
     "@gallery/driver-dali-lunatone": ["@gallery/driver-dali-lunatone@workspace:packages/drivers/driver-dali-lunatone"],
+
+    "@gallery/driver-netio": ["@gallery/driver-netio@workspace:packages/drivers/driver-netio"],
 
     "@gallery/driver-pjlink": ["@gallery/driver-pjlink@workspace:packages/drivers/driver-pjlink"],
 

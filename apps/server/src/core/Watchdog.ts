@@ -106,10 +106,10 @@ export class Watchdog {
     try {
       health = await this.opts.target.healthCheckConnection(connectionId);
     } catch (err) {
-      this.log.warn("connection health check threw", {
-        connectionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    //   this.log.warn("connection health check threw", {
+    //     connectionId,
+    //     error: err instanceof Error ? err.message : String(err),
+    //   });
       return;
     }
 

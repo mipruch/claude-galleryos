@@ -10,7 +10,7 @@
     "packages/drivers/*"
   ],
   "scripts": {
-    "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run apps/server/src/db/seed.ts && bun run --filter @gallery/server dev",
+    "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
     "start": "bun run --filter @gallery/server start",
     "migrate": "bun run --filter @gallery/server migrate",
     "test": "bun test",

@@ -182,6 +182,9 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   ): FaderState {
     switch (command) {
       case "setLevel": {
+        if (isNaN(Number(params.level))) {
+          throw new Error(`invalid level: expected a number (got ${params.level})`);
+        }
         const level = clamp01(Number(params.level));
         this.send(
           encodeAddressMessage(MsgType.SET_PERCENT, paramAddr(addr, addr.gainParam), levelToPercentRaw(level)),
@@ -189,6 +192,9 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
         return { level };
       }
       case "setMute": {
+        if (typeof params.muted !== "boolean") {
+          throw new Error(`invalid muted: expected a boolean (got ${params.muted})`);
+        }
         const muted = Boolean(params.muted);
         this.send(encodeAddressMessage(MsgType.SET, paramAddr(addr, addr.muteParam), muted ? 1 : 0));
         return { muted };
