@@ -906,6 +906,30 @@ Scéna "Přednáška sál A":
   group 2: [přepni vstup projektoru na HDMI1, odmutuj mic] ← čeká na group 1
 ```
 
+**Implementováno (Priorita 2)** — `apps/server/src/core/SceneEngine.ts`:
+
+- **Dependency injection:** engine dostává úzká rozhraní (`scenes`, `executions`,
+  `state`, `deviceManager`, `devices`, `eventBus`, `logger`), takže je plně
+  testovatelný s in-memory fakes (bez DB / Redis / subprocess).
+- **Dva vstupní body:** `executeScene(...)` doběhne do konce a vrátí výsledek
+  (scheduler, testy); `startScene(...)` provede pre-flight synchronně (kvůli
+  409/404/400), spustí plán na pozadí a hned vrátí `{ executionId, status: "running" }`
+  (REST). `start()` navíc naslouchá `scene.execute.requested` (trigger z WebSocketu).
+- **Typed chyby:** `SceneNotFoundError` → 404, `SceneConflictError` → 409,
+  `SceneValidationError` → 400. Vyhozeny v pre-flightu před jakýmkoli side-effectem.
+- **`planGroups()`** je čistá funkce (grupování dle `parallel_group`, vzestupně).
+- **Dry-run (`dryRun(sceneId)`):** ⚠️ oprava návrhu — `dryRun` se **nepropaguje** do
+  DeviceManageru per-příkaz (driver subprocess má `dryRun` fixní z `init`, a živé
+  connectiony běží naostro). Engine proto v dry-runu hardware vůbec nevolá: jen
+  zvaliduje scénu + zařízení a vrátí naplánované akce (žádný zámek, žádný DB zápis,
+  žádné EventBus události).
+- **Redis zámek:** `redisSceneStore` (`scene:{id}:active`) v `src/redis/state.ts`.
+- **REST** `src/api/routes/scenes.ts` a **WS** `scene:execute` handler v `src/api/ws.ts`
+  (validuje scénu → emituje `scene.execute.requested` → ack `{ executionId }`).
+- **Testy:** 13 hermetických testů enginu (grupování, on_failure abort/continue,
+  konflikt/404/validace, dry-run, background `startScene`, event trigger),
+  12 testů REST routes (incl. mapování chyb), 2 WS testy + rozšířený DB integration test.
+
 ### 7.4 Scheduler
 
 `apps/server/src/core/Scheduler.ts`
@@ -1049,14 +1073,19 @@ POST   /scenes                   - vytvorit scénu
 GET    /scenes/:id               - detail scény včetně akcí
 PUT    /scenes/:id               - aktualizovat scénu (vytvoří novou scene_version)
 DELETE /scenes/:id               - smazat scénu
-POST   /scenes/:id/execute       - spustit scénu { source?: string }
+POST   /scenes/:id/execute       - spustit scénu { source?: string } → 202 { executionId, status }
 POST   /scenes/:id/execute/dry-run - simulovat bez reálných akcí
 GET    /scenes/:id/executions    - historie spuštění
-GET    /scenes/:id/versions      - seznam verzí
-GET    /scenes/:id/versions/:version - konkrétní verze (snapshot)
-POST   /scenes/:id/versions/:version/restore - obnovit starší verzi
+GET    /scenes/:id/versions      - seznam verzí                       (odloženo)
+GET    /scenes/:id/versions/:version - konkrétní verze (snapshot)     (odloženo)
+POST   /scenes/:id/versions/:version/restore - obnovit starší verzi   (odloženo)
 PATCH  /scenes/:id/favorite      - toggle oblíbená { is_favorite: bool }
 ```
+
+> **Implementováno (Priorita 2):** vše výše kromě `*/versions*` — verzování scén je
+> odloženo (tabulka `scene_versions` v schématu zůstává, ale bez logiky). PUT scény
+> tedy **nevytváří** novou `scene_version`, jen nahradí metadata + akce. `on_failure`
+> podporuje `continue` a `abort` (žádný `rollback`).
 
 ### Scheduled Jobs
 

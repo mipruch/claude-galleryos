@@ -185,47 +185,43 @@ Simplified vs. original spec:
 - `on_failure` modes: `continue` and `abort` only (no `rollback`)
 - Scene conflict: if already running → reject with 409
 
-### 2.1 Scene repositories `src/db/repositories.ts`
-- [ ] `scenesRepo.list({ roomId?, isFavorite?, tags? })`
-- [ ] `scenesRepo.get(id)` — includes `actions` array ordered by `step_order`
-- [ ] `scenesRepo.create(data)` — with initial `scene_actions`
-- [ ] `scenesRepo.update(id, data)` — replace actions (delete + insert)
-- [ ] `scenesRepo.remove(id)`
-- [ ] `sceneActionsRepo.replaceAll(sceneId, actions[])`
-- [ ] `sceneExecutionsRepo.create(data)`, `.updateStatus(id, status, durationMs?)`
-- [ ] `sceneExecutionsRepo.listByScene(sceneId)`, `.getRunning(sceneId)`
+### 2.1 Scene repositories `src/db/repositories.ts` ✓
+- [x] `scenesRepo.list({ roomId?, isFavorite?, tags? })` — tags via `arrayOverlaps`
+- [x] `scenesRepo.get(id)` — includes `actions` array ordered by `step_order`
+- [x] `scenesRepo.create(data)` — with initial `scene_actions`
+- [x] `scenesRepo.update(id, data)` — replace actions (delete + insert); `setFavorite(id, bool)`
+- [x] `scenesRepo.remove(id)` (cascade deletes actions + executions)
+- [x] `sceneActionsRepo.replaceAll(sceneId, actions[])`
+- [x] `sceneExecutionsRepo.create(data)` (optional explicit id), `.updateStatus(id, status, durationMs?, error?)`
+- [x] `sceneExecutionsRepo.listByScene(sceneId)`, `.getRunning(sceneId)`
 
-### 2.2 `SceneEngine` `src/core/SceneEngine.ts`
-- [ ] `executeScene(sceneId, source, executionId?)` — main entry point
-- [ ] **Pre-flight:** load scene + actions from DB; verify devices exist; check `scene:{id}:active` in Redis (reject if set)
-- [ ] **DB write:** INSERT `scene_executions { status: 'running' }`; `SET scene:{id}:active 1`; emit `scene.execute.started`
-- [ ] **Execution planner:** group actions by `parallel_group`, sort ascending
-  - For each group: `Promise.all(actions.map(runAction))` 
-  - `delay_ms` honoured via `Bun.sleep` before the command
-  - `on_failure: 'abort'` → break remaining groups, fail; `on_failure: 'continue'` → log and move on
-- [ ] **Completion:** update `scene_executions`; `DEL scene:{id}:active`; emit `scene.execute.completed/failed`
-- [ ] **Dry run:** pass `dryRun: true` flag to DeviceManager (already propagates to driver subprocess)
-- [ ] Wire into `src/api/context.ts` and `src/index.ts`
+### 2.2 `SceneEngine` `src/core/SceneEngine.ts` ✓
+- [x] `executeScene(sceneId, source, { executionId? })` — runs to completion; `startScene(...)` runs in the background and returns `{ executionId, status: "running" }` for REST
+- [x] **Pre-flight:** load scene + actions; verify devices exist; check `scene:{id}:active` (reject → `SceneConflictError`); typed errors (`SceneNotFoundError`/`SceneConflictError`/`SceneValidationError`) thrown before any side effect
+- [x] **DB write:** INSERT `scene_executions { status: 'running' }`; set `scene:{id}:active`; emit `scene.execute.started`
+- [x] **Execution planner:** `planGroups()` groups by `parallel_group` ascending; each group `Promise.all`; `delay_ms` via `Bun.sleep`; `abort` breaks remaining groups + fails, `continue` logs and proceeds
+- [x] **Completion:** update `scene_executions`; clear `scene:{id}:active`; emit `scene.execute.completed/failed`
+- [x] **Dry run:** `dryRun(sceneId)` validates + returns the plan **without** touching hardware/lock/DB (live drivers aren't in dry-run mode, so the engine simulates rather than calling them — corrects the PLAN's "pass dryRun to DeviceManager" assumption)
+- [x] Dependencies injected via narrow interfaces (hermetically testable); `start()` subscribes to `scene.execute.requested`
+- [x] Wired into `src/api/context.ts` and `src/index.ts`
 
 Redis key additions to `src/redis/state.ts`:
-- [ ] `setSceneActive(sceneId)`, `clearSceneActive(sceneId)`, `isSceneActive(sceneId)`
+- [x] `redisSceneStore`: `setSceneActive(sceneId)`, `clearSceneActive(sceneId)`, `isSceneActive(sceneId)` (`scene:{id}:active`)
 
-### 2.3 Scenes REST API `src/api/routes/scenes.ts`
-- [ ] `GET    /api/v1/scenes` — `?room_id= &is_favorite= &tags=`
-- [ ] `POST   /api/v1/scenes` — `{ name, roomId?, description?, icon?, color?, tags?, actions[] }`
-- [ ] `GET    /api/v1/scenes/:id` — scene + actions
-- [ ] `PUT    /api/v1/scenes/:id` — replace scene metadata + actions
-- [ ] `DELETE /api/v1/scenes/:id`
-- [ ] `POST   /api/v1/scenes/:id/execute` — `{ source? }` → `{ executionId, sceneId, status }`
-- [ ] `POST   /api/v1/scenes/:id/execute/dry-run`
-- [ ] `GET    /api/v1/scenes/:id/executions`
-- [ ] `PATCH  /api/v1/scenes/:id/favorite` — `{ is_favorite: bool }`
+### 2.3 Scenes REST API `src/api/routes/scenes.ts` ✓
+- [x] `GET    /api/v1/scenes` — `?room_id= &is_favorite= &tags=`
+- [x] `POST   /api/v1/scenes` — `{ name, roomId?, description?, icon?, color?, tags?, actions[] }` (actions validated)
+- [x] `GET    /api/v1/scenes/:id` — scene + actions
+- [x] `PUT    /api/v1/scenes/:id` — replace scene metadata + actions
+- [x] `DELETE /api/v1/scenes/:id`
+- [x] `POST   /api/v1/scenes/:id/execute` — `{ source? }` → `202 { executionId, sceneId, status }` (409 if running)
+- [x] `POST   /api/v1/scenes/:id/execute/dry-run`
+- [x] `GET    /api/v1/scenes/:id/executions`
+- [x] `PATCH  /api/v1/scenes/:id/favorite` — `{ is_favorite: bool }`
 
-### 2.4 WebSocket: scene:execute
-- [ ] Wire up `scene:execute` handler in `src/api/ws.ts` (currently stub)
-  - Validate scene exists; generate executionId; emit `scene.execute.requested`
-  - SceneEngine listens and runs; respond with `scene:execute:ack { executionId }`
-  - Subsequent events (`scene:started`, `scene:completed`, `scene:failed`) already broadcast via EventBus bridge
+### 2.4 WebSocket: scene:execute ✓
+- [x] `scene:execute` handler in `src/api/ws.ts`: validates scene exists; generates executionId; emits `scene.execute.requested`; replies `scene:execute:ack { executionId, status: "requested" }`
+- [x] SceneEngine listens for `scene.execute.requested` and runs; `scene:started/completed/failed` already broadcast via the EventBus bridge
 
 ---
 

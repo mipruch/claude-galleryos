@@ -19,13 +19,15 @@ import {
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
+  scenesRepo,
 } from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
-import { redisDriverStore, redisStateStore } from "./redis/state.ts";
+import { redisDriverStore, redisSceneStore, redisStateStore } from "./redis/state.ts";
 import { driverRegistry } from "./core/DriverRegistry.ts";
 import { eventBus, type GalleryEvent } from "./core/EventBus.ts";
 import { DeviceManager } from "./core/DeviceManager.ts";
 import { Watchdog } from "./core/Watchdog.ts";
+import { SceneEngine } from "./core/SceneEngine.ts";
 import { startApiServer } from "./api/server.ts";
 
 const log = logger.child("bootstrap");
@@ -84,6 +86,19 @@ async function main(): Promise<void> {
   });
   watchdog.start();
 
+  // Scene engine: executes scenes against devices; also listens for
+  // `scene.execute.requested` so the WebSocket layer can trigger runs.
+  const sceneEngine = new SceneEngine({
+    scenes: scenesRepo,
+    executions: sceneExecutionsRepo,
+    state: redisSceneStore,
+    deviceManager,
+    devices: devicesRepo,
+    eventBus,
+    logger,
+  });
+  sceneEngine.start();
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -94,7 +109,9 @@ async function main(): Promise<void> {
     connections: connectionsRepo,
     devices: devicesRepo,
     logs: logsRepo,
+    scenes: scenesRepo,
     sceneExecutions: sceneExecutionsRepo,
+    sceneEngine,
     startedAt: Date.now(),
   });
 
@@ -107,6 +124,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    sceneEngine.stop();
     watchdog.stop();
     await apiServer.stop(true);
     await deviceManager.stop();

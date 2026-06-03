@@ -37,6 +37,23 @@ export const redisStateStore: LiveStateStore = {
   getConnectionStatus: (connectionId) => readJson<ConnectionStatus>(`connection:${connectionId}:status`),
 };
 
+/**
+ * Scene execution lock backed by Redis (`scene:{id}:active`).
+ *
+ * The SceneEngine sets this for the duration of a run so a second execute of the
+ * same scene is rejected (409). No TTL: a crash leaves it set (no crash recovery
+ * in the simplified plan), but the value is cleared on every normal completion.
+ */
+export const redisSceneStore = {
+  setSceneActive: (sceneId: string) => writeJson(`scene:${sceneId}:active`, { since: Date.now() }),
+  clearSceneActive: async (sceneId: string): Promise<void> => {
+    await redis.del(`scene:${sceneId}:active`);
+  },
+  isSceneActive: async (sceneId: string): Promise<boolean> => {
+    return (await redis.get(`scene:${sceneId}:active`)) != null;
+  },
+};
+
 /** Per-connection KV store handed to a driver via its context. */
 export function redisDriverStore(connectionId: string): DriverKVStore {
   const prefix = `driver:${connectionId}:kv:`;
