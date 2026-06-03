@@ -66,8 +66,8 @@ export const DaliCmd = {
 
 // ── checksum ──────────────────────────────────────────────────
 
-/** Foxtron frame checksum: bitwise-NOT of sum modulo 0x100. */
-function calcChecksum(dataBytes: readonly number[]): number {
+/** Foxtron frame checksum: bitwise-NOT of sum modulo 0x100. (exported: used by tests) */
+export function calcChecksum(dataBytes: readonly number[]): number {
   const sum = dataBytes.reduce((a, b) => a + b, 0);
   return (~sum) & 0xFF;
 }
@@ -169,7 +169,8 @@ export function buildConfigQuery(item: number): number[] {
 
 // ── DALI addressing helpers ───────────────────────────────────
 
- const DaliAddr = {
+// exported: used by the target helpers below and by the test suite.
+export const DaliAddr = {
   /** DAPC individual: addr*2 (direct level command). */
   unicastDapc: (addr: number): number => (addr & 0x3F) * 2,
   /** Standard command/query to individual address: addr*2+1. */

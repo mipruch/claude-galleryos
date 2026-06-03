@@ -83,13 +83,13 @@ export interface DiMessage extends ParameterAddress {
 
 // ── checksum & substitution ──────────────────────────────────
 
-/** Single-byte XOR of all bytes (the London DI checksum). */
-function xorChecksum(bytes: readonly number[]): number {
+/** Single-byte XOR of all bytes (the London DI checksum). (exported: used by tests) */
+export function xorChecksum(bytes: readonly number[]): number {
   return bytes.reduce((acc, b) => acc ^ (b & 0xff), 0);
 }
 
-/** Escape reserved control bytes. Operates on body+checksum. */
-function substitute(bytes: readonly number[]): number[] {
+/** Escape reserved control bytes. Operates on body+checksum. (exported: used by tests) */
+export function substitute(bytes: readonly number[]): number[] {
   const out: number[] = [];
   for (const b of bytes) {
     const sub = SUBSTITUTE[b & 0xff];
@@ -99,8 +99,8 @@ function substitute(bytes: readonly number[]): number[] {
   return out;
 }
 
-/** Reverse {@link substitute}. Throws on a malformed escape sequence. */
-function unsubstitute(bytes: readonly number[]): number[] {
+/** Reverse {@link substitute}. Throws on a malformed escape sequence. (exported: used by tests) */
+export function unsubstitute(bytes: readonly number[]): number[] {
   const out: number[] = [];
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i]! & 0xff;
@@ -119,14 +119,14 @@ function unsubstitute(bytes: readonly number[]): number[] {
 
 // ── value helpers ────────────────────────────────────────────
 
-/** Encode a 32-bit signed integer as 4 big-endian bytes. */
-function encodeInt32(value: number): number[] {
+/** Encode a 32-bit signed integer as 4 big-endian bytes. (exported: used by tests) */
+export function encodeInt32(value: number): number[] {
   const v = value | 0; // coerce to int32
   return [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
 }
 
-/** Decode 4 big-endian bytes as a 32-bit signed integer. */
-function decodeInt32(bytes: readonly number[]): number {
+/** Decode 4 big-endian bytes as a 32-bit signed integer. (exported: used by tests) */
+export function decodeInt32(bytes: readonly number[]): number {
   const v = ((bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!) >>> 0;
   return v | 0; // reinterpret as signed
 }
@@ -163,8 +163,8 @@ function encodeAddress(addr: ParameterAddress): number[] {
 
 // ── message encoding ─────────────────────────────────────────
 
-/** Build a complete framed message (with STX/ETX, checksum, substitution). */
-function encodeMessage(msg: DiMessage): Buffer {
+/** Build a complete framed message (with STX/ETX, checksum, substitution). (exported: used by tests) */
+export function encodeMessage(msg: DiMessage): Buffer {
   const body = [msg.type & 0xff, ...encodeAddress(msg), ...encodeInt32(msg.value)];
   return frameBody(body);
 }
