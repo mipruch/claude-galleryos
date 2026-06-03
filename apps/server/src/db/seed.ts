@@ -26,6 +26,7 @@ const CONN_TCP    = "33333333-3333-3333-3333-333333333333";
 const CONN_BSS    = "22222222-2222-2222-2222-222222222244"; // BSS BLU-100 processor
 const CONN_DALI   = "22222222-2222-2222-2222-222222222255"; // Lunatone DALI-2 IoT gateway
 const CONN_NETIO  = "22222222-2222-2222-2222-222222222266"; // NETIO PowerBOX 4Kx
+const CONN_DALI_FOX   = "22222222-2222-2222-2222-222222222277"; // Lunatone DALI-2 IoT gateway
 
 // Devices
 const DEV_PROJECTOR   = "44444444-4444-4444-4444-444444444444";
@@ -42,6 +43,9 @@ const DEV_DALI_SPOT2  = "55555555-5555-5555-5555-555555555702"; // Spot 2 (DALI 
 const DEV_DALI_WASH1  = "55555555-5555-5555-5555-555555555703"; // Wash 1 (DALI addr 8)
 const DEV_DALI_WASH2  = "55555555-5555-5555-5555-555555555704"; // Wash 2 (DALI addr 9)
 const DEV_DALI_AMBIENT  = "55555555-5555-5555-5555-555555555705"; // Ambient strip (DALI addr 16)
+const DEV_DALI_FOX1     = "55555555-5555-5555-5555-555555555706"; // Foxtron — individual DALI addr 1
+const DEV_DALI_FOX_GRP  = "55555555-5555-5555-5555-555555555707"; // Foxtron — DALI group 0
+const DEV_DALI_FOX_ALL  = "55555555-5555-5555-5555-555555555708"; // Foxtron — broadcast (all fixtures)
 // NETIO sockets (outputId = outlet number on the PowerBOX, 1-based)
 const DEV_NETIO_SOCK1   = "55555555-5555-5555-5555-555555555801"; // Socket 1
 const DEV_NETIO_SOCK2   = "55555555-5555-5555-5555-555555555802"; // Socket 2
@@ -121,6 +125,21 @@ async function main(): Promise<void> {
           scanOnDiscover: false,
         },
       },
+      {
+        id: CONN_DALI_FOX,
+        name: "Foxtron DALI-2 IoT (sál)",
+        driverId: "dali-foxtron",
+        // ↓ Change to your Foxtron gateway's IP. REST API on port 80.
+        host: "10.54.17.90",
+        port: 24,
+        protocol: "tcp",
+        config: {
+          responseTimeoutMs: 4000,
+          // Set to true to trigger a DALI bus scan on discoverEndpoints().
+          scanOnDiscover: false,
+        },
+      },
+
     ])
     .onConflictDoNothing();
 
@@ -346,6 +365,48 @@ async function main(): Promise<void> {
         capabilities: ["on", "off", "setBrightness", "recall"],
         icon: "zap",
         displayOrder: 44,
+      },
+      {
+        id: DEV_DALI_FOX1,
+        connectionId: CONN_DALI_FOX,
+        roomId: ROOM_HALL,
+        name: "Foxtron Dimmer 1",
+        description: "Individual fixture — DALI short address 1",
+        type: "light",
+        subtype: "dali-foxtron.fixture",
+        // Individual addressing (addressMode defaults to "address").
+        address: { addressMode: "address", daliAddress: 1 },
+        capabilities: ["on", "off", "setBrightness", "recall"],
+        icon: "zap",
+        displayOrder: 45,
+      },
+      {
+        id: DEV_DALI_FOX_GRP,
+        connectionId: CONN_DALI_FOX,
+        roomId: ROOM_HALL,
+        name: "Foxtron Skupina 0",
+        description: "DALI group 0 — controls every fixture configured into group 0",
+        type: "light",
+        subtype: "dali-foxtron.fixture",
+        // Group addressing.
+        address: { addressMode: "group", group: 0 },
+        capabilities: ["on", "off", "setBrightness", "recall"],
+        icon: "layers",
+        displayOrder: 46,
+      },
+      {
+        id: DEV_DALI_FOX_ALL,
+        connectionId: CONN_DALI_FOX,
+        roomId: ROOM_HALL,
+        name: "Foxtron Vše",
+        description: "Broadcast — every fixture on the DALI bus at once",
+        type: "light",
+        subtype: "dali-foxtron.fixture",
+        // Broadcast addressing (no daliAddress/group needed).
+        address: { addressMode: "broadcast" },
+        capabilities: ["on", "off", "setBrightness", "recall"],
+        icon: "sun",
+        displayOrder: 47,
       },
     ])
     .onConflictDoNothing();

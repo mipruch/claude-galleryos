@@ -8,3 +8,4 @@ The Architecture of the App is in @README.md, but here are some key points:
 
 - The app is written in TypeScript and uses modern language features. It is structured in a modular way, with clear separation of concerns between different components. The codebase includes comprehensive type definitions and documentation to facilitate development and maintenance.
 - After each added feature from the @PLAN.md, the README is updated with a summary of the implementation details and key design decisions related to that feature. This ensures that the documentation remains up-to-date and provides a clear reference for developers working on the project. Also, The Plan is updated to reflect the done work.
+- After every code edit, run the Fallow tool to check the codebase for any potential issues or improvements. This helps maintain code quality and consistency across the project.

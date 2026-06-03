@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@gallery/driver-bss": "workspace:*",
+    "@gallery/driver-dali-foxtron": "workspace:*",
     "@gallery/driver-netio": "workspace:*",
     "@gallery/driver-core": "workspace:*",
     "@gallery/driver-dali-lunatone": "workspace:*",

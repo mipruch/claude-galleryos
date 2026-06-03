@@ -771,6 +771,8 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 |---------------|--------------------------------------|------------|----------------------|----------|
 |`bss-soundweb` |BSS Soundweb London procesory ✓       |TCP/London DI|Ano (SUBSCRIBE)      |Ne        |
 |`dali-lunatone`|Lunatone DALI-2 IoT gateway ✓         |HTTP/REST   |Ne                    |Ano (sken)|
+|`dali-foxtron` |Foxtron DALInet / DALI2net brána ✓    |TCP/ASCII   |Ne (poll)             |Ne        |
+|`netio`        |NETIO chytré zásuvky (PowerBOX/PDU) ✓ |HTTP/JSON   |Ne (poll)             |Ne        |
 |`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
 |`extron-matrix`|Extron video matice                   |TCP/SIS     |Ne                    |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
@@ -801,6 +803,47 @@ a ověřeného skriptu `manuals/bss.js`.
   - `setLevel (0..1)` → SET PERCENT (0x8D), `setMute (bool)` → SET (0x88).
 - **Endpoint `bss-soundweb.fader`**, adresa `{ node, object, virtualDevice?=3, gainParam?=0,
   muteParam?=1 }` — fader potřebuje dva parametry (gain + mute), proto adresa nese oba.
+
+#### `driver-dali-foxtron` — Foxtron DALInet / DALI2net (implementováno)
+
+Balíček `packages/drivers/driver-dali-foxtron` (driver id `dali-foxtron`). Ovládá
+DALI svítidla přes bránu Foxtron přes její **ASCII protokol nad TCP** (manuál
+`manuals/DALI232-komunikacni-protokol.pdf`, ověřeno proti funkčnímu skriptu zákazníka).
+
+- **`src/foxtron-codec.ts`** — čistý, samostatně testovaný kodek. Rámec
+  `SOH(0x01) │ hex( data │ checksum ) │ ETB(0x17)`; každý byte se posílá jako dva
+  ASCII hex znaky; checksum = `(~Σ data) & 0xFF`. Unit test ověřuje shodu s
+  příkladem z manuálu (`01 00 10 FF 10 → 0xDF`). Obsahuje `FrameDecoder` a DALI
+  adresovací pomocníky (DAPC `addr*2`, příkaz `addr*2+1`, broadcast `0xFE/0xFF`).
+- **`src/DaliFoxtronDriver.ts`** — ⚠️ **transport: krátkožijící TCP spojení na každý
+  příkaz** (connect → send → close). Brána totiž zavírá nečinná spojení po ~1–2 s,
+  takže perzistentní socket vede k nekonečnému reconnect loopu. Operace jsou
+  serializovány (jedno spojení v jeden čas).
+  - `on` → Recall Max Level, `off` → Off, `setBrightness` → DAPC (0–254), `recall` → scéna 0–15 (Type 1, fire-and-forget).
+  - `readState` → DALI Query Actual Level přes **Type 11** (odpověď přijde jako
+    Type 13/14 přiřazená nám, ne Type 3/4 = aktivita jiných masterů na sběrnici).
+  - `healthCheck` → Type 6 dotaz na stav napájení DALI sběrnice (položka 3).
+- **Endpoint `dali-foxtron.fixture`** podporuje tři režimy adresování (`addressMode`):
+  - `"address"` → jedno svítidlo: `{ daliAddress: 0..63 }` (DAPC `addr*2`, příkaz `addr*2+1`)
+  - `"group"` → DALI skupina: `{ group: 0..15 }` (DAPC `g*2+0x80`, příkaz `g*2+0x81`)
+  - `"broadcast"` → všechna svítidla najednou (`0xFE` / `0xFF`)
+  - Když `addressMode` chybí, odvodí se z přítomnosti `daliAddress`/`group` (zpětná kompatibilita).
+  - `readState` přes skupinu/broadcast vrací poslední optimistický stav (více svítidel
+    nelze spolehlivě dotázat — odpovědi kolidují); jen individuální adresa dělá reálný dotaz.
+- Pro DALI2net použij port 23 (sběrnice 1) nebo 24 (sběrnice 2) jako dvě samostatné connections.
+
+#### `driver-netio` — NETIO chytré zásuvky (implementováno)
+
+Balíček `packages/drivers/driver-netio` (driver id `netio`). Ovládá NETIO síťové
+zásuvky (PowerBOX, PowerPDU, PowerDIN) přes **JSON M2M API nad HTTP** (manuál
+`manuals/NETIO-M2M-API-Protocol-JSON.pdf`).
+
+- **`src/NetioDriver.ts`** — `GET /netio.json` pro čtení stavu všech výstupů,
+  `POST /netio.json` pro ovládání; HTTP Basic auth (`username`/`password` z configu).
+  Metering pole (`load`/`current`/`energy`) se přidají do stavu jen u modelů, které je vrací.
+- **Endpoint `netio.socket`**, adresa `{ outputId: 1..8 }`. Příkazy: `on`, `off`,
+  `toggle`, `shortOn`/`shortOff` (s volitelným `delayMs` — krátký impuls / power-cycle,
+  Action 1/0/4/3/2 dle protokolu).
 
 -----
 

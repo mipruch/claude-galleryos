@@ -15,6 +15,7 @@
       "dependencies": {
         "@gallery/driver-bss": "workspace:*",
         "@gallery/driver-core": "workspace:*",
+        "@gallery/driver-dali-foxtron": "workspace:*",
         "@gallery/driver-dali-lunatone": "workspace:*",
         "@gallery/driver-netio": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
@@ -33,6 +34,13 @@
     },
     "packages/drivers/driver-bss": {
       "name": "@gallery/driver-bss",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-dali-foxtron": {
+      "name": "@gallery/driver-dali-foxtron",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -140,6 +148,8 @@
     "@gallery/driver-bss": ["@gallery/driver-bss@workspace:packages/drivers/driver-bss"],
 
     "@gallery/driver-core": ["@gallery/driver-core@workspace:packages/driver-core"],
+
+    "@gallery/driver-dali-foxtron": ["@gallery/driver-dali-foxtron@workspace:packages/drivers/driver-dali-foxtron"],
 
     "@gallery/driver-dali-lunatone": ["@gallery/driver-dali-lunatone@workspace:packages/drivers/driver-dali-lunatone"],
 
