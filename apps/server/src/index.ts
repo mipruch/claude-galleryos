@@ -66,6 +66,8 @@ async function main(): Promise<void> {
     eventBus,
     logger,
     driverKVStore: redisDriverStore,
+    supportsSubscriptions: (driverId) =>
+      driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
     restart: {
       maxAttempts: config.driver.restartMaxAttempts,
       baseDelayMs: config.driver.restartBaseDelayMs,

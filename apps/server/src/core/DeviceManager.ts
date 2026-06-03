@@ -81,6 +81,13 @@ export interface DeviceManagerOptions {
   logger: Logger;
   /** Builds the per-connection KV store handed to each driver. */
   driverKVStore: (connectionId: string) => DriverKVStore;
+  /**
+   * Whether a driver supports subscriptions (its manifest's
+   * `capabilities.subscriptions`). When true, the manager subscribes all of a
+   * connection's endpoints once it comes online so the driver pushes state.
+   * Omitted → no auto-subscribe (poll-only behaviour).
+   */
+  supportsSubscriptions?: (driverId: string) => boolean;
   dryRun?: boolean;
   restart?: RestartPolicy;
   commandTimeoutMs?: number;
@@ -200,6 +207,7 @@ export class DeviceManager {
       });
       this.opts.eventBus.emit({ type: "connection.connected", connectionId });
       this.markDevices(connectionId, true);
+      this.subscribeEndpoints(host, connectionId);
     });
 
     host.on("disconnected", (reason: string) => {
@@ -251,6 +259,23 @@ export class DeviceManager {
           ? { type: "device.online", deviceId: device.id, connectionId }
           : { type: "device.offline", deviceId: device.id, connectionId, reason },
       );
+    }
+  }
+
+  /**
+   * Subscribe a connection's endpoints when it comes online, for drivers whose
+   * manifest declares subscription support. Fires on every `connected` event, so
+   * it covers both the first connect and a subprocess restart (where the driver
+   * process is fresh and its own subscription map is empty). Idempotent: a driver
+   * re-subscribing the same parameter is harmless.
+   */
+  private subscribeEndpoints(host: DriverHost, connectionId: string): void {
+    const driverId = this.driverIds.get(connectionId);
+    if (!driverId || !this.opts.supportsSubscriptions?.(driverId)) return;
+    const devices = this.devicesByConnection.get(connectionId) ?? [];
+    for (const device of devices) {
+      this.log.debug("subscribing endpoint", { connectionId, deviceId: device.id });
+      host.subscribeToEndpoint(toEndpoint(device));
     }
   }
 

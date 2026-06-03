@@ -21,9 +21,14 @@ import { EventBus, type GalleryEvent } from "../../src/core/EventBus.ts";
 import { logger } from "../../src/logger.ts";
 import { memoryStore } from "../mocks/context.ts";
 import { startPjlinkMock, type PjlinkMockServer } from "../mocks/mock-devices.ts";
+import { startBssMock, type BssMockServer } from "../../../../packages/drivers/driver-bss/test/mock-device.ts";
 
 const CONN_ID = "conn-1";
 const DEV_ID = "dev-1";
+
+// London DI message types observed by the BSS mock.
+const SUBSCRIBE_PERCENT = 0x8e;
+const SUBSCRIBE = 0x89;
 
 function makeRepo(port: number): DeviceManagerRepo {
   const connection: ConnectionRecord = {
@@ -152,5 +157,91 @@ describe("DeviceManager", () => {
     // readState serves the cached value from the state store.
     const read = await dm.readState(DEV_ID);
     expect(read).toMatchObject({ power: "on" });
+  }, 20_000);
+});
+
+/**
+ * Regression: a subscription-capable driver must have its endpoints subscribed
+ * automatically when the connection comes online — otherwise the device never
+ * pushes state (the gap that left BSS faders silent on first connect). Uses the
+ * real BSS driver subprocess + its mock device so SUBSCRIBE frames are observable.
+ */
+describe("DeviceManager — auto-subscribe on connect", () => {
+  let bss: BssMockServer;
+  let dm: DeviceManager;
+
+  function makeBssRepo(port: number): DeviceManagerRepo {
+    const connection: ConnectionRecord = {
+      id: CONN_ID,
+      driverId: "bss-soundweb",
+      host: "127.0.0.1",
+      port,
+      config: { responseTimeoutMs: 1000 },
+    };
+    const device: DeviceRecord = {
+      id: DEV_ID,
+      connectionId: CONN_ID,
+      name: "Fader 1",
+      endpointType: "bss-soundweb.fader",
+      address: { node: 1, virtualDevice: 3, object: 0x100, gainParam: 0, muteParam: 1 },
+    };
+    return {
+      async listEnabledConnections() {
+        return [connection];
+      },
+      async listDevicesByConnection(id) {
+        return id === CONN_ID ? [device] : [];
+      },
+      async getDevice(id) {
+        return id === DEV_ID ? device : undefined;
+      },
+    };
+  }
+
+  beforeEach(() => {
+    bss = startBssMock();
+  });
+  afterEach(async () => {
+    await dm.stop();
+    bss.stop();
+  });
+
+  test("subscribes endpoints when supportsSubscriptions is true", async () => {
+    const bus = new EventBus();
+    dm = new DeviceManager({
+      repo: makeBssRepo(bss.port),
+      state: makeFakeState().store,
+      eventBus: bus,
+      logger,
+      driverKVStore: () => memoryStore(),
+      supportsSubscriptions: () => true,
+      commandTimeoutMs: 5_000,
+    });
+
+    await dm.start();
+    // The device should receive SUBSCRIBE_PERCENT (gain) + SUBSCRIBE (mute).
+    await waitFor(() => bss.received().includes(SUBSCRIBE_PERCENT) && bss.received().includes(SUBSCRIBE));
+    expect(bss.received()).toContain(SUBSCRIBE_PERCENT);
+    expect(bss.received()).toContain(SUBSCRIBE);
+  }, 20_000);
+
+  test("does NOT subscribe when the capability predicate is omitted", async () => {
+    const bus = new EventBus();
+    const events: GalleryEvent[] = [];
+    bus.onAny((e) => events.push(e));
+    dm = new DeviceManager({
+      repo: makeBssRepo(bss.port),
+      state: makeFakeState().store,
+      eventBus: bus,
+      logger,
+      driverKVStore: () => memoryStore(),
+      // supportsSubscriptions omitted → poll-only behaviour
+      commandTimeoutMs: 5_000,
+    });
+
+    await dm.start();
+    await waitFor(() => events.some((e) => e.type === "connection.connected"));
+    await Bun.sleep(200); // give any (unwanted) subscribe traffic time to arrive
+    expect(bss.received()).toHaveLength(0);
   }, 20_000);
 });

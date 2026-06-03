@@ -3,7 +3,7 @@
  *
  * One connection = one TCP socket to a Soundweb processor (port 1023). Many
  * fader endpoints share that socket; each endpoint addresses one Gain object's
- * level + mute parameters.
+ * level + mute parameters. Fader endpoint is compatible with matrix Gain/Mute block also.
  *
  * Addressing follows the London DI hierarchy (see london-di.ts):
  *   node (device) → virtualDevice (Audio=3) → object (the Gain block) →
