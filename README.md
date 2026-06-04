@@ -1097,6 +1097,8 @@ PUT    /devices/:id              - aktualizovat
 DELETE /devices/:id              - smazat
 GET    /devices/:id/status       - live stav (online/offline, latence) z Redis
 GET    /devices/:id/state        - aktuální hodnoty (level, muted, ...) z Redis
+GET    /devices/live             - dávkový snapshot { [id]: { state, status } }
+                                   pro celé UI najednou (jeden request místo 2×N)
 POST   /devices/:id/command      - přímý příkaz { command: string, params: object }
                                    (mimo scény, pro testování nebo přímé ovládání)
 ```
@@ -1374,6 +1376,39 @@ useDriversStore      - driver manifesty (pro generování formulářů)
 ### Technologie
 
 Stejný stack jako Admin UI (Vue 3 + Vite + Pinia + TailwindCSS + shadcn-vue) — je součástí téže Vue aplikace (`apps/ui`). Obě části sdílí Pinia stores, sdílené komponenty a Socket.io připojení. User panel je dostupný pod cestami `/app/**`. Optimalizováno pro dotykové ovládání na tabletu.
+
+#### Implementováno (první řez — device control)
+
+První funkční řez User UI: jedna obrazovka, která zobrazí všechna zařízení jako
+ovládací karty (zatím **bez routingu, filtrů, dashboardu a logů**). Slouží jako
+demo, že datová cesta funguje od Redisu přes HTTP/WebSocket až do komponent.
+
+- **Tři typy widgetů, modulárně poskládané ze sdílených dílů:**
+  - **Brightness fader** (`LightFaderWidget`) — DALI svítidla (`dali.fixture`,
+    `dali-foxtron.fixture`), posílá `setBrightness { level }` (0..1).
+  - **Fader + mute** (`BssFaderWidget`) — BSS fadery (`bss-soundweb.fader`),
+    `setLevel { level }` + `setMute { muted }`.
+  - **On/off switch** (`SwitchWidget`) — zásuvky a projektory (`netio.socket`,
+    `pjlink.projector`), příkazy `on` / `off`.
+  - Mapování `subtype → widget` je na jednom místě (`lib/devices.ts` →
+    `deviceKind()`); přidání driveru = jeden řádek.
+- **Sdílené, neopakované díly:** `DeviceCard` (karta s názvem zařízení, online
+  tečkou a **popisem zařízení jako tooltip on hover**) a `FaderControl`
+  (znovupoužitelný slider s procentuálním odečtem), použité oběma fadery.
+- **shadcn-vue primitivy** doplněné pro tento řez: `slider`, `tooltip`, `card`
+  (vedle už existujících `button`, `switch`, `toggle`, `sonner`).
+- **Datová cesta — `useDevicesStore` (`stores/devices.ts`):**
+  1. Paralelně `GET /api/v1/devices` (seznam) + `GET /api/v1/devices/live`
+     (dávkový snapshot `{ [id]: { state, status } }`) — dva requesty místo
+     `1 + 2×N` per-device dotazů na hydrataci živých hodnot z Redisu.
+  2. Nativní Bun WebSocket (`/ws`, JSON obálka `{ event, data }`) streamuje
+     `device:state` / `device:online` / `device:offline`.
+  3. Ovládací příkazy jdou **zpět stejným socketem** jako `device:command`
+     (optimistický local update → autoritativní hodnota dorazí přes `device:state`).
+- **Stav připojení** je reaktivní (`@vueuse/core` `useWebSocket`, auto-reconnect);
+  ztráta spojení zobrazí offline banner. Chyby → `vue-sonner` toast.
+- Vstupní bod je `App.vue` (žádný router) — Vite dev proxy přeposílá `/api`
+  a `/ws` na server (`:3000`).
 
 ### Princip fungování
 

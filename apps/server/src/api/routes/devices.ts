@@ -6,6 +6,7 @@
  *   POST                /api/v1/devices/:id/command   { command, params }
  *   GET                 /api/v1/devices/:id/state     (live values, Redis)
  *   GET                 /api/v1/devices/:id/status    (online/offline, Redis)
+ *   GET                 /api/v1/devices/live          (state + status for all, one shot)
  */
 
 import type { ApiContext } from "../context.ts";
@@ -67,6 +68,24 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
         });
         await ctx.deviceManager.refreshConnectionDevices(created!.connectionId);
         return json(created, 201);
+      }),
+    },
+
+    // Batched live snapshot for the whole UI: one request instead of 2×N.
+    // Returns a map keyed by device id: { [id]: { state, status } }.
+    "/api/v1/devices/live": {
+      GET: route(async () => {
+        const devices = await ctx.devices.list({});
+        const entries = await Promise.all(
+          devices.map(async (d) => {
+            const [state, status] = await Promise.all([
+              ctx.state.getDeviceState(d.id),
+              ctx.state.getDeviceStatus(d.id),
+            ]);
+            return [d.id, { state: state ?? {}, status: status ?? { online: false } }] as const;
+          }),
+        );
+        return json(Object.fromEntries(entries));
       }),
     },
 
