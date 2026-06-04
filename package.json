@@ -11,14 +11,23 @@
   ],
   "scripts": {
     "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
+    "dev:ui": "bun run --filter @gallery/ui dev",
     "start": "bun run --filter @gallery/server start",
+    "build:ui": "bun run --filter @gallery/ui build",
     "migrate": "bun run --filter @gallery/server migrate",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "test:ui": "bun run --filter @gallery/ui test:unit",
+    "typecheck": "tsc --noEmit && bun run typecheck:ui",
+    "typecheck:server": "tsc --noEmit",
+    "typecheck:ui": "bun run --filter @gallery/ui type-check"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^25.9.1",
     "fallow": "^2.88.2",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+
   }
 }

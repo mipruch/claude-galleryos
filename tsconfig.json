@@ -11,6 +11,9 @@
       "@gallery/driver-tcp-generic": ["./packages/drivers/driver-tcp-generic/src/index.ts"]
     }
   },
+  // apps/ui uses vue-tsc + browser/DOM types; excluded from this Bun-typed check.
+  // Run `bun run typecheck:ui` to type-check the frontend separately.
+  "exclude": ["apps/ui"],
   "include": [
     "apps/*/src/**/*.ts",
     "packages/driver-core/src/**/*.ts",
