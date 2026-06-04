@@ -1195,6 +1195,16 @@ socket.on('scene:execute:ack', (data: { executionId: string } | { error: string 
 
 // Přímý příkaz na zařízení
 socket.emit('device:command', { deviceId: string, command: string, params: object })
+// Origin dělá optimistický update a čeká na ack (jen jemu):
+socket.on('device:command:ack', (data: {
+  deviceId: string;
+  success: boolean;          // vždy přítomno (i při výjimce) → UI nechá / vrátí stav
+  state?: Record<string, unknown>;
+  durationMs?: number;
+  error?: string;
+}) => {})
+// Při úspěchu server navíc broadcastne `device:state` ostatním UI (viz níže).
+// Při chybě se NEbroadcastuje nic — jen warn log; origin podle `success: false` vrátí stav.
 
 // Přihlásit se k odběru živého stavu konkrétního zařízení
 socket.emit('device:subscribe', { deviceId: string })
@@ -1211,6 +1221,12 @@ socket.on('device:state', (data: {
   source: string;
   timestamp: string;
 }) => {})
+// Pozn.: `device:state` se broadcastuje deduplikovaně — jedna akce typicky
+// vyprodukuje dvě identické změny stavu (optimistický výsledek `command` a
+// následný `echo` od driveru). Server porovnává stav s poslední odeslanou
+// hodnotou pro dané zařízení a UI dostane změnu jen jednou (bez ohledu na
+// `source`). Potlačené echo se stále zaznamenává do server logu. `source`
+// zůstává v payloadu pro informaci, ale UI se jím nemusí řídit.
 
 // Online/Offline
 socket.on('device:online',  (data: { deviceId: string }) => {})

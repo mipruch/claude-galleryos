@@ -94,7 +94,9 @@ async function handleClientMessage(
         );
         ws.send(envelope("device:command:ack", { deviceId, ...result }));
       } catch (err) {
-        ws.send(envelope("device:command:ack", { deviceId, error: errMsg(err) }));
+        // Mirror the failure shape of a returned CommandResult so the origin UI
+        // can uniformly check `ack.success` to decide stay-vs-revert.
+        ws.send(envelope("device:command:ack", { deviceId, success: false, error: errMsg(err) }));
       }
       return;
     }
@@ -131,14 +133,41 @@ async function handleClientMessage(
   }
 }
 
-/** Subscribe to the EventBus and broadcast mapped events to all clients. */
+/**
+ * Subscribe to the EventBus and broadcast mapped events to all clients.
+ *
+ * `device:state` changes are de-duplicated by content per device: a single user
+ * action usually produces two identical state changes — the optimistic
+ * "command" result and the driver's own "echo" — but the UI only needs to learn
+ * about the change once, regardless of where it came from. We therefore broadcast
+ * a `device:state` only when the state actually differs from what was last sent
+ * for that device; suppressed echoes are still logged for server-side
+ * observability. All other event types (online/offline, connection, scene,
+ * driver errors) always pass through.
+ */
 export function setupBroadcast(server: Server<unknown>, ctx: ApiContext): void {
+  const lastStateByDevice = new Map<string, string>();
+
   ctx.eventBus.onAny((event) => {
     const message = toClientMessage(event);
     if (!message) {
       log.debug("broadcast skipped (no client mapping)", { type: event.type });
       return;
     }
+
+    if (event.type === "device.state.changed") {
+      const serialized = JSON.stringify(event.state);
+      if (lastStateByDevice.get(event.deviceId) === serialized) {
+        log.info("device:state echo (duplicate, not broadcast)", {
+          deviceId: event.deviceId,
+          source: event.source,
+          state: event.state,
+        });
+        return;
+      }
+      lastStateByDevice.set(event.deviceId, serialized);
+    }
+
     const recipients = server.publish(BROADCAST_TOPIC, envelope(message.event, message.data));
     log.info("broadcast →", { event: message.event, recipients, data: message.data });
   });
