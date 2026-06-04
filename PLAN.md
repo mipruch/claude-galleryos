@@ -304,7 +304,15 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
   - [x] **`useDevicesStore`** — hydrates every device + Redis state/status over
         HTTP once, then live-updates over the `/ws` WebSocket; control commands
         go back over the same socket as `device:command`.
-  - [ ] Remaining shared stores: scenes, connections, system, layout, logs, drivers
+  - [x] **`useConnectionsStore` + `ConnectionStatus` indicator** — header badge
+        next to the realtime (WiFi) icon showing `connected/total` (e.g. "7/9")
+        for enabled connections; green only when all enabled are connected, red
+        otherwise. Click opens a popover listing each connection with a
+        colour-coded state (connected · reconnecting · disconnected · disabled),
+        name, type, error message, and an enable/disable switch. Backed by
+        `GET /connections/live` + live `connection:connected`/`disconnected`/
+        `driver:error` WS events.
+  - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

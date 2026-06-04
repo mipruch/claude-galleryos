@@ -5,6 +5,7 @@ import 'vue-sonner/style.css'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import DeviceGrid from '@/components/devices/DeviceGrid.vue'
+import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import { useDevicesStore } from '@/stores/devices'
 
 const store = useDevicesStore()
@@ -31,13 +32,16 @@ onBeforeUnmount(() => store.dispose())
             <h1 class="text-2xl font-semibold tracking-tight">GalleryOS</h1>
             <p class="text-muted-foreground text-sm">Device control panel</p>
           </div>
-          <span
-            class="flex items-center gap-1.5 text-xs"
-            :class="store.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'"
-          >
-            <component :is="store.connected ? WifiIcon : WifiOffIcon" class="size-4" />
-            {{ store.connected ? 'Live' : 'Offline' }}
-          </span>
+          <div class="flex items-center gap-1">
+            <span
+              class="flex items-center gap-1.5 text-xs"
+              :class="store.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'"
+            >
+              <component :is="store.connected ? WifiIcon : WifiOffIcon" class="size-4" />
+              {{ store.connected ? 'Live' : 'Offline' }}
+            </span>
+            <ConnectionStatus />
+          </div>
         </header>
 
         <DeviceGrid />

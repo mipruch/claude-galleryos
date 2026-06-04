@@ -1410,6 +1410,33 @@ demo, že datová cesta funguje od Redisu přes HTTP/WebSocket až do komponent.
 - Vstupní bod je `App.vue` (žádný router) — Vite dev proxy přeposílá `/api`
   a `/ws` na server (`:3000`).
 
+#### Implementováno (connection status indicator)
+
+Vedle realtime (WiFi) ikony v hlavičce je **indikátor stavu připojení k zařízením**
+(`components/connections/ConnectionStatus.vue`) — souhrn typu „7/9“ a rozklikávací
+popover se seznamem všech connectionů.
+
+- **Trigger** zobrazí `connected/total` pro **povolené** (enabled) connectiony
+  (např. `7/9`) se `ServerIcon`. Je **zelený** pouze když je každý povolený
+  connection connected, jinak **červený** — přesně dle pravidla „reconnecting
+  nebo disconnected → červená“.
+- **Popover** (shadcn-vue `popover` postavený na `reka-ui`, doplněný pro tento řez)
+  vypíše každý connection s **barevnou tečkou stavu**: connected (zelená),
+  reconnecting (žlutá/amber), disconnected (červená), disabled (šedá). U každého
+  je název, typ (`driverId`), textový stav (obarvený), a při chybě i `lastError`
+  s výstražnou ikonou. **Switch** vedle každého řádku connection povolí/zakáže
+  (`PUT /connections/:id { enabled }` — backend restartuje/zastaví DriverHost;
+  odpověď nese aktuální `running` flag, který se optimisticky adoptuje).
+- **Odvození stavu** (`lib/connections.ts → connState`): `!enabled → disabled`;
+  `status.online → connected`; jinak `running ? reconnecting : disconnected`
+  (DriverHost povolený connection auto-restartuje s backoffem, takže „běžící, ale
+  offline“ = právě se reconnectuje).
+- **Datová cesta — `useConnectionsStore` (`stores/connections.ts`):** paralelně
+  `GET /api/v1/connections` (seznam s `running`) + nový **`GET /api/v1/connections/live`**
+  (dávkový snapshot `{ [id]: ConnectionStatus }` z Redisu, obdoba `/devices/live`),
+  poté live updaty přes `/ws` události `connection:connected` /
+  `connection:disconnected` / `driver:error` (které doplní `lastError`).
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.

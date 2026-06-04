@@ -6,6 +6,7 @@
  *   POST                /api/v1/connections/:id/connect
  *   POST                /api/v1/connections/:id/disconnect
  *   GET                 /api/v1/connections/:id/status
+ *   GET                 /api/v1/connections/live   (status for all, one shot)
  *
  * Creating/updating a connection starts/restarts its driver subprocess;
  * deleting or disconnecting stops it. Deleting is blocked (409) while devices
@@ -53,6 +54,21 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
         });
         if (created?.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(created));
         return json(withRuntime(created!), 201);
+      }),
+    },
+
+    // Batched live snapshot for the whole UI: one request instead of N.
+    // Returns a map keyed by connection id: { [id]: ConnectionStatus }.
+    "/api/v1/connections/live": {
+      GET: route(async () => {
+        const rows = await ctx.connections.list();
+        const entries = await Promise.all(
+          rows.map(async (row) => {
+            const status = await ctx.state.getConnectionStatus(row.id);
+            return [row.id, status ?? { online: false }] as const;
+          }),
+        );
+        return json(Object.fromEntries(entries));
       }),
     },
 
