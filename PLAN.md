@@ -17,6 +17,12 @@ Mark items `[x]` as they are implemented and tested.
 - [x] `EventBus` — typed internal event bus
 - [x] `DriverRegistry` — static manifest access
 - [x] Drizzle ORM schema (12 tables), migrations, TimescaleDB hypertable for `logs`
+- [x] **`@gallery/types` — shared contracts package (single source of truth):**
+      Drizzle schema + derived record/DTO types (`Jsonify` for `Date→string`),
+      live-state types (`DeviceState`/`*Status`), and the WebSocket message
+      contract (`ServerMessage`/`ClientMessage`). Consumed by both `@gallery/server`
+      and `@gallery/ui`; the UI imports `type`-only so Drizzle is erased from its
+      bundle.
 - [x] Redis live state (`device:*/connection:*` keys)
 - [x] REST API: `/drivers`, `/rooms`, `/connections`, `/devices`, `/system`
 - [x] WebSocket (`/ws`) — EventBus → client broadcast, `device:command` inbound

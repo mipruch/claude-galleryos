@@ -1,32 +1,22 @@
 /**
- * Connection domain types + helpers shared by the store and the status widget.
+ * Connection domain helpers shared by the store and the status widget.
  *
- * A `ConnectionRecord` is a row from `GET /api/v1/connections` (one physical
- * socket / gateway driving a DriverHost) with the live `running` flag attached.
- * Its *online* state lives separately in `ConnectionStatus`, hydrated from Redis
- * on load and kept fresh by `connection:connected` / `connection:disconnected`
- * WebSocket pushes.
+ * The record and status *types* come from the shared `@gallery/types` package
+ * (single source of truth, derived from the Drizzle schema): a `ConnectionRecord`
+ * is a row from `GET /api/v1/connections` (one physical socket / gateway driving
+ * a DriverHost) with the live `running` flag attached. Its *online* state lives
+ * separately in `ConnectionStatus`, hydrated from Redis on load and kept fresh by
+ * `connection:connected` / `connection:disconnected` WebSocket pushes.
  */
 
-/** A row from `GET /api/v1/connections` (with the runtime `running` flag). */
-export interface ConnectionRecord {
-  id: string
-  name: string
-  driverId: string
-  host: string | null
-  port: number | null
-  protocol: string | null
-  enabled: boolean
-  running: boolean
-}
+import type { ConnectionWithRuntime, ConnectionStatus } from '@gallery/types'
 
-/** Online/offline + latency, from `GET /api/v1/connections/:id/status`. */
-export interface ConnectionStatus {
-  online: boolean
-  latencyMs?: number
-  lastSeen?: string
-  lastError?: string
-}
+// Re-exported under the UI's historical names so the store/widget can import
+// connection types from `@/lib/connections`.
+export type { ConnectionWithRuntime as ConnectionRecord, ConnectionStatus } from '@gallery/types'
+
+// Local alias used by the helpers below.
+type ConnectionRecord = ConnectionWithRuntime
 
 /**
  * The four states a connection can be in, in priority order:

@@ -13,7 +13,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: join(here, "src/db/schema.ts"),
+  // The schema is the single source of truth shared with the UI (@gallery/types).
+  schema: join(here, "../../packages/types/src/schema.ts"),
   out: join(here, "src/db/migrations"),
   dbCredentials: {
     url:

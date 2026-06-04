@@ -1,10 +1,14 @@
 /**
- * Database schema (Drizzle ORM, PostgreSQL / TimescaleDB).
+ * Database schema (Drizzle ORM, PostgreSQL / TimescaleDB) — the single source of
+ * truth for every persisted record in GalleryOS (README §5).
  *
- * This is the full GalleryOS schema (README §5). Drizzle generates types and SQL
- * migrations from these definitions. TimescaleDB-specific setup for the `logs`
- * table (hypertable, compression, retention) is applied separately in
+ * This package owns the schema so that both the server (queries, migrations) and
+ * the UI (derived row/DTO types) reference one definition. Drizzle generates SQL
+ * migrations from these tables; TimescaleDB-specific setup for the `logs` table
+ * (hypertable, compression, retention) is applied separately in the server's
  * `migrate.ts` because it isn't expressible in plain Drizzle DDL.
+ *
+ * Inferred row types (`Connection`, `Device`, …) live in `./records.ts`.
  *
  * Conventions: snake_case columns, UUID primary keys, timestamptz everywhere.
  */
@@ -268,12 +272,3 @@ export const logs = pgTable(
     index("idx_logs_source").on(t.source, t.ts.desc()),
   ],
 );
-
-// Convenient inferred types for the rest of the codebase.
-export type Connection = typeof connections.$inferSelect;
-export type NewConnection = typeof connections.$inferInsert;
-export type Device = typeof devices.$inferSelect;
-export type NewDevice = typeof devices.$inferInsert;
-export type Room = typeof rooms.$inferSelect;
-export type Scene = typeof scenes.$inferSelect;
-export type LogRow = typeof logs.$inferInsert;

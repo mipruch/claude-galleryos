@@ -14,6 +14,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
+import type { ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
   deviceKind,
   type DeviceRecord,
@@ -54,18 +55,23 @@ export const useDevicesStore = defineStore('devices', () => {
   })
   const connected = computed(() => status.value === 'OPEN')
 
-  // Map of server → client events to their handlers (README §9).
-  const handlers: Record<string, (data: Record<string, unknown>) => void> = {
-    'device:state': (d) => mergeState(String(d.deviceId ?? ''), (d.state as DeviceState) ?? {}),
-    'device:online': (d) => setOnline(String(d.deviceId ?? ''), true),
-    'device:offline': (d) => setOnline(String(d.deviceId ?? ''), false),
-    'driver:error': (d) =>
-      d.message && toast.error('Driver error', { description: String(d.message) }),
+  // Map of server → client events to their handlers (README §9). Each `data` is
+  // narrowed to that event's payload via the shared `ServerMessageData<E>`.
+  const handlers: { [E in ServerEvent]?: (data: ServerMessageData<E>) => void } = {
+    'device:state': (d) => mergeState(d.deviceId, d.state),
+    'device:online': (d) => setOnline(d.deviceId, true),
+    'device:offline': (d) => setOnline(d.deviceId, false),
+    'driver:error': (d) => {
+      if (d.message) toast.error('Driver error', { description: d.message })
+    },
   }
 
   function handleMessage(raw: unknown): void {
     const msg = parseEnvelope(raw)
-    if (msg) handlers[msg.event ?? '']?.(msg.data ?? {})
+    if (!msg) return
+    // The dynamic event→handler lookup can't preserve the event/data correlation;
+    // each handler body is still fully typed by the map above.
+    ;(handlers[msg.event] as ((data: unknown) => void) | undefined)?.(msg.data)
   }
 
   function mergeState(id: string, patch: DeviceState): void {
@@ -172,9 +178,9 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   return (await res.json()) as T
 }
 
-function parseEnvelope(raw: unknown): { event?: string; data?: Record<string, unknown> } | null {
+function parseEnvelope(raw: unknown): ServerMessage | null {
   try {
-    return JSON.parse(String(raw))
+    return JSON.parse(String(raw)) as ServerMessage
   } catch {
     return null
   }

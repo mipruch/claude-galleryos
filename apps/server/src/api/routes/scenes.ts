@@ -12,7 +12,7 @@
  *   PATCH  /api/v1/scenes/:id/favorite     { is_favorite }
  */
 
-import type { SceneActionInput } from "../../db/repositories.ts";
+import type { SceneActionInput } from "@gallery/types";
 import {
   SceneConflictError,
   SceneNotFoundError,

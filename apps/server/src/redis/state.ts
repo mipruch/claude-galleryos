@@ -9,11 +9,8 @@
  */
 
 import type { DriverKVStore } from "@gallery/driver-core";
-import type {
-  ConnectionStatus,
-  DeviceStatus,
-  LiveStateStore,
-} from "../core/DeviceManager.ts";
+import type { ConnectionStatus, DeviceStatus } from "@gallery/types";
+import type { LiveStateStore } from "../core/DeviceManager.ts";
 import { redis } from "./client.ts";
 
 async function readJson<T>(key: string): Promise<T | null> {

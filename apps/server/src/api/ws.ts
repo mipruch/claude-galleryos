@@ -10,6 +10,7 @@
  */
 
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
+import type { ClientEvent, ServerMessage } from "@gallery/types";
 import type { GalleryEvent } from "../core/EventBus.ts";
 import type { ApiContext } from "./context.ts";
 import { logger } from "../logger.ts";
@@ -17,10 +18,12 @@ import { logger } from "../logger.ts";
 const log = logger.child("ws");
 const BROADCAST_TOPIC = "events";
 
-const envelope = (event: string, data: unknown): string => JSON.stringify({ event, data });
+/** Serialise a server→client message. `event` is constrained to the shared contract. */
+const envelope = (event: ServerMessage["event"], data: unknown): string =>
+  JSON.stringify({ event, data });
 
 /** Translate an internal event into a client-facing message (or drop it). */
-export function toClientMessage(e: GalleryEvent): { event: string; data: unknown } | null {
+export function toClientMessage(e: GalleryEvent): ServerMessage | null {
   switch (e.type) {
     case "device.state.changed":
       return {
@@ -89,7 +92,7 @@ async function dispatch(
   event: string,
   data: WsData,
 ): Promise<void> {
-  const handler = CLIENT_HANDLERS[event];
+  const handler = CLIENT_HANDLERS[event as ClientEvent];
   if (handler) return handler(ws, ctx, data);
   ws.send(envelope("error", { message: `unknown event: ${event || "(none)"}` }));
 }
@@ -176,7 +179,7 @@ async function onSceneExecute(
   ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
 }
 
-const CLIENT_HANDLERS: Record<string, Handler> = {
+const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
   "device:state:patch": onStatePatch,
   "device:command": onDeviceCommand,
   "device:subscribe": onSubscribe,

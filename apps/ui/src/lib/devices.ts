@@ -1,39 +1,18 @@
 /**
- * Device domain types + helpers shared by the store and the widgets.
+ * Device domain helpers shared by the store and the widgets.
  *
- * A `DeviceRecord` is the static config returned by `GET /api/v1/devices`
- * (one row from the `devices` table). The *live* values (fader level, mute,
- * on/off) live separately in `DeviceState`, hydrated from Redis on load and
- * kept fresh by WebSocket `device:state` pushes.
+ * The record and live-state *types* come from the shared `@gallery/types`
+ * package (single source of truth, derived from the Drizzle schema): a
+ * `DeviceRecord` is the serialized row returned by `GET /api/v1/devices`, while
+ * the live values (fader level, mute, on/off) live separately in `DeviceState`,
+ * hydrated from Redis on load and kept fresh by WebSocket `device:state` pushes.
  */
 
-/** A row from `GET /api/v1/devices`. */
-export interface DeviceRecord {
-  id: string
-  connectionId: string
-  roomId: string | null
-  name: string
-  description: string | null
-  type: string
-  subtype: string | null
-  address: Record<string, unknown>
-  capabilities: string[]
-  metadata: Record<string, unknown>
-  icon: string | null
-  displayOrder: number
-  enabled: boolean
-}
+import type { DeviceDTO as DeviceRecord, DeviceState } from '@gallery/types'
 
-/** Driver-specific live values (e.g. `{ level, muted }`, `{ brightness, on }`). */
-export type DeviceState = Record<string, unknown>
-
-/** Online/offline + latency, from `GET /api/v1/devices/:id/status`. */
-export interface DeviceStatus {
-  online: boolean
-  latencyMs?: number
-  lastSeen?: string
-  lastError?: string
-}
+// Re-exported under the UI's historical names so widgets keep importing from
+// `@/lib/devices`. `DeviceDTO` is the JSON-wire shape of a `devices` row.
+export type { DeviceDTO as DeviceRecord, DeviceState, DeviceStatus } from '@gallery/types'
 
 /**
  * Which control widget a device maps to. Derived from the driver endpoint

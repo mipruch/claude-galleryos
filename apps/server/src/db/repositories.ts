@@ -7,12 +7,7 @@
  */
 
 import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle-orm";
-import { db } from "./client.ts";
 import {
-  type Connection,
-  type Device,
-  type NewConnection,
-  type NewDevice,
   connections,
   devices,
   logs,
@@ -20,7 +15,19 @@ import {
   sceneActions,
   sceneExecutions,
   scenes,
-} from "./schema.ts";
+} from "@gallery/types/schema";
+import type {
+  Connection,
+  Device,
+  LevelCount,
+  NewConnection,
+  NewDevice,
+  SceneActionInput,
+  SceneCreateInput,
+  SceneUpdateInput,
+  SceneWithActions,
+} from "@gallery/types";
+import { db } from "./client.ts";
 import type {
   ConnectionRecord,
   DeviceManagerRepo,
@@ -115,12 +122,6 @@ export interface LogFilter {
   offset?: number;
 }
 
-/** Counts grouped by level since a point in time. */
-export interface LevelCount {
-  level: string;
-  count: number;
-}
-
 export const logsRepo = {
   /** Newest-first list with optional filters and pagination. */
   list(filter: LogFilter = {}) {
@@ -152,34 +153,6 @@ export const logsRepo = {
 
 // ── scenes ───────────────────────────────────────────────────
 
-/** One action of a scene, as accepted by create/update. */
-export interface SceneActionInput {
-  deviceId: string;
-  command: string;
-  params?: Record<string, unknown>;
-  /** Defaults to the action's position in the array if omitted. */
-  stepOrder?: number;
-  /** Actions in the same group run concurrently; groups run in ascending order. */
-  parallelGroup?: number;
-  /** Delay (ms) applied before this action runs. */
-  delayMs?: number;
-  /** "continue" (default) or "abort". */
-  onFailure?: string;
-}
-
-export interface SceneCreateInput {
-  name: string;
-  roomId?: string | null;
-  description?: string;
-  icon?: string;
-  color?: string;
-  tags?: string[];
-  isFavorite?: boolean;
-  actions?: SceneActionInput[];
-}
-
-export type SceneUpdateInput = Partial<SceneCreateInput>;
-
 export interface SceneFilter {
   roomId?: string;
   isFavorite?: boolean;
@@ -200,11 +173,6 @@ function toActionRow(sceneId: string, a: SceneActionInput, index: number): typeo
     onFailure: a.onFailure ?? "continue",
   };
 }
-
-/** A scene plus its ordered actions (the shape `get` returns). */
-export type SceneWithActions = typeof scenes.$inferSelect & {
-  actions: (typeof sceneActions.$inferSelect)[];
-};
 
 export const sceneActionsRepo = {
   /** Replace every action of a scene (delete + insert). */

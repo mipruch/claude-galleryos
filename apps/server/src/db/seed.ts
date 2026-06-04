@@ -9,9 +9,9 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
+import { connections, devices, rooms } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
-import { connections, devices, rooms } from "./schema.ts";
 
 const log = logger.child("seed");
 

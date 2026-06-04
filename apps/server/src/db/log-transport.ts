@@ -17,9 +17,9 @@
  */
 
 import Transport, { type TransportStreamOptions } from "winston-transport";
+import { logs } from "@gallery/types/schema";
+import type { LogRow } from "@gallery/types";
 import { db } from "./client.ts";
-import { logs } from "./schema.ts";
-import type { LogRow } from "./schema.ts";
 
 /** Fields handled explicitly; everything else lands in `metadata`. */
 const KNOWN_FIELDS = new Set([

@@ -6,6 +6,7 @@
   "description": "GalleryOS — local control system for multimedia gallery AV devices (Bun)",
   "workspaces": [
     "apps/*",
+    "packages/types",
     "packages/driver-core",
     "packages/drivers/*"
   ],

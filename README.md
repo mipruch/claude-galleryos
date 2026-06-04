@@ -183,6 +183,40 @@ gallery-control/
         └── driver-template/        # Šablona pro nový driver
 ```
 
+### `packages/types` — sdílené kontrakty (single source of truth)
+
+Aby **records, messages i logs** zůstaly konzistentní mezi serverem a UI, žije
+veškerý sdílený typový kontrakt v jednom workspace balíčku **`@gallery/types`**,
+na kterém závisí jak `@gallery/server`, tak `@gallery/ui` (`workspace:*`).
+Drizzle schéma je tu jediným zdrojem pravdy pro tvar dat — typy se z něj
+**odvozují**, neopisují.
+
+- **`src/schema.ts`** — kompletní Drizzle schéma (přesunuté ze serveru). Server
+  ho používá pro dotazy i migrace přes subpath `@gallery/types/schema`;
+  `drizzle.config.ts` míří na stejný soubor, takže `drizzle-kit` generuje migrace
+  z téhož zdroje.
+- **`src/records.ts`** — řádkové typy (`Connection`, `Device`, … = Drizzle
+  `$inferSelect`) **plus JSON-wire DTO** (`ConnectionDTO`, `DeviceDTO`, …). DTO
+  vznikají přes `Jsonify<T>`, který poctivě mapuje `Date → string` — to je přesný
+  tvar, který přejde přes HTTP (server vrací řádky přes `JSON.stringify`).
+  `ConnectionWithRuntime = ConnectionDTO & { running }` přidává runtime flag z
+  DriverHost poolu. Insert typy (`NewConnection`, …) a request DTO
+  (`SceneCreateInput`, …) jsou tu taky.
+- **`src/live.ts`** — `DeviceState`, `DeviceStatus`, `ConnectionStatus`
+  (Redis live stav; dřív duplikované v BE `DeviceManager` i ve FE).
+- **`src/messages.ts`** — WebSocket kontrakt: obálka `WsEnvelope<E, D>` a
+  diskriminované uniony `ServerMessage` / `ClientMessage` (+ `ServerEvent`,
+  `ServerMessageData<E>`). Server (`api/ws.ts`) i FE stores se proti nim typují,
+  takže žádný event ani payload neuteče z kontraktu. Záměrně oddělené od
+  interní `GalleryEvent` sběrnice — sdílí se jen to, co reálně přechází po drátě.
+
+**Klíčové rozhodnutí — UI nezatahuje Drizzle do bundlu.** FE importuje výhradně
+přes `import type { … } from '@gallery/types'`; `verbatimModuleSyntax` + Vite/
+esbuild typové importy úplně smažou, takže runtime Drizzle schéma se do produkčního
+buildu nedostane (ověřeno: v `dist` není žádná zmínka o `drizzle`/`pgTable`).
+`DeviceManager.ConnectionRecord` / `DeviceRecord` jsou definované jako
+`Pick<>` nad schéma-řádky, takže narrow interní view drží krok se schématem.
+
 -----
 
 ## 4. Systémová architektura

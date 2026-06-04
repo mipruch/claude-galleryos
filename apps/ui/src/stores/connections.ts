@@ -15,6 +15,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
+import type { ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
   connState,
   type ConnectionRecord,
@@ -50,22 +51,23 @@ export const useConnectionsStore = defineStore('connections', () => {
   })
   const realtime = computed(() => wsStatus.value === 'OPEN')
 
-  const handlers: Record<string, (data: Record<string, unknown>) => void> = {
-    'connection:connected': (d) =>
-      patchStatus(String(d.connectionId ?? ''), { online: true, lastError: undefined }),
+  // Handlers are typed against the shared WS contract: each `data` is narrowed
+  // to that event's payload (`ServerMessageData<E>`).
+  const handlers: { [E in ServerEvent]?: (data: ServerMessageData<E>) => void } = {
+    'connection:connected': (d) => patchStatus(d.connectionId, { online: true, lastError: undefined }),
     'connection:disconnected': (d) =>
-      patchStatus(String(d.connectionId ?? ''), {
-        online: false,
-        lastError: d.reason ? String(d.reason) : undefined,
-      }),
+      patchStatus(d.connectionId, { online: false, lastError: d.reason }),
     'driver:error': (d) => {
-      if (d.connectionId) patchStatus(String(d.connectionId), { lastError: String(d.message ?? '') })
+      if (d.connectionId) patchStatus(d.connectionId, { lastError: d.message })
     },
   }
 
   function handleMessage(raw: unknown): void {
     const msg = parseEnvelope(raw)
-    if (msg) handlers[msg.event ?? '']?.(msg.data ?? {})
+    if (!msg) return
+    // The dynamic event→handler lookup can't preserve the event/data correlation;
+    // each handler body is still fully typed by the map above.
+    ;(handlers[msg.event] as ((data: unknown) => void) | undefined)?.(msg.data)
   }
 
   function patchStatus(id: string, patch: Partial<ConnectionStatus>): void {
@@ -177,9 +179,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> 
   return (await res.json()) as T
 }
 
-function parseEnvelope(raw: unknown): { event?: string; data?: Record<string, unknown> } | null {
+function parseEnvelope(raw: unknown): ServerMessage | null {
   try {
-    return JSON.parse(String(raw))
+    return JSON.parse(String(raw)) as ServerMessage
   } catch {
     return null
   }

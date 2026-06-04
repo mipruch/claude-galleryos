@@ -8,8 +8,8 @@
 
 import { SQL } from "bun";
 import { drizzle } from "drizzle-orm/bun-sql";
+import * as schema from "@gallery/types/schema";
 import { appConfig } from "../config.ts";
-import * as schema from "./schema.ts";
 
 /** Underlying Bun SQL connection (use `.end()` on shutdown). */
 export const sqlClient = new SQL(appConfig.db.url);

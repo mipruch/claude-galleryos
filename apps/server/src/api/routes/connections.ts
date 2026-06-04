@@ -13,7 +13,7 @@
  * still reference the connection.
  */
 
-import type { Connection } from "../../db/schema.ts";
+import type { Connection } from "@gallery/types";
 import { toConnectionRecord } from "../../db/repositories.ts";
 import type { ApiContext } from "../context.ts";
 import { HttpError, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";

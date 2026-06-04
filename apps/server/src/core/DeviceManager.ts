@@ -15,48 +15,34 @@
  */
 
 import type { DriverKVStore, EndpointDescriptor } from "@gallery/driver-core";
+import type { Connection, ConnectionStatus, Device, DeviceStatus } from "@gallery/types";
 import { DriverHost, type RestartPolicy } from "../drivers/DriverHost.ts";
 import { EventBus } from "./EventBus.ts";
 import type { Logger } from "../logger.ts";
 
 // ── records & dependency contracts ───────────────────────────
 
-/** A connection as the manager needs it (maps to ConnectionConfig). */
-export interface ConnectionRecord {
-  id: string;
-  driverId: string;
-  host: string | null;
-  port: number | null;
-  config: Record<string, unknown>;
-}
+/**
+ * A connection as the manager needs it — the subset of the schema row that maps
+ * to a driver `ConnectionConfig`. Derived from the shared `Connection` row so it
+ * stays in lock-step with the schema.
+ */
+export type ConnectionRecord = Pick<Connection, "id" | "driverId" | "host" | "port" | "config">;
 
-/** A device as the manager needs it. `endpointType` is the driver endpoint type. */
-export interface DeviceRecord {
-  id: string;
-  connectionId: string;
-  name: string;
+/**
+ * A device as the manager needs it. `endpointType` is the driver endpoint type
+ * (the row's `subtype`, falling back to `type`); the rest mirror the schema row.
+ */
+export type DeviceRecord = Pick<Device, "id" | "connectionId" | "name" | "address"> & {
   /** Matches an EndpointTypeDefinition.type, e.g. `pjlink.projector`. */
   endpointType: string;
-  address: Record<string, unknown>;
-}
+};
 
 /** Data source for connections and devices (DB-backed in production). */
 export interface DeviceManagerRepo {
   listEnabledConnections(): Promise<ConnectionRecord[]>;
   listDevicesByConnection(connectionId: string): Promise<DeviceRecord[]>;
   getDevice(deviceId: string): Promise<DeviceRecord | undefined>;
-}
-
-export interface ConnectionStatus {
-  online: boolean;
-  latencyMs?: number;
-  lastSeen?: string;
-  lastError?: string;
-}
-export interface DeviceStatus {
-  online: boolean;
-  lastSeen?: string;
-  lastError?: string;
 }
 
 /** Live, disposable state (Redis-backed in production). */
