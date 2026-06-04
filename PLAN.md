@@ -288,8 +288,14 @@ Shared logic, used by TcpInputServer (and future OSC server):
 
 Tracked here but not started yet.
 
-- [ ] `apps/admin-ui` — Vue 3 + Vite + Pinia + TailwindCSS + shadcn-vue
-- [ ] `apps/user-ui` — same stack, tablet-optimised, no config — driven by `ui_layouts`
+Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project, separated by route-based layouts. Shared Pinia stores, shared components, single Socket.io connection.
+
+- [ ] `apps/ui` — Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue
+  - [ ] `AdminLayout` — full-nav shell for `/admin/**` routes
+  - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
+  - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
+  - [ ] User pages: main widget panel (driven by `ui_layouts`), status overview
+  - [ ] Shared stores: devices, scenes, connections, system, layout, logs, drivers
 
 See README §10–11 for full spec.
 

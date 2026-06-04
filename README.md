@@ -148,23 +148,16 @@ gallery-control/
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   │
-│   ├── admin-ui/                   # Vue 3 Admin aplikace
-│   │   ├── src/
-│   │   │   ├── main.ts
-│   │   │   ├── router/
-│   │   │   ├── stores/             # Pinia stores
-│   │   │   ├── views/              # Stránky
-│   │   │   └── components/
-│   │   ├── Dockerfile
-│   │   └── package.json
-│   │
-│   └── user-ui/                    # Vue 3 User panel
+│   └── ui/                         # Vue 3 — Admin + User panel (single app)
 │       ├── src/
 │       │   ├── main.ts
-│       │   ├── router/
-│       │   ├── stores/
+│       │   ├── router/             # /admin/** → AdminLayout, /app/** → UserLayout
+│       │   ├── stores/             # Pinia stores (sdílené oběma sekcemi)
+│       │   ├── layouts/            # AdminLayout.vue, UserLayout.vue
 │       │   ├── views/
-│       │   └── components/
+│       │   │   ├── admin/          # Stránky admin portálu
+│       │   │   └── user/           # Stránky user panelu
+│       │   └── components/         # Sdílené komponenty
 │       ├── Dockerfile
 │       └── package.json
 │
@@ -199,7 +192,7 @@ gallery-control/
 ```
 ┌─────────────────────────────────────────────────────┐
 │  KLIENTI                                            │
-│  Admin UI (Vue3)  │  User UI (Vue3)  │  REST API    │
+│  UI Vue3 (/admin/** + /app/**)   │  REST API        │
 └──────────┬──────────────────────────┬───────────────┘
            │ HTTP / WebSocket          │ HTTP REST
 ┌──────────▼──────────────────────────▼───────────────┐
@@ -1191,7 +1184,7 @@ POST   /system/reload-drivers    - znovu načíst všechny drivery (restart subp
 
 ## 9. WebSocket události
 
-Socket.io server na stejném portu jako HTTP. Namespace `/` pro User UI, namespace `/admin` pro Admin UI.
+Socket.io server na stejném portu jako HTTP. Namespace `/` pro celou UI aplikaci — admin i user sekce sdílí jedno Socket.io připojení, přístup k citlivým událostem se bude řídit rolí (po přidání auth).
 
 ### Klient → Server
 
@@ -1241,7 +1234,7 @@ socket.on('system:alert', (data: { level: 'info' | 'warn' | 'error'; message: st
 
 ### Technologie
 
-Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue. Komunikuje s backendem přes REST API (axios) a Socket.io. Běží na portu 4000 (nginx proxy v produkci).
+Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue. Komunikuje s backendem přes REST API (axios) a Socket.io. Je součástí jediné Vue aplikace (`apps/ui`) sdílené s User UI — admin sekce je dostupná pod cestami `/admin/**`. Běží na portu 4000 (nginx proxy v produkci).
 
 Komponenty ze `shadcn-vue` se používají pro veškeré UI primitivy (formuláře, dialogy, tabulky, toasty, tabs, slidery). Drag & drop v scene editoru a layout builderu zajišťuje `vue-draggable-plus`. WebSocket stav (připojeno/odpojeno) se řeší přímo v Pinia store jako reaktivní ref — bez wrapper composables.
 
@@ -1364,7 +1357,7 @@ useDriversStore      - driver manifesty (pro generování formulářů)
 
 ### Technologie
 
-Stejný stack jako Admin UI (Vue 3 + Vite + Pinia + TailwindCSS + shadcn-vue). Separátní Vite aplikace. Běží na portu 5000. Optimalizováno pro dotykové ovládání na tabletu.
+Stejný stack jako Admin UI (Vue 3 + Vite + Pinia + TailwindCSS + shadcn-vue) — je součástí téže Vue aplikace (`apps/ui`). Obě části sdílí Pinia stores, sdílené komponenty a Socket.io připojení. User panel je dostupný pod cestami `/app/**`. Optimalizováno pro dotykové ovládání na tabletu.
 
 ### Princip fungování
 
@@ -1906,23 +1899,11 @@ services:
     volumes:
       - server_logs:/app/logs
 
-  admin-ui:
-    build: ./apps/admin-ui
+  ui:
+    build: ./apps/ui
     restart: unless-stopped
     ports:
-      - "4000:80"
-    environment:
-      - VITE_API_URL=http://server:3000
-    depends_on:
-      - server
-    networks:
-      - gallery_net
-
-  user-ui:
-    build: ./apps/user-ui
-    restart: unless-stopped
-    ports:
-      - "5000:80"
+      - "4000:80"    # /admin/** → admin portal, /app/** → user panel
     environment:
       - VITE_API_URL=http://server:3000
     depends_on:
@@ -1989,25 +1970,15 @@ services:
       - NODE_ENV=development
       - LOG_LEVEL=debug
 
-  admin-ui:
+  ui:
     build:
-      context: ./apps/admin-ui
+      context: ./apps/ui
       target: dev
     volumes:
-      - ./apps/admin-ui/src:/app/src
+      - ./apps/ui/src:/app/src
     command: pnpm dev --host
     ports:
       - "4000:4000"
-
-  user-ui:
-    build:
-      context: ./apps/user-ui
-      target: dev
-    volumes:
-      - ./apps/user-ui/src:/app/src
-    command: pnpm dev --host
-    ports:
-      - "5000:5000"
 ```
 
 Spuštění v dev módu: `docker-compose -f docker-compose.yml -f docker-compose.dev.yml up`
