@@ -24,7 +24,7 @@ onBeforeUnmount(() => store.dispose())
 <template>
   <Popover>
     <PopoverTrigger
-      class="hover:bg-accent focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2"
+      class="hover:bg-accent focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 hover:cursor-pointer"
       :class="store.allConnected ? 'text-emerald-600 dark:text-emerald-500' : 'text-destructive'"
       :aria-label="`Connections: ${store.label} connected`"
     >
@@ -33,7 +33,7 @@ onBeforeUnmount(() => store.dispose())
       <ChevronDownIcon class="size-3 opacity-60" />
     </PopoverTrigger>
 
-    <PopoverContent align="end" class="w-80 p-0">
+    <PopoverContent align="end" class="w-96 p-0">
       <div class="border-b px-4 py-3">
         <h2 class="text-sm font-semibold">Connections</h2>
         <p class="text-muted-foreground text-xs">

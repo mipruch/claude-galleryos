@@ -27,12 +27,15 @@ onBeforeUnmount(() => store.dispose())
       </div>
 
       <main class="mx-auto max-w-5xl px-4 py-8">
+
         <header class="mb-6 flex items-center justify-between">
           <div>
             <h1 class="text-2xl font-semibold tracking-tight">GalleryOS</h1>
             <p class="text-muted-foreground text-sm">Device control panel</p>
           </div>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-2">
+            <ConnectionStatus />
+
             <span
               class="flex items-center gap-1.5 text-xs"
               :class="store.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'"
@@ -40,7 +43,6 @@ onBeforeUnmount(() => store.dispose())
               <component :is="store.connected ? WifiIcon : WifiOffIcon" class="size-4" />
               {{ store.connected ? 'Live' : 'Offline' }}
             </span>
-            <ConnectionStatus />
           </div>
         </header>
 
