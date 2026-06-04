@@ -1471,25 +1471,30 @@ popover se seznamem všech connectionů.
   poté live updaty přes `/ws` události `connection:connected` /
   `connection:disconnected` / `driver:error` (které doplní `lastError`).
 
-#### Implementováno (seskupování a filtr typů)
+#### Implementováno (seskupování, podskupiny a filtry)
 
-Nad gridem widgetů je **toolbar** (`components/devices/DeviceToolbar.vue`) se
-dvěma řádky „chipů“ (zaoblené rohy, ne pilulka — `components/ui/chip/Chip.vue`):
+Nad gridem widgetů je **toolbar** (`components/devices/DeviceToolbar.vue`) s
+řádky „chipů“ (zaoblené rohy, ne pilulka — `components/ui/chip/Chip.vue`):
 
-- **Group: `Off` / `Room` / `Type`** — přepíná členění gridu. Při `Off` je jeden
-  grid bez nadpisu; při `Room`/`Type` má každá skupina nad svým gridem nadpis
-  (název místnosti, resp. label typu) + počet zařízení.
-- **Filter** — řádek chipů pro každý přítomný typ (multi-select; prázdný výběr =
-  vše), každý s počtem zařízení; tlačítko **Clear** výběr zruší.
+- **Group: `Off` / `Room` / `Type`** — přepíná členění gridu a **dvouúrovňové
+  podskupiny**: `Room` seskupí podle místnosti a uvnitř každé místnosti podle
+  typu; `Type` naopak (typ → místnosti). Skupina má větší nadpis + počet, každá
+  podskupina menší podnadpis nad svým gridem. Při `Off` je jeden plochý grid.
+- **Type filter** — chip pro každý přítomný typ (multi-select; prázdný výběr =
+  vše) s počtem; **Room filter** — chip pro každou místnost, která má zařízení
+  (+ „Unassigned“ pro zařízení bez místnosti), s počtem. Oba mají **Clear**.
+- **Prázdné (pod)skupiny se nikdy nevykreslí** — `groupDevices` je staví jen z
+  reálně přítomných zařízení, takže po filtru zmizí i celé skupiny/podskupiny.
 
 Logika je v **čistých, testovaných helperech** (`lib/devices.ts`):
-`groupDevices(devices, mode, rooms)` (Room řadí dle `room.displayOrder`,
-nezařazené poslední; Type abecedně), `filterByTypes`, `deviceTypesOf`,
-`typeLabel`. Stav (`groupMode`, `typeFilter`) i odvozené `groups` /
-`filteredDevices` / `typeCounts` žijí v `useDevicesStore`; pro nadpisy podle
-místností store nově načítá i `GET /api/v1/rooms`. `DeviceGrid.vue` jen renderuje
-`store.groups` (a hlásí „No devices match the selected filter“, když filtr vše
-odřízne). 7 unit testů pokrývá helpery.
+`groupDevices(devices, mode, rooms)` → `DeviceGroup[]` s vnořenými `subgroups`
+(Room/Type řadí dle `room.displayOrder` → název, nezařazené poslední; Type
+abecedně), `filterByTypes`, `filterByRooms`, `roomOptionsOf`, `deviceTypesOf`,
+`typeLabel`. Stav (`groupMode`, `typeFilter`, `roomFilter`) i odvozené `groups` /
+`filteredDevices` / `typeCounts` / `roomOptions` žijí v `useDevicesStore`; pro
+názvy místností store načítá i `GET /api/v1/rooms`. `DeviceGrid.vue` jen renderuje
+`store.groups` (a hlásí „No devices match the selected filters“, když filtry vše
+odříznou). 12 unit testů pokrývá helpery.
 
 ### Princip fungování
 

@@ -67,11 +67,23 @@ export function readOn(state: DeviceState | undefined, ...keys: string[]): boole
 /** How the device grid is partitioned. */
 export type GroupMode = 'off' | 'room' | 'type'
 
-/** A titled partition of devices. `title` is null for the ungrouped ("off") view. */
-export interface DeviceGroup {
+/** A leaf partition of devices (the inner level / a single grid). */
+export interface DeviceSubgroup {
   key: string
   title: string | null
   devices: DeviceRecord[]
+}
+
+/**
+ * A titled partition of devices, itself split into subgroups. Both `title` and
+ * each subgroup `title` are null for the ungrouped ("off") view. When grouping by
+ * room the subgroups are types (and vice-versa). Empty groups/subgroups are never
+ * produced — they only contain devices that are actually present.
+ */
+export interface DeviceGroup {
+  key: string
+  title: string | null
+  subgroups: DeviceSubgroup[]
 }
 
 /** Friendlier labels for the known device `type` values; falls back to Capitalised. */
@@ -104,6 +116,38 @@ export function filterByTypes(devices: DeviceRecord[], types: string[]): DeviceR
   return devices.filter((d) => allow.has(d.type))
 }
 
+/** Keep only devices in the selected rooms (by `roomKey`); empty means "all". */
+export function filterByRooms(devices: DeviceRecord[], roomKeys: string[]): DeviceRecord[] {
+  if (!roomKeys.length) return devices
+  const allow = new Set(roomKeys)
+  return devices.filter((d) => allow.has(roomKeyOf(d)))
+}
+
+/** A room available to filter on, with its device count. */
+export interface RoomOption {
+  /** Room id, or the sentinel for room-less devices. */
+  key: string
+  name: string
+  count: number
+}
+
+/** Rooms that actually have devices, ordered by `displayOrder` then name (unassigned last). */
+export function roomOptionsOf(devices: DeviceRecord[], rooms: RoomDTO[]): RoomOption[] {
+  const byId = new Map(rooms.map((r) => [r.id, r]))
+  return collect(devices, roomKeyOf)
+    .map((g) => {
+      const room = byId.get(g.key)
+      return {
+        key: g.key,
+        name: room?.name ?? 'Unassigned',
+        order: room?.displayOrder ?? Number.MAX_SAFE_INTEGER,
+        count: g.items.length,
+      }
+    })
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+    .map(({ key, name, count }) => ({ key, name, count }))
+}
+
 /** Group items by a derived key, preserving first-seen order within each group. */
 function collect<T>(items: T[], keyOf: (item: T) => string): { key: string; items: T[] }[] {
   const map = new Map<string, T[]>()
@@ -117,28 +161,19 @@ function collect<T>(items: T[], keyOf: (item: T) => string): { key: string; item
 }
 
 const UNASSIGNED = '__unassigned__'
+const roomKeyOf = (d: DeviceRecord): string => d.roomId ?? UNASSIGNED
 
-/**
- * Partition devices for display. `off` → one untitled group (input order
- * preserved); `type` → grouped by device type, alphabetical; `room` → grouped by
- * room, ordered by the room's `displayOrder` (then name), with unassigned last.
- */
-export function groupDevices(
-  devices: DeviceRecord[],
-  mode: GroupMode,
-  rooms: RoomDTO[],
-): DeviceGroup[] {
-  if (mode === 'off') return [{ key: 'all', title: null, devices }]
+/** Subgroups by device type, alphabetical. */
+function byType(devices: DeviceRecord[]): DeviceSubgroup[] {
+  return collect(devices, (d) => d.type)
+    .map((g) => ({ key: g.key, title: typeLabel(g.key), devices: g.items }))
+    .sort((a, b) => a.title!.localeCompare(b.title!))
+}
 
-  if (mode === 'type') {
-    return collect(devices, (d) => d.type)
-      .map((g) => ({ key: g.key, title: typeLabel(g.key), devices: g.items }))
-      .sort((a, b) => a.title.localeCompare(b.title))
-  }
-
-  // mode === 'room'
+/** Subgroups by room, ordered by the room's `displayOrder` (then name), unassigned last. */
+function byRoom(devices: DeviceRecord[], rooms: RoomDTO[]): DeviceSubgroup[] {
   const byId = new Map(rooms.map((r) => [r.id, r]))
-  return collect(devices, (d) => d.roomId ?? UNASSIGNED)
+  return collect(devices, roomKeyOf)
     .map((g) => {
       const room = byId.get(g.key)
       return {
@@ -148,6 +183,40 @@ export function groupDevices(
         devices: g.items,
       }
     })
-    .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+    .sort((a, b) => a.order - b.order || a.title!.localeCompare(b.title!))
     .map(({ key, title, devices }) => ({ key, title, devices }))
+}
+
+/**
+ * Partition devices into (optionally nested) display groups:
+ *   - `off`  → one untitled group with one untitled subgroup (a plain grid).
+ *   - `room` → grouped by room, each room subgrouped by type.
+ *   - `type` → grouped by type, each type subgrouped by room.
+ *
+ * Groups and subgroups are only produced for keys that actually have devices, so
+ * empty (sub)groups never render.
+ */
+export function groupDevices(
+  devices: DeviceRecord[],
+  mode: GroupMode,
+  rooms: RoomDTO[],
+): DeviceGroup[] {
+  if (mode === 'off') {
+    return [{ key: 'all', title: null, subgroups: [{ key: 'all', title: null, devices }] }]
+  }
+
+  if (mode === 'type') {
+    return byType(devices).map((g) => ({
+      key: g.key,
+      title: g.title,
+      subgroups: byRoom(g.devices, rooms),
+    }))
+  }
+
+  // mode === 'room'
+  return byRoom(devices, rooms).map((g) => ({
+    key: g.key,
+    title: g.title,
+    subgroups: byType(g.devices),
+  }))
 }

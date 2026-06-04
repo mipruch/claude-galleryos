@@ -18,8 +18,10 @@ import type { RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@ga
 import {
   deviceKind,
   deviceTypesOf,
+  filterByRooms,
   filterByTypes,
   groupDevices,
+  roomOptionsOf,
   type DeviceRecord,
   type DeviceState,
   type DeviceStatus,
@@ -42,9 +44,10 @@ export const useDevicesStore = defineStore('devices', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // ── view preferences (grouping + type filter) ─────────────────────────────
+  // ── view preferences (grouping + type/room filters) ───────────────────────
   const groupMode = ref<GroupMode>('off')
   const typeFilter = ref<string[]>([])
+  const roomFilter = ref<string[]>([])
 
   // Devices we know how to render, sorted by the admin-defined display order.
   const devices = computed(() =>
@@ -53,31 +56,40 @@ export const useDevicesStore = defineStore('devices', () => {
       .sort((a, b) => a.displayOrder - b.displayOrder),
   )
 
-  // Distinct types available to filter on, plus a per-type count for the chips.
+  // Type/room options for the filter chips, each with a per-option device count.
   const deviceTypes = computed(() => deviceTypesOf(devices.value))
   const typeCounts = computed<Record<string, number>>(() => {
     const counts: Record<string, number> = {}
     for (const d of devices.value) counts[d.type] = (counts[d.type] ?? 0) + 1
     return counts
   })
+  const roomOptions = computed(() => roomOptionsOf(devices.value, rooms.value))
 
-  // Devices after the active type filter, then partitioned by the group mode.
-  const filteredDevices = computed(() => filterByTypes(devices.value, typeFilter.value))
+  // Devices after the active type + room filters, then partitioned by group mode.
+  const filteredDevices = computed(() =>
+    filterByRooms(filterByTypes(devices.value, typeFilter.value), roomFilter.value),
+  )
   const groups = computed(() => groupDevices(filteredDevices.value, groupMode.value, rooms.value))
 
   function setGroupMode(mode: GroupMode): void {
     groupMode.value = mode
   }
 
-  /** Toggle a type in the filter (multi-select; empty = show all). */
-  function toggleType(type: string): void {
-    const i = typeFilter.value.indexOf(type)
-    if (i >= 0) typeFilter.value.splice(i, 1)
-    else typeFilter.value.push(type)
+  /** Toggle a value in a multi-select filter (empty selection = show all). */
+  function toggleIn(filter: typeof typeFilter, value: string): void {
+    const i = filter.value.indexOf(value)
+    if (i >= 0) filter.value.splice(i, 1)
+    else filter.value.push(value)
   }
+
+  const toggleType = (type: string): void => toggleIn(typeFilter, type)
+  const toggleRoom = (roomKey: string): void => toggleIn(roomFilter, roomKey)
 
   function clearTypeFilter(): void {
     typeFilter.value = []
+  }
+  function clearRoomFilter(): void {
+    roomFilter.value = []
   }
 
   const stateOf = (id: string): DeviceState => states.value[id] ?? {}
@@ -204,13 +216,17 @@ export const useDevicesStore = defineStore('devices', () => {
     // grouping + filtering
     groupMode,
     typeFilter,
+    roomFilter,
     deviceTypes,
     typeCounts,
+    roomOptions,
     filteredDevices,
     groups,
     setGroupMode,
     toggleType,
+    toggleRoom,
     clearTypeFilter,
+    clearRoomFilter,
     // lookups + lifecycle
     stateOf,
     statusOf,

@@ -318,12 +318,15 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         name, type, error message, and an enable/disable switch. Backed by
         `GET /connections/live` + live `connection:connected`/`disconnected`/
         `driver:error` WS events.
-  - [x] **Grouping + type filter (`DeviceToolbar` + `Chip`):** a chip row to
-        group the grid by `Off` / `Room` / `Type` (each group gets a heading +
-        count), and a multi-select chip row to filter by device type. Pure,
-        unit-tested helpers in `lib/devices.ts` (`groupDevices` / `filterByTypes`
-        / `deviceTypesOf` / `typeLabel`); state + derived `groups` in the store,
-        which now also loads `GET /rooms` for room headings.
+  - [x] **Grouping (nested) + type/room filters (`DeviceToolbar` + `Chip`):** a
+        chip row groups the grid by `Off` / `Room` / `Type` with **two-level
+        subgroups** (room→type and type→room), each (sub)group headed + counted;
+        plus multi-select chip rows to filter by type and by room. Empty
+        (sub)groups never render. Pure, unit-tested helpers in `lib/devices.ts`
+        (`groupDevices` → nested `DeviceGroup[]`, `filterByTypes`,
+        `filterByRooms`, `roomOptionsOf`, `deviceTypesOf`, `typeLabel`); state +
+        derived `groups`/`filteredDevices`/`typeCounts`/`roomOptions` in the
+        store, which also loads `GET /rooms`.
   - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.

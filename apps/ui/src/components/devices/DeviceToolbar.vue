@@ -36,7 +36,7 @@ const groupOptions: { mode: GroupMode; label: string }[] = [
     <!-- Type filter -->
     <div v-if="store.deviceTypes.length > 1" class="flex flex-wrap items-center gap-2">
       <span class="text-muted-foreground mr-1 text-xs font-medium tracking-wide uppercase">
-        Filter
+        Type
       </span>
       <Chip
         v-for="type in store.deviceTypes"
@@ -52,6 +52,30 @@ const groupOptions: { mode: GroupMode; label: string }[] = [
         type="button"
         class="text-muted-foreground hover:text-foreground ml-1 text-xs underline underline-offset-2"
         @click="store.clearTypeFilter()"
+      >
+        Clear
+      </button>
+    </div>
+
+    <!-- Room filter -->
+    <div v-if="store.roomOptions.length > 1" class="flex flex-wrap items-center gap-2">
+      <span class="text-muted-foreground mr-1 text-xs font-medium tracking-wide uppercase">
+        Room
+      </span>
+      <Chip
+        v-for="room in store.roomOptions"
+        :key="room.key"
+        :active="store.roomFilter.includes(room.key)"
+        @click="store.toggleRoom(room.key)"
+      >
+        {{ room.name }}
+        <span class="text-xs opacity-60">{{ room.count }}</span>
+      </Chip>
+      <button
+        v-if="store.roomFilter.length"
+        type="button"
+        class="text-muted-foreground hover:text-foreground ml-1 text-xs underline underline-offset-2"
+        @click="store.clearRoomFilter()"
       >
         Clear
       </button>
