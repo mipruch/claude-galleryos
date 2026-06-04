@@ -1,3 +1,6 @@
+// fallow-ignore-file unused-class-member
+
+
 /**
  * DeviceManager — orchestrates all communication with physical devices.
  *

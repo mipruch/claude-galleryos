@@ -1,6 +1,6 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-	"entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}"],
+	"entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}", "**/*.test.ts", "**/test/**/*.ts", "**/__tests__/**/*.ts"],
 	"workspaces": {
 		"packages": ["apps/*", "packages/driver-core", "packages/drivers/*"]
 	},
@@ -17,6 +17,17 @@
 	},
 	"rules": {
     },
-    "ignorePatterns": ["**/*.generated.ts", "**/*.d.ts", "**/test/**", "**/__tests__/**", "**/*.test.ts", "**/manuals/**", "apps/server/src/db/schema.ts"]
+    "ignorePatterns": ["**/*.generated.ts", "**/*.d.ts", "**/manuals/**", "apps/server/src/db/schema.ts"],
+    "overrides": [
+        {
+            "files": ["**/*.test.ts", "**/test/**", "**/__tests__/**"],
+            "rules": {
+                "unused-exports": null,
+                "unused-types": null,
+                "unused-class-members": null,
+                "unused-files": null
+            }
+        }
+    ]
 
 }
