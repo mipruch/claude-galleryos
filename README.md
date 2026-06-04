@@ -1471,6 +1471,26 @@ popover se seznamem všech connectionů.
   poté live updaty přes `/ws` události `connection:connected` /
   `connection:disconnected` / `driver:error` (které doplní `lastError`).
 
+#### Implementováno (seskupování a filtr typů)
+
+Nad gridem widgetů je **toolbar** (`components/devices/DeviceToolbar.vue`) se
+dvěma řádky „chipů“ (zaoblené rohy, ne pilulka — `components/ui/chip/Chip.vue`):
+
+- **Group: `Off` / `Room` / `Type`** — přepíná členění gridu. Při `Off` je jeden
+  grid bez nadpisu; při `Room`/`Type` má každá skupina nad svým gridem nadpis
+  (název místnosti, resp. label typu) + počet zařízení.
+- **Filter** — řádek chipů pro každý přítomný typ (multi-select; prázdný výběr =
+  vše), každý s počtem zařízení; tlačítko **Clear** výběr zruší.
+
+Logika je v **čistých, testovaných helperech** (`lib/devices.ts`):
+`groupDevices(devices, mode, rooms)` (Room řadí dle `room.displayOrder`,
+nezařazené poslední; Type abecedně), `filterByTypes`, `deviceTypesOf`,
+`typeLabel`. Stav (`groupMode`, `typeFilter`) i odvozené `groups` /
+`filteredDevices` / `typeCounts` žijí v `useDevicesStore`; pro nadpisy podle
+místností store nově načítá i `GET /api/v1/rooms`. `DeviceGrid.vue` jen renderuje
+`store.groups` (a hlásí „No devices match the selected filter“, když filtr vše
+odřízne). 7 unit testů pokrývá helpery.
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.

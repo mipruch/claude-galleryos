@@ -14,12 +14,16 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
-import type { ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
+import type { RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
   deviceKind,
+  deviceTypesOf,
+  filterByTypes,
+  groupDevices,
   type DeviceRecord,
   type DeviceState,
   type DeviceStatus,
+  type GroupMode,
 } from '@/lib/devices'
 
 const API = '/api/v1'
@@ -32,10 +36,15 @@ function wsUrl(): string {
 export const useDevicesStore = defineStore('devices', () => {
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
+  const rooms = ref<RoomDTO[]>([])
   const states = ref<Record<string, DeviceState>>({})
   const statuses = ref<Record<string, DeviceStatus>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  // ── view preferences (grouping + type filter) ─────────────────────────────
+  const groupMode = ref<GroupMode>('off')
+  const typeFilter = ref<string[]>([])
 
   // Devices we know how to render, sorted by the admin-defined display order.
   const devices = computed(() =>
@@ -43,6 +52,33 @@ export const useDevicesStore = defineStore('devices', () => {
       .filter((d) => d.enabled && deviceKind(d) !== 'unsupported')
       .sort((a, b) => a.displayOrder - b.displayOrder),
   )
+
+  // Distinct types available to filter on, plus a per-type count for the chips.
+  const deviceTypes = computed(() => deviceTypesOf(devices.value))
+  const typeCounts = computed<Record<string, number>>(() => {
+    const counts: Record<string, number> = {}
+    for (const d of devices.value) counts[d.type] = (counts[d.type] ?? 0) + 1
+    return counts
+  })
+
+  // Devices after the active type filter, then partitioned by the group mode.
+  const filteredDevices = computed(() => filterByTypes(devices.value, typeFilter.value))
+  const groups = computed(() => groupDevices(filteredDevices.value, groupMode.value, rooms.value))
+
+  function setGroupMode(mode: GroupMode): void {
+    groupMode.value = mode
+  }
+
+  /** Toggle a type in the filter (multi-select; empty = show all). */
+  function toggleType(type: string): void {
+    const i = typeFilter.value.indexOf(type)
+    if (i >= 0) typeFilter.value.splice(i, 1)
+    else typeFilter.value.push(type)
+  }
+
+  function clearTypeFilter(): void {
+    typeFilter.value = []
+  }
 
   const stateOf = (id: string): DeviceState => states.value[id] ?? {}
   const statusOf = (id: string): DeviceStatus => statuses.value[id] ?? { online: false }
@@ -109,15 +145,18 @@ export const useDevicesStore = defineStore('devices', () => {
     loading.value = true
     error.value = null
     try {
-      // Two requests total: the device list + one batched live snapshot
-      // ({ [id]: { state, status } }), instead of 2×N per-device fetches.
-      const [list, live] = await Promise.all([
+      // The device list + one batched live snapshot ({ [id]: { state, status } })
+      // + rooms (for the "group by room" headings), instead of 2×N per-device
+      // fetches.
+      const [list, live, roomList] = await Promise.all([
         fetchJson<DeviceRecord[]>(`${API}/devices`),
         fetchJson<Record<string, { state: DeviceState; status: DeviceStatus }>>(
           `${API}/devices/live`,
         ),
+        fetchJson<RoomDTO[]>(`${API}/rooms`),
       ])
       records.value = list ?? []
+      rooms.value = roomList ?? []
       for (const [id, snapshot] of Object.entries(live ?? {})) {
         if (snapshot.state) states.value[id] = snapshot.state
         if (snapshot.status) statuses.value[id] = snapshot.status
@@ -155,12 +194,24 @@ export const useDevicesStore = defineStore('devices', () => {
 
   return {
     records,
+    rooms,
     states,
     statuses,
     loading,
     error,
     devices,
     connected,
+    // grouping + filtering
+    groupMode,
+    typeFilter,
+    deviceTypes,
+    typeCounts,
+    filteredDevices,
+    groups,
+    setGroupMode,
+    toggleType,
+    clearTypeFilter,
+    // lookups + lifecycle
     stateOf,
     statusOf,
     init,

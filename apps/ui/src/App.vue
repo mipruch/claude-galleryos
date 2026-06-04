@@ -5,6 +5,7 @@ import 'vue-sonner/style.css'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import DeviceGrid from '@/components/devices/DeviceGrid.vue'
+import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import { useDevicesStore } from '@/stores/devices'
 
@@ -46,6 +47,7 @@ onBeforeUnmount(() => store.dispose())
           </div>
         </header>
 
+        <DeviceToolbar />
         <DeviceGrid />
       </main>
 
