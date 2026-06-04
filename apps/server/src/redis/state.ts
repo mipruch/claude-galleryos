@@ -25,9 +25,38 @@ async function writeJson(key: string, value: unknown): Promise<void> {
   await redis.set(key, JSON.stringify(value));
 }
 
+/**
+ * True when a state merge would silently erase a known non-zero brightness.
+ *
+ * DALI drivers report `brightness: 0` whenever the light is physically off,
+ * but we want to remember the last intended level so:
+ *   - sliders stay at the correct position across all UIs while off, and
+ *   - turning back on restores that level without needing to re-set the fader.
+ */
+function shouldPreserveBrightness(
+  existing: Record<string, unknown>,
+  merged: Record<string, unknown>,
+): boolean {
+  const turningOff = merged.on === false || merged.power === false;
+  return turningOff && !merged.brightness && !!existing.brightness;
+}
+
+/** Merge a driver state patch into the existing stored state. */
+function mergeDeviceState(
+  existing: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...existing, ...patch };
+  if (shouldPreserveBrightness(existing, merged)) merged.brightness = existing.brightness;
+  return merged;
+}
+
 /** Live state/status store backed by Redis. */
 export const redisStateStore: LiveStateStore = {
-  setDeviceState: (deviceId, state) => writeJson(`device:${deviceId}:state`, state),
+  setDeviceState: async (deviceId, patch) => {
+    const existing = (await readJson<Record<string, unknown>>(`device:${deviceId}:state`)) ?? {};
+    await writeJson(`device:${deviceId}:state`, mergeDeviceState(existing, patch));
+  },
   getDeviceState: (deviceId) => readJson<Record<string, unknown>>(`device:${deviceId}:state`),
   setDeviceStatus: (deviceId, status: DeviceStatus) =>
     writeJson(`device:${deviceId}:status`, status),

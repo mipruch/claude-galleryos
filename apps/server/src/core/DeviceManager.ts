@@ -224,12 +224,16 @@ export class DeviceManager {
     });
 
     host.on("state", (event) => {
-      void this.opts.state.setDeviceState(event.endpointId, event.state);
-      this.opts.eventBus.emit({
-        type: "device.state.changed",
-        deviceId: event.endpointId,
-        state: event.state,
-        source: event.source,
+      // Write first, then read back the full merged state so the broadcast
+      // always includes the complete picture (e.g. preserved brightness).
+      void this.opts.state.setDeviceState(event.endpointId, event.state).then(async () => {
+        const full = (await this.opts.state.getDeviceState(event.endpointId)) ?? event.state;
+        this.opts.eventBus.emit({
+          type: "device.state.changed",
+          deviceId: event.endpointId,
+          state: full,
+          source: event.source,
+        });
       });
     });
 
@@ -304,10 +308,11 @@ export class DeviceManager {
 
       if (result.success && result.state) {
         await this.opts.state.setDeviceState(deviceId, result.state);
+        const full = (await this.opts.state.getDeviceState(deviceId)) ?? result.state;
         this.opts.eventBus.emit({
           type: "device.state.changed",
           deviceId,
-          state: result.state,
+          state: full,
           source: "command",
         });
       }

@@ -72,64 +72,113 @@ export function makeWebSocketHandlers(ctx: ApiContext): WebSocketHandler<unknown
         return;
       }
       log.info("message", { event: msg.event, data: msg.data });
-      await handleClientMessage(ws, ctx, msg);
+      await dispatch(ws, ctx, msg.event ?? "", msg.data ?? {});
     },
   };
 }
 
-async function handleClientMessage(
+// ── per-event handlers ────────────────────────────────────────────────────────
+
+type WsData = Record<string, unknown>;
+type Handler = (ws: ServerWebSocket<unknown>, ctx: ApiContext, data: WsData) => Promise<void>;
+
+/** Route client messages to their handlers. Unknown events get an error reply. */
+async function dispatch(
   ws: ServerWebSocket<unknown>,
   ctx: ApiContext,
-  msg: { event?: string; data?: Record<string, unknown> },
+  event: string,
+  data: WsData,
 ): Promise<void> {
-  const data = msg.data ?? {};
-  switch (msg.event) {
-    case "device:command": {
-      const deviceId = String(data.deviceId ?? "");
-      try {
-        const result = await ctx.deviceManager.execute(
-          deviceId,
-          String(data.command ?? ""),
-          (data.params as Record<string, unknown>) ?? {},
-        );
-        ws.send(envelope("device:command:ack", { deviceId, ...result }));
-      } catch (err) {
-        ws.send(envelope("device:command:ack", { deviceId, error: errMsg(err) }));
-      }
-      return;
-    }
-    case "device:subscribe":
-      ws.subscribe(`device:${String(data.deviceId ?? "")}`);
-      return;
-    case "device:unsubscribe":
-      ws.unsubscribe(`device:${String(data.deviceId ?? "")}`);
-      return;
-    case "scene:execute": {
-      const sceneId = String(data.sceneId ?? "");
-      if (!sceneId) {
-        ws.send(envelope("scene:execute:ack", { error: "sceneId required" }));
-        return;
-      }
-      // Validate the scene exists, then trigger the run via the EventBus. The
-      // SceneEngine (subscribed to `scene.execute.requested`) does the work and
-      // emits scene:started / scene:completed / scene:failed, which the broadcast
-      // bridge relays to all clients. We ack immediately with the executionId.
-      const scene = await ctx.scenes.get(sceneId);
-      if (!scene) {
-        ws.send(envelope("scene:execute:ack", { sceneId, error: "scene not found" }));
-        return;
-      }
-      const executionId = crypto.randomUUID();
-      const source = data.source ? String(data.source) : "websocket";
-      ctx.eventBus.emit({ type: "scene.execute.requested", sceneId, source, executionId });
-      ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
-      return;
-    }
-    default:
-      ws.send(envelope("error", { message: `unknown event: ${msg.event ?? "(none)"}` }));
-      return;
+  const handler = CLIENT_HANDLERS[event];
+  if (handler) return handler(ws, ctx, data);
+  ws.send(envelope("error", { message: `unknown event: ${event || "(none)"}` }));
+}
+
+/** Guard: data carries a non-empty deviceId and a non-empty state patch. */
+function isStatePatch(d: WsData): d is { deviceId: string; state: Record<string, unknown> } {
+  const patch = d.state as Record<string, unknown> | undefined;
+  return !!d.deviceId && !!patch && Object.keys(patch).length > 0;
+}
+
+/**
+ * Persist a UI-originated state patch in Redis and broadcast to all clients
+ * without executing a driver command. Used to store "desired" values
+ * (e.g. brightness while a light is off) so all UIs stay in sync.
+ */
+async function onStatePatch(
+  _ws: ServerWebSocket<unknown>,
+  ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  if (!isStatePatch(data)) return;
+  const { deviceId, state: patch } = data;
+  await ctx.state.setDeviceState(deviceId, patch);
+  const stored = await ctx.state.getDeviceState(deviceId);
+  ctx.eventBus.emit({ type: "device.state.changed", deviceId, state: stored ?? patch, source: "ui" });
+}
+
+async function onDeviceCommand(
+  ws: ServerWebSocket<unknown>,
+  ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  const deviceId = String(data.deviceId ?? "");
+  // Use Object.assign to default params without an extra ?? branch.
+  const params = Object.assign({}, data.params as Record<string, unknown>);
+  try {
+    const result = await ctx.deviceManager.execute(deviceId, String(data.command ?? ""), params);
+    ws.send(envelope("device:command:ack", { deviceId, ...result }));
+  } catch (err) {
+    ws.send(envelope("device:command:ack", { deviceId, error: errMsg(err) }));
   }
 }
+
+async function onSubscribe(
+  ws: ServerWebSocket<unknown>,
+  _ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  ws.subscribe(`device:${String(data.deviceId ?? "")}`);
+}
+
+async function onUnsubscribe(
+  ws: ServerWebSocket<unknown>,
+  _ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  ws.unsubscribe(`device:${String(data.deviceId ?? "")}`);
+}
+
+async function onSceneExecute(
+  ws: ServerWebSocket<unknown>,
+  ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  const sceneId = String(data.sceneId ?? "");
+  if (!sceneId) {
+    ws.send(envelope("scene:execute:ack", { error: "sceneId required" }));
+    return;
+  }
+  const scene = await ctx.scenes.get(sceneId);
+  if (!scene) {
+    ws.send(envelope("scene:execute:ack", { sceneId, error: "scene not found" }));
+    return;
+  }
+  const executionId = crypto.randomUUID();
+  const source = data.source ? String(data.source) : "websocket";
+  ctx.eventBus.emit({ type: "scene.execute.requested", sceneId, source, executionId });
+  ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
+}
+
+const CLIENT_HANDLERS: Record<string, Handler> = {
+  "device:state:patch": onStatePatch,
+  "device:command": onDeviceCommand,
+  "device:subscribe": onSubscribe,
+  "device:unsubscribe": onUnsubscribe,
+  "scene:execute": onSceneExecute,
+};
+
+// ── broadcast bridge ──────────────────────────────────────────────────────────
 
 /** Subscribe to the EventBus and broadcast mapped events to all clients. */
 export function setupBroadcast(server: Server<unknown>, ctx: ApiContext): void {

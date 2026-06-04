@@ -286,18 +286,21 @@ Shared logic, used by TcpInputServer (and future OSC server):
 
 ## Priority 5 — UI (later)
 
-Tracked here but not started yet.
+Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project, separated by route-based layouts. Shared Pinia stores, shared components, single WebSocket connection.
 
-Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project, separated by route-based layouts. Shared Pinia stores, shared components, single Socket.io connection.
-
-- [ ] `apps/ui` — Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue
+- [~] `apps/ui` — Vue 3 + Vite + Pinia + TailwindCSS v4 + shadcn-vue
   - [ ] `AdminLayout` — full-nav shell for `/admin/**` routes
   - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
   - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
-  - [ ] User pages: main widget panel (driven by `ui_layouts`), status overview
-  - [ ] Shared stores: devices, scenes, connections, system, layout, logs, drivers
+  - [x] **User panel — device control slice (no routing yet):** brightness fader,
+        BSS fader + mute, on/off switch. Each in a shared `DeviceCard` (title +
+        description tooltip + online dot). Widget chosen by driver `subtype`.
+  - [x] **`useDevicesStore`** — hydrates every device + Redis state/status over
+        HTTP once, then live-updates over the `/ws` WebSocket; control commands
+        go back over the same socket as `device:command`.
+  - [ ] Remaining shared stores: scenes, connections, system, layout, logs, drivers
 
-See README §10–11 for full spec.
+See README §10–11 for full spec; see §11 for the implemented slice.
 
 ---
 
