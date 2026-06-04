@@ -223,6 +223,12 @@ Redis key additions to `src/redis/state.ts`:
 - [x] `scene:execute` handler in `src/api/ws.ts`: validates scene exists; generates executionId; emits `scene.execute.requested`; replies `scene:execute:ack { executionId, status: "requested" }`
 - [x] SceneEngine listens for `scene.execute.requested` and runs; `scene:started/completed/failed` already broadcast via the EventBus bridge
 
+### 2.5 WebSocket: device:state de-duplication ✓
+- [x] `setupBroadcast` (`src/api/ws.ts`) now de-duplicates `device:state` per device by content. One user action emits two identical `device.state.changed` events — the optimistic `command` result and the driver's `echo` — but the UI only needs the change once. The bridge tracks the last state sent per device and skips a broadcast when the serialized state is unchanged; suppressed echoes are still logged server-side. Non-state events always pass through. Covered by `test/api/ws-broadcast.test.ts`.
+
+### 2.6 WebSocket: device:command ack contract ✓
+- [x] Optimistic-update flow: origin emits `device:command`, applies the change locally, and waits for `device:command:ack` (sent to the origin only). On **success** the canonical state is persisted and broadcast once to all UIs (via §2.5); on **failure** nothing is persisted or broadcast (just a `warn` log) and the origin reverts. The ack always carries an explicit `success: boolean` — including the thrown-exception path — so the UI can uniformly decide stay-vs-revert. Covered by `test/api/ws-command.test.ts`.
+
 ---
 
 ## Priority 3 — Scheduling
