@@ -22,6 +22,7 @@ import {
   filterByTypes,
   groupDevices,
   roomOptionsOf,
+  searchDevices,
   type DeviceRecord,
   type DeviceState,
   type DeviceStatus,
@@ -44,10 +45,13 @@ export const useDevicesStore = defineStore('devices', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // ── view preferences (grouping + type/room filters) ───────────────────────
+  // ── view preferences (grouping + type/room filters + search) ──────────────
   const groupMode = ref<GroupMode>('off')
   const typeFilter = ref<string[]>([])
   const roomFilter = ref<string[]>([])
+  const search = ref('')
+  /** A non-blank search query overrides the chip filters (searches all devices). */
+  const searching = computed(() => search.value.trim().length > 0)
 
   // Devices we know how to render, sorted by the admin-defined display order.
   const devices = computed(() =>
@@ -65,9 +69,12 @@ export const useDevicesStore = defineStore('devices', () => {
   })
   const roomOptions = computed(() => roomOptionsOf(devices.value, rooms.value))
 
-  // Devices after the active type + room filters, then partitioned by group mode.
+  // Visible devices, then partitioned by group mode. While searching, the chip
+  // filters are bypassed and the query runs across every enabled device.
   const filteredDevices = computed(() =>
-    filterByRooms(filterByTypes(devices.value, typeFilter.value), roomFilter.value),
+    searching.value
+      ? searchDevices(devices.value, search.value, rooms.value)
+      : filterByRooms(filterByTypes(devices.value, typeFilter.value), roomFilter.value),
   )
   const groups = computed(() => groupDevices(filteredDevices.value, groupMode.value, rooms.value))
 
@@ -213,10 +220,12 @@ export const useDevicesStore = defineStore('devices', () => {
     error,
     devices,
     connected,
-    // grouping + filtering
+    // grouping + filtering + search
     groupMode,
     typeFilter,
     roomFilter,
+    search,
+    searching,
     deviceTypes,
     typeCounts,
     roomOptions,

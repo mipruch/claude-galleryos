@@ -47,7 +47,7 @@ const groupCount = (group: DeviceGroup): number =>
   <p v-else-if="store.loading" class="text-muted-foreground text-sm">Loading devices…</p>
 
   <p v-else-if="store.devices.length" class="text-muted-foreground text-sm">
-    No devices match the selected filters.
+    {{ store.searching ? 'No devices match your search.' : 'No devices match the selected filters.' }}
   </p>
 
   <p v-else class="text-muted-foreground text-sm">

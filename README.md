@@ -1485,6 +1485,11 @@ Nad gridem widgetů je **toolbar** (`components/devices/DeviceToolbar.vue`) s
   (+ „Unassigned“ pro zařízení bez místnosti), s počtem. Oba mají **Clear**.
 - **Prázdné (pod)skupiny se nikdy nevykreslí** — `groupDevices` je staví jen z
   reálně přítomných zařízení, takže po filtru zmizí i celé skupiny/podskupiny.
+- **Search bar** (vpravo od filtrů) — volné, víceslovní hledání přes název,
+  popis, místnost, typ i subtype; case- a **diakritiku-insensitive** (`Sál`
+  matchuje `sal`), všechny termy musí sednout (AND). Aktualizuje se při každém
+  stisku. **Když je hledání aktivní, chip filtry se ignorují** (a skryjí) —
+  hledá se přes všechna povolená zařízení; seskupení (`groupMode`) ale platí dál.
 
 Logika je v **čistých, testovaných helperech** (`lib/devices.ts`):
 `groupDevices(devices, mode, rooms)` → `DeviceGroup[]` s vnořenými `subgroups`
@@ -1492,9 +1497,11 @@ Logika je v **čistých, testovaných helperech** (`lib/devices.ts`):
 abecedně), `filterByTypes`, `filterByRooms`, `roomOptionsOf`, `deviceTypesOf`,
 `typeLabel`. Stav (`groupMode`, `typeFilter`, `roomFilter`) i odvozené `groups` /
 `filteredDevices` / `typeCounts` / `roomOptions` žijí v `useDevicesStore`; pro
-názvy místností store načítá i `GET /api/v1/rooms`. `DeviceGrid.vue` jen renderuje
-`store.groups` (a hlásí „No devices match the selected filters“, když filtry vše
-odříznou). 12 unit testů pokrývá helpery.
+názvy místností store načítá i `GET /api/v1/rooms`. Hledání řeší
+`searchDevices(devices, query, rooms)` + `search` / `searching` ve store
+(`searching` přepíná `filteredDevices` na výsledky hledání místo chip filtrů).
+`DeviceGrid.vue` jen renderuje `store.groups` (a hlásí „No devices match your
+search / the selected filters“ podle kontextu). 18 unit testů pokrývá helpery.
 
 ### Princip fungování
 

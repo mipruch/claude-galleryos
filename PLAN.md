@@ -327,6 +327,11 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `filterByRooms`, `roomOptionsOf`, `deviceTypesOf`, `typeLabel`); state +
         derived `groups`/`filteredDevices`/`typeCounts`/`roomOptions` in the
         store, which also loads `GET /rooms`.
+  - [x] **Device search (`searchDevices`):** search box right of the filters —
+        loose, multi-term, case/accent-insensitive matching across name,
+        description, room, type and subtype; updates per keystroke. A non-blank
+        query bypasses (and hides) the chip filters and searches all enabled
+        devices; grouping still applies.
   - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.

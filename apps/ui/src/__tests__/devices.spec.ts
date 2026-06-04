@@ -6,6 +6,7 @@ import {
   filterByTypes,
   groupDevices,
   roomOptionsOf,
+  searchDevices,
   typeLabel,
   type DeviceRecord,
 } from '@/lib/devices'
@@ -70,6 +71,41 @@ describe('roomOptionsOf', () => {
       { key: 'r1', name: 'Hall', count: 1 },
       { key: '__unassigned__', name: 'Unassigned', count: 1 },
     ])
+  })
+})
+
+describe('searchDevices', () => {
+  const rooms = [room('r1', 'Sál A', 0), room('r2', 'Foyer', 1)]
+  const list: DeviceRecord[] = [
+    { id: 'a', name: 'Projector', description: 'Main hall beamer', type: 'video', roomId: 'r1' } as unknown as DeviceRecord,
+    { id: 'b', name: 'Ceiling Light', description: null, type: 'light', roomId: 'r2' } as unknown as DeviceRecord,
+    { id: 'c', name: 'Mic 1', description: 'Lectern microphone', type: 'audio', roomId: null } as unknown as DeviceRecord,
+  ]
+
+  it('returns everything for a blank query', () => {
+    expect(searchDevices(list, '   ', rooms)).toHaveLength(3)
+  })
+
+  it('matches on name', () => {
+    expect(searchDevices(list, 'project', rooms).map((d) => d.id)).toEqual(['a'])
+  })
+
+  it('matches on description and is case-insensitive', () => {
+    expect(searchDevices(list, 'LECTERN', rooms).map((d) => d.id)).toEqual(['c'])
+  })
+
+  it('matches on the room name, accent-insensitively', () => {
+    // "sal a" (no diacritics) matches room "Sál A".
+    expect(searchDevices(list, 'sal a', rooms).map((d) => d.id)).toEqual(['a'])
+  })
+
+  it('matches on the type label', () => {
+    expect(searchDevices(list, 'lights', rooms).map((d) => d.id)).toEqual(['b'])
+  })
+
+  it('requires every term to match (AND)', () => {
+    expect(searchDevices(list, 'hall projector', rooms).map((d) => d.id)).toEqual(['a'])
+    expect(searchDevices(list, 'hall mic', rooms)).toHaveLength(0)
   })
 })
 

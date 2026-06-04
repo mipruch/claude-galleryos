@@ -123,6 +123,48 @@ export function filterByRooms(devices: DeviceRecord[], roomKeys: string[]): Devi
   return devices.filter((d) => allow.has(roomKeyOf(d)))
 }
 
+/** Lowercase + strip diacritics, so "Sál" matches "sal". */
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+}
+
+/** All human-readable text a device can be matched on, normalized. */
+function deviceHaystack(device: DeviceRecord, roomName: string | undefined): string {
+  return normalize(
+    [
+      device.name,
+      device.description ?? '',
+      roomName ?? '',
+      device.type,
+      typeLabel(device.type),
+      device.subtype ?? '',
+    ].join(' '),
+  )
+}
+
+/**
+ * Loose, multi-field search across name, description, room, type and subtype.
+ * Case- and accent-insensitive; every whitespace-separated term must appear
+ * somewhere (AND), so "hall light" matches a light in the Hall. An empty query
+ * returns the input unchanged.
+ */
+export function searchDevices(
+  devices: DeviceRecord[],
+  query: string,
+  rooms: RoomDTO[],
+): DeviceRecord[] {
+  const terms = normalize(query).split(/\s+/).filter(Boolean)
+  if (!terms.length) return devices
+  const roomName = new Map(rooms.map((r) => [r.id, r.name]))
+  return devices.filter((d) => {
+    const haystack = deviceHaystack(d, d.roomId ? roomName.get(d.roomId) : undefined)
+    return terms.every((t) => haystack.includes(t))
+  })
+}
+
 /** A room available to filter on, with its device count. */
 export interface RoomOption {
   /** Room id, or the sentinel for room-less devices. */
