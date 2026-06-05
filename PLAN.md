@@ -338,6 +338,11 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         run (optimistic + toast); Esc/⌫ steps back, Esc/click-outside closes.
         Results are a flat `PaletteItem[]` so future "Run scene: …" items slot in
         via their own `onSelect`. Header trigger button for discoverability.
+  - [x] **Command confirm/rollback:** `sendCommand` is optimistic but now awaits
+        `device:command:ack` and returns `Promise<boolean>` — on `success:false`
+        it rolls back the optimistic patch (`snapshotState`/`applyRevert`) and
+        shows an error toast; on success it adopts any authoritative `state`.
+        Per-device FIFO; a dropped socket resolves outstanding commands as failed.
   - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.

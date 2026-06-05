@@ -1437,8 +1437,15 @@ demo, že datová cesta funguje od Redisu přes HTTP/WebSocket až do komponent.
      `1 + 2×N` per-device dotazů na hydrataci živých hodnot z Redisu.
   2. Nativní Bun WebSocket (`/ws`, JSON obálka `{ event, data }`) streamuje
      `device:state` / `device:online` / `device:offline`.
-  3. Ovládací příkazy jdou **zpět stejným socketem** jako `device:command`
-     (optimistický local update → autoritativní hodnota dorazí přes `device:state`).
+  3. Ovládací příkazy jdou **zpět stejným socketem** jako `device:command`.
+     `sendCommand` udělá **optimistický** local update a vrací `Promise<boolean>`,
+     který se vyřeší až **`device:command:ack`**: při `success === false` se
+     optimistická změna **vrátí zpět** (snapshot dotčených klíčů přes
+     `snapshotState` / `applyRevert`) a zobrazí se error toast s hláškou;
+     při úspěchu se případný `state` z acku adoptuje (autoritativní hodnota).
+     In-flight příkazy jsou per-device FIFO; výpadek socketu je vyřeší jako
+     `false` (bez revertu — výsledek je neznámý), aby ack po reconnectu nesedl
+     na špatný příkaz.
 - **Stav připojení** je reaktivní (`@vueuse/core` `useWebSocket`, auto-reconnect);
   ztráta spojení zobrazí offline banner. Chyby → `vue-sonner` toast.
 - Vstupní bod je `App.vue` (žádný router) — Vite dev proxy přeposílá `/api`

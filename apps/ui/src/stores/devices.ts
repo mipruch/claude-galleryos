@@ -11,11 +11,12 @@
  */
 
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import type { RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
+  applyRevert,
   deviceKind,
   deviceTypesOf,
   filterByRooms,
@@ -23,6 +24,7 @@ import {
   groupDevices,
   roomOptionsOf,
   searchDevices,
+  snapshotState,
   type DeviceRecord,
   type DeviceState,
   type DeviceStatus,
@@ -116,6 +118,7 @@ export const useDevicesStore = defineStore('devices', () => {
     'device:state': (d) => mergeState(d.deviceId, d.state),
     'device:online': (d) => setOnline(d.deviceId, true),
     'device:offline': (d) => setOnline(d.deviceId, false),
+    'device:command:ack': (d) => onCommandAck(d),
     'driver:error': (d) => {
       if (d.message) toast.error('Driver error', { description: d.message })
     },
@@ -136,6 +139,56 @@ export const useDevicesStore = defineStore('devices', () => {
   function setOnline(id: string, online: boolean): void {
     if (id) statuses.value[id] = { ...statusOf(id), online }
   }
+
+  // ── command acknowledgements (optimistic confirm / revert) ─────────────────
+  // Each in-flight command remembers the state it would revert to on failure and
+  // a resolver for its sendCommand() promise. Acks are per-device and FIFO (the
+  // server serialises commands per endpoint and the socket preserves order).
+  interface PendingCommand {
+    revert?: DeviceState
+    resolve: (ok: boolean) => void
+  }
+  const pending = new Map<string, PendingCommand[]>()
+
+  function enqueuePending(id: string, entry: PendingCommand): void {
+    const queue = pending.get(id)
+    if (queue) queue.push(entry)
+    else pending.set(id, [entry])
+  }
+
+  /** Pop the oldest in-flight command for a device (FIFO). */
+  function dequeuePending(id: string): PendingCommand | undefined {
+    const queue = pending.get(id)
+    const entry = queue?.shift()
+    if (queue && queue.length === 0) pending.delete(id)
+    return entry
+  }
+
+  const deviceName = (id: string): string =>
+    records.value.find((r) => r.id === id)?.name ?? 'Device'
+
+  function onCommandAck(d: ServerMessageData<'device:command:ack'>): void {
+    const entry = dequeuePending(d.deviceId)
+    if (d.success === false) {
+      if (entry?.revert) states.value[d.deviceId] = applyRevert(stateOf(d.deviceId), entry.revert)
+      toast.error(`${deviceName(d.deviceId)}: command failed`, {
+        description: d.error ?? 'Unknown error',
+      })
+    } else if (d.state) {
+      // Authoritative post-command state (may correct a clamped optimistic value).
+      mergeState(d.deviceId, d.state)
+    }
+    entry?.resolve(d.success !== false)
+  }
+
+  // A dropped socket can never deliver outstanding acks — resolve them as failed
+  // (without reverting: the command's true outcome is unknown) so awaiters don't
+  // hang and stale acks can't mismatch after a reconnect.
+  watch(connected, (isConnected) => {
+    if (isConnected) return
+    for (const queue of pending.values()) for (const entry of queue) entry.resolve(false)
+    pending.clear()
+  })
 
   /** Optimistic local merge — used while dragging, before a command is sent. */
   function patchState(id: string, patch: DeviceState): void {
@@ -189,22 +242,28 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   /**
-   * Send a control command over the WebSocket. `optimistic` is merged into the
-   * local state immediately so the control reflects the change without waiting
-   * for the round-trip; the authoritative value arrives via `device:state`.
+   * Send a control command over the WebSocket and resolve to whether it
+   * succeeded. `optimistic` is merged into the local state immediately for
+   * instant feedback; the command then awaits the server's `device:command:ack`.
+   * On failure the optimistic patch is rolled back and an error toast is shown.
    */
   function sendCommand(
     deviceId: string,
     command: string,
     params: Record<string, unknown> = {},
     optimistic?: DeviceState,
-  ): void {
-    if (optimistic) mergeState(deviceId, optimistic)
+  ): Promise<boolean> {
     if (!connected.value) {
       toast.warning('Not connected', { description: 'Command was not sent (offline).' })
-      return
+      return Promise.resolve(false)
     }
-    send(JSON.stringify({ event: 'device:command', data: { deviceId, command, params } }))
+    const revert = optimistic ? snapshotState(stateOf(deviceId), optimistic) : undefined
+    if (optimistic) mergeState(deviceId, optimistic)
+
+    return new Promise<boolean>((resolve) => {
+      enqueuePending(deviceId, { revert, resolve })
+      send(JSON.stringify({ event: 'device:command', data: { deviceId, command, params } }))
+    })
   }
 
   function dispose(): void {

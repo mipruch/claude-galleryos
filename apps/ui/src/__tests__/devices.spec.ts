@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import type { RoomDTO } from '@gallery/types'
 import {
+  applyRevert,
   deviceTypesOf,
   filterByRooms,
   filterByTypes,
   groupDevices,
   roomOptionsOf,
   searchDevices,
+  snapshotState,
   typeLabel,
   type DeviceRecord,
 } from '@/lib/devices'
@@ -19,6 +21,32 @@ function dev(id: string, type: string, roomId: string | null = null): DeviceReco
 function room(id: string, name: string, displayOrder: number): RoomDTO {
   return { id, name, displayOrder } as unknown as RoomDTO
 }
+
+describe('snapshotState / applyRevert (optimistic rollback)', () => {
+  it('snapshots only the patched keys, marking absent ones undefined', () => {
+    const current = { level: 0.5, muted: false }
+    expect(snapshotState(current, { level: 1, on: true })).toEqual({ level: 0.5, on: undefined })
+  })
+
+  it('round-trips: applying the snapshot restores the original', () => {
+    const current = { level: 0.5, muted: false }
+    const patch = { level: 1, on: true }
+    const snapshot = snapshotState(current, patch)
+    const optimistic = { ...current, ...patch } // { level: 1, muted: false, on: true }
+    expect(applyRevert(optimistic, snapshot)).toEqual(current)
+  })
+
+  it('deletes keys that did not exist before the patch', () => {
+    const reverted = applyRevert({ on: true, power: 'on' }, { on: undefined, power: undefined })
+    expect(reverted).toEqual({})
+  })
+
+  it('does not mutate the input', () => {
+    const optimistic = { level: 1 }
+    applyRevert(optimistic, { level: 0.5 })
+    expect(optimistic).toEqual({ level: 1 })
+  })
+})
 
 describe('typeLabel', () => {
   it('maps known types and capitalises unknown ones', () => {

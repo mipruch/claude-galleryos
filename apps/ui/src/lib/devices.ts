@@ -62,6 +62,25 @@ export function readOn(state: DeviceState | undefined, ...keys: string[]): boole
   return false
 }
 
+// ── optimistic-update helpers (snapshot + revert for command rollback) ───────
+
+/** Capture the pre-patch values of the keys a patch will touch (absent → undefined). */
+export function snapshotState(current: DeviceState, patch: DeviceState): DeviceState {
+  const previous: DeviceState = {}
+  for (const key of Object.keys(patch)) previous[key] = current[key]
+  return previous
+}
+
+/** Restore snapshotted keys onto a copy of `current`, deleting those absent before. */
+export function applyRevert(current: DeviceState, previous: DeviceState): DeviceState {
+  const next = { ...current }
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete next[key]
+    else next[key] = value
+  }
+  return next
+}
+
 // ── grouping & filtering (pure helpers, used by the store + toolbar) ─────────
 
 /** How the device grid is partitioned. */

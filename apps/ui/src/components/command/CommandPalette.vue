@@ -82,10 +82,12 @@ function openDevice(device: DeviceRecord): void {
   focusInput()
 }
 
-function runAction(device: DeviceRecord, action: DeviceAction): void {
-  store.sendCommand(device.id, action.command, action.params, action.optimistic)
-  toast.success(device.name, { description: action.label })
+async function runAction(device: DeviceRecord, action: DeviceAction): Promise<void> {
   close()
+  // Confirm only once the server acks success; the store rolls back and toasts
+  // the error itself on failure.
+  const ok = await store.sendCommand(device.id, action.command, action.params, action.optimistic)
+  if (ok) toast.success(device.name, { description: action.label })
 }
 
 function goBack(): void {
