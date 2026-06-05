@@ -332,6 +332,12 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         description, room, type and subtype; updates per keystroke. A non-blank
         query bypasses (and hides) the chip filters and searches all enabled
         devices; grouping still applies.
+  - [x] **Command palette (⌘K, `CommandPalette` + `useCommandPalette`):**
+        Raycast/Notion-style keyboard-first modal — search a device, ↑/↓ select,
+        ↵ to drill into its quick actions (from `deviceActions(device)`), ↵ to
+        run (optimistic + toast); Esc/⌫ steps back, Esc/click-outside closes.
+        Results are a flat `PaletteItem[]` so future "Run scene: …" items slot in
+        via their own `onSelect`. Header trigger button for discoverability.
   - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.

@@ -1503,6 +1503,30 @@ názvy místností store načítá i `GET /api/v1/rooms`. Hledání řeší
 `DeviceGrid.vue` jen renderuje `store.groups` (a hlásí „No devices match your
 search / the selected filters“ podle kontextu). 18 unit testů pokrývá helpery.
 
+#### Implementováno (command palette — ⌘K)
+
+Klávesnicí ovládaný **command palette** (Raycast/Notion styl,
+`components/command/CommandPalette.vue`) pro bleskové ovládání jednoho zařízení:
+
+- **⌘K / Ctrl K** (nebo tlačítko „Search ⌘K“ v hlavičce) otevře modální okno;
+  **Esc** nebo klik mimo zavře. Globální zkratka + sdílený open-state žijí v
+  `composables/useCommandPalette.ts` (singleton), takže okno umí otevřít i
+  hlavička bez prop-drillingu.
+- **Tok:** napiš (volné hledání jako v gridu — `searchDevices`) → **↑/↓**
+  procházej → **↵** vyber zařízení → zobrazí se jeho **akce** (Turn on/off, Mute/
+  Unmute, presety 100/50/0 %, Pulse…) odvozené z `capabilities` → **↵** spustí
+  (přes `store.sendCommand`, optimisticky + toast). **Esc** / **⌫** na prázdném
+  dotazu se vrátí z akcí zpět na hledání. Plně klávesnicová navigace (myš funguje
+  taky); řádky se drží ve viewportu, výběr wrapuje.
+- **Akce** staví čistý helper `deviceActions(device)` (`lib/commands.ts`) — mapuje
+  `capabilities` na param-less / jednoduché příkazy se stejným `command` /
+  `params` / `optimistic` tvarem jako widgety; příkazy s parametry (`setInput`,
+  `recall`, `send`) vynechává.
+- **Rozšiřitelné na scény:** výsledky jsou plochý seznam `PaletteItem`ů, každý se
+  svým `onSelect`. Až přibudou scény, stačí přidat položku „Run scene: Cinema“ s
+  `onSelect: () => runScene(...)` — žádná změna toku. 4 unit testy pro
+  `deviceActions` (celkem 22).
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.

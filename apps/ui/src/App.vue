@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
-import { WifiIcon, WifiOffIcon } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
 import 'vue-sonner/style.css'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import DeviceGrid from '@/components/devices/DeviceGrid.vue'
 import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
+import CommandPalette from '@/components/command/CommandPalette.vue'
 import { useDevicesStore } from '@/stores/devices'
+import { useCommandPalette } from '@/composables/useCommandPalette'
 
 const store = useDevicesStore()
+const { openPalette } = useCommandPalette()
+
+const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
 
 onMounted(() => store.init())
 onBeforeUnmount(() => store.dispose())
@@ -35,6 +41,19 @@ onBeforeUnmount(() => store.dispose())
             <p class="text-muted-foreground text-sm">Device control panel</p>
           </div>
           <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs outline-none focus-visible:ring-2"
+              aria-label="Open command palette"
+              @click="openPalette()"
+            >
+              <SearchIcon class="size-3.5" />
+              <span class="hidden sm:inline">Search</span>
+              <kbd class="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-sans text-[10px]">
+                {{ shortcutHint }}
+              </kbd>
+            </button>
+
             <ConnectionStatus />
 
             <span
@@ -51,6 +70,7 @@ onBeforeUnmount(() => store.dispose())
         <DeviceGrid />
       </main>
 
+      <CommandPalette />
       <Toaster />
     </div>
   </TooltipProvider>
