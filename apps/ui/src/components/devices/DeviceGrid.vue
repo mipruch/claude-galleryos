@@ -46,8 +46,14 @@ const groupCount = (group: DeviceGroup): number =>
 
   <p v-else-if="store.loading" class="text-muted-foreground text-sm">Loading devices…</p>
 
-  <p v-else-if="store.devices.length" class="text-muted-foreground text-sm">
+  <!-- Devices exist in this scope, but the filter/search hid them all. -->
+  <p v-else-if="store.scopedDevices.length" class="text-muted-foreground text-sm">
     {{ store.searching ? 'No devices match your search.' : 'No devices match the selected filters.' }}
+  </p>
+
+  <!-- The room itself has no devices. -->
+  <p v-else-if="store.roomScope" class="text-muted-foreground text-sm">
+    No devices in this room yet.
   </p>
 
   <p v-else class="text-muted-foreground text-sm">

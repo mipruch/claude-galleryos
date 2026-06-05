@@ -304,9 +304,15 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
   - [ ] `AdminLayout` — full-nav shell for `/admin/**` routes
   - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
   - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
-  - [x] **User panel — device control slice (no routing yet):** brightness fader,
-        BSS fader + mute, on/off switch. Each in a shared `DeviceCard` (title +
-        description tooltip + online dot). Widget chosen by driver `subtype`.
+  - [x] **User panel — device control slice:** brightness fader, BSS fader +
+        mute, on/off switch. Each in a shared `DeviceCard` (title + description
+        tooltip + online dot). Widget chosen by driver `subtype`.
+  - [x] **Routing + room sidebar (`vue-router`, `AppSidebar`):** `/` = all
+        devices, `/rooms/:roomId` = that room (URL is the source of truth; a
+        refresh stays put, unknown paths → `/`). The store carries a `roomScope`
+        (set from the route) so the toolbar/grid run on `scopedDevices`; the
+        command palette stays global (`store.devices`). Room/Type grouping +
+        filters adapt to scope.
   - [x] **`useDevicesStore`** — hydrates every device + Redis state/status over
         HTTP once, then live-updates over the `/ws` WebSocket; control commands
         go back over the same socket as `device:command`.

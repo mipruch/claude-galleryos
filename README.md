@@ -1534,6 +1534,27 @@ Klávesnicí ovládaný **command palette** (Raycast/Notion styl,
   `onSelect: () => runScene(...)` — žádná změna toku. 4 unit testy pro
   `deviceActions` (celkem 22).
 
+#### Implementováno (routing + sidebar místností)
+
+User UI je teď **routovaná aplikace** (`vue-router`, `createWebHistory`) s
+minimalistickým **sidebarem** (`components/layout/AppSidebar.vue`):
+
+- **Routy:** `/` = „All devices“ (homepage, vše), `/rooms/:roomId` = stránka
+  místnosti. URL je zdroj pravdy — **refresh tě nechá na stejné stránce**
+  (Vite dev i `vite preview` mají SPA fallback). Neznámé cesty redirectují na `/`.
+- **Sidebar** vypíše „All devices“ + každou místnost (řazeno dle `displayOrder`)
+  s počtem zařízení; aktivní položka se zvýrazní (`RouterLink` custom slot).
+- **Scope ve store:** `App.vue` sleduje `route.params.roomId` a volá
+  `store.setRoomScope(...)` (immediate, takže refresh obnoví scope). Toolbar i
+  grid běží nad **`scopedDevices`** (= zařízení dané místnosti, nebo všechna na
+  homepage); na stránce místnosti se skryje seskupení/filtr „Room“. Změna scope
+  resetuje grouping/filtry/hledání. Prázdná místnost hlásí „No devices in this
+  room yet.“
+- **Command palette zůstává globální** — hledá nad `store.devices` (všechna
+  zařízení) bez ohledu na aktuální routu, takže ovládáš cokoli odkudkoli.
+- Testy: 3 store testy (scope, počty, reset filtrů) + aktualizovaný App mount
+  s routerem (celkem 29).
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.

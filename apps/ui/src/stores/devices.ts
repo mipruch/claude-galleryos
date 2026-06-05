@@ -47,13 +47,45 @@ export const useDevicesStore = defineStore('devices', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  // ── room scope (driven by the route; null = home / all devices) ───────────
+  const roomScope = ref<string | null>(null)
+
+  /** The room the current page is scoped to, if any. */
+  const currentRoom = computed(() =>
+    roomScope.value ? (rooms.value.find((r) => r.id === roomScope.value) ?? null) : null,
+  )
+
+  /** Renderable devices limited to the current room scope (all devices on home). */
+  const scopedDevices = computed(() =>
+    roomScope.value ? devices.value.filter((d) => d.roomId === roomScope.value) : devices.value,
+  )
+
+  /** Device count per room (across *all* devices) — for the sidebar badges. */
+  const roomDeviceCounts = computed<Record<string, number>>(() => {
+    const counts: Record<string, number> = {}
+    for (const d of devices.value) {
+      if (d.roomId) counts[d.roomId] = (counts[d.roomId] ?? 0) + 1
+    }
+    return counts
+  })
+
   // ── view preferences (grouping + type/room filters + search) ──────────────
   const groupMode = ref<GroupMode>('off')
   const typeFilter = ref<string[]>([])
   const roomFilter = ref<string[]>([])
   const search = ref('')
-  /** A non-blank search query overrides the chip filters (searches all devices). */
+  /** A non-blank search query overrides the chip filters (searches scoped devices). */
   const searching = computed(() => search.value.trim().length > 0)
+
+  /** Point the grid at a room (or null for all). Resets view prefs on change. */
+  function setRoomScope(roomId: string | null): void {
+    if (roomScope.value === roomId) return
+    roomScope.value = roomId
+    groupMode.value = 'off'
+    typeFilter.value = []
+    roomFilter.value = []
+    search.value = ''
+  }
 
   // Devices we know how to render, sorted by the admin-defined display order.
   const devices = computed(() =>
@@ -63,20 +95,23 @@ export const useDevicesStore = defineStore('devices', () => {
   )
 
   // Type/room options for the filter chips, each with a per-option device count.
-  const deviceTypes = computed(() => deviceTypesOf(devices.value))
+  // These (and the grid) operate on the *scoped* devices, so a room page only
+  // offers the types/rooms present there. The command palette uses `devices`
+  // (all), so it keeps searching globally regardless of the current page.
+  const deviceTypes = computed(() => deviceTypesOf(scopedDevices.value))
   const typeCounts = computed<Record<string, number>>(() => {
     const counts: Record<string, number> = {}
-    for (const d of devices.value) counts[d.type] = (counts[d.type] ?? 0) + 1
+    for (const d of scopedDevices.value) counts[d.type] = (counts[d.type] ?? 0) + 1
     return counts
   })
-  const roomOptions = computed(() => roomOptionsOf(devices.value, rooms.value))
+  const roomOptions = computed(() => roomOptionsOf(scopedDevices.value, rooms.value))
 
   // Visible devices, then partitioned by group mode. While searching, the chip
-  // filters are bypassed and the query runs across every enabled device.
+  // filters are bypassed and the query runs across the scoped devices.
   const filteredDevices = computed(() =>
     searching.value
-      ? searchDevices(devices.value, search.value, rooms.value)
-      : filterByRooms(filterByTypes(devices.value, typeFilter.value), roomFilter.value),
+      ? searchDevices(scopedDevices.value, search.value, rooms.value)
+      : filterByRooms(filterByTypes(scopedDevices.value, typeFilter.value), roomFilter.value),
   )
   const groups = computed(() => groupDevices(filteredDevices.value, groupMode.value, rooms.value))
 
@@ -279,6 +314,12 @@ export const useDevicesStore = defineStore('devices', () => {
     error,
     devices,
     connected,
+    // room scope (routing)
+    roomScope,
+    currentRoom,
+    scopedDevices,
+    roomDeviceCounts,
+    setRoomScope,
     // grouping + filtering + search
     groupMode,
     typeFilter,

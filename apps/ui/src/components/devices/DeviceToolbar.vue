@@ -5,6 +5,7 @@
  * search bypasses the chip filters and matches across all enabled devices, so
  * the (now inert) type/room filter rows are hidden while searching.
  */
+import { computed } from 'vue'
 import { SearchIcon, XIcon } from '@lucide/vue'
 import { Chip } from '@/components/ui/chip'
 import { typeLabel, type GroupMode } from '@/lib/devices'
@@ -12,15 +13,19 @@ import { useDevicesStore } from '@/stores/devices'
 
 const store = useDevicesStore()
 
-const groupOptions: { mode: GroupMode; label: string }[] = [
+const allGroupOptions: { mode: GroupMode; label: string }[] = [
   { mode: 'off', label: 'Off' },
   { mode: 'room', label: 'Room' },
   { mode: 'type', label: 'Type' },
 ]
+// On a room page, grouping/filtering by room is meaningless — drop those.
+const groupOptions = computed(() =>
+  store.roomScope ? allGroupOptions.filter((o) => o.mode !== 'room') : allGroupOptions,
+)
 </script>
 
 <template>
-  <div v-if="store.devices.length" class="mb-6 flex flex-wrap items-start justify-between gap-3">
+  <div v-if="store.scopedDevices.length" class="mb-6 flex flex-wrap items-start justify-between gap-3">
     <!-- Grouping + filters -->
     <div class="space-y-3">
       <!-- Grouping -->
