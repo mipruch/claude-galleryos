@@ -4,7 +4,11 @@ import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon
 import { Toaster as Sonner } from "vue-sonner"
 import { cn } from "@/lib/utils"
 
-const props = defineProps<ToasterProps>()
+// `richColors` on by default so typed toasts carry their semantic colour —
+// notably a red error toast — instead of the neutral popover styling.
+const props = withDefaults(defineProps<ToasterProps>(), {
+  richColors: true,
+})
 </script>
 
 <template>
