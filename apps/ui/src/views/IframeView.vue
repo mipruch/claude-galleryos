@@ -4,13 +4,19 @@
  * The room scope itself is set from the route in `App.vue`; this view just
  * renders the (scope-aware) toolbar and grid.
  */
-import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
-import DeviceGrid from '@/components/devices/DeviceGrid.vue'
+const url = "http://10.54.17.99:1338/static/ui_builder/ui_builder.html?device=planetapraha"
+const title = "Pixera"
 </script>
 
 <template>
-  <div class="px-6 py-6 max-w-5xl mx-auto">
-    <DeviceToolbar />
-    <DeviceGrid />
-  </div>
+
+    <iframe
+        :src="url"
+        :title="title"
+        width="100%"
+        height="100%"
+        frameborder="0"
+    ></iframe>
+
+
 </template>

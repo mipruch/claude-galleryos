@@ -83,7 +83,7 @@ onBeforeUnmount(() => store.dispose())
             </div>
           </header>
 
-          <main class="mx-auto w-full max-w-5xl flex-1 px-6 py-6">
+          <main class=" w-full  flex-1 ">
             <RouterView />
           </main>
         </div>

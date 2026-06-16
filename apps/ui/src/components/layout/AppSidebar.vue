@@ -60,6 +60,23 @@ function linkClass(isActive: boolean): string {
           <span class="text-xs opacity-60">{{ store.roomDeviceCounts[room.id] ?? 0 }}</span>
         </a>
       </RouterLink>
+
+      <p
+        class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
+      >
+        iFrames
+      </p>
+      <RouterLink
+        :to="`/iframes/pixera`"
+        custom
+        v-slot="{ href, navigate, isActive }"
+      >
+        <a :href="href" :class="linkClass(isActive)" @click="navigate">
+          <!-- <DoorOpenIcon class="size-4 shrink-0" /> -->
+          <span class="flex-1 truncate">Pixera</span>
+          <!-- <span class="text-xs opacity-60">{{ store.roomDeviceCounts[room.id] ?? 0 }}</span> -->
+        </a>
+      </RouterLink>
     </nav>
   </aside>
 </template>

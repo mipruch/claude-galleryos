@@ -66,7 +66,7 @@ function onMute(value: boolean): void {
           @commit="onCommit"
         />
       </div>
-      <label class="flex items-center justify-between">
+      <label class="flex items-center gap-2 self-end">
         <span class="text-muted-foreground text-sm">Mute</span>
         <Switch :model-value="muted" @update:model-value="onMute" />
       </label>
