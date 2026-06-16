@@ -74,7 +74,7 @@ export function makeWebSocketHandlers(ctx: ApiContext): WebSocketHandler<unknown
         ws.send(envelope("error", { message: "invalid JSON" }));
         return;
       }
-      log.info("message", { event: msg.event, data: msg.data });
+      log.info("message from a client received", { event: msg.event, data: msg.data });
       await dispatch(ws, ctx, msg.event ?? "", msg.data ?? {});
     },
   };
