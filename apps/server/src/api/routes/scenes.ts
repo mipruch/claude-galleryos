@@ -38,12 +38,24 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
       throw new HttpError(400, "BAD_REQUEST", `actions[${i}] must be an object`);
     }
     const a = item as Record<string, unknown>;
-    if (!a.deviceId || !a.command) {
-      throw new HttpError(400, "BAD_REQUEST", `actions[${i}] requires deviceId and command`);
+    // An action targets either a sub-scene (childSceneId) or a device
+    // (deviceId + command) — exactly one shape.
+    const isSubScene = !!a.childSceneId;
+    if (isSubScene) {
+      if (a.deviceId || a.command) {
+        throw new HttpError(
+          400,
+          "BAD_REQUEST",
+          `actions[${i}] with childSceneId must not set deviceId/command`,
+        );
+      }
+    } else if (!a.deviceId || !a.command) {
+      throw new HttpError(400, "BAD_REQUEST", `actions[${i}] requires deviceId and command, or childSceneId`);
     }
     return {
-      deviceId: String(a.deviceId),
-      command: String(a.command),
+      deviceId: isSubScene ? undefined : String(a.deviceId),
+      command: isSubScene ? undefined : String(a.command),
+      childSceneId: isSubScene ? String(a.childSceneId) : undefined,
       params: (a.params as Record<string, unknown>) ?? {},
       stepOrder: a.stepOrder !== undefined ? Number(a.stepOrder) : undefined,
       parallelGroup: a.parallelGroup !== undefined ? Number(a.parallelGroup) : undefined,

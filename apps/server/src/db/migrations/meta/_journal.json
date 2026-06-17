@@ -15,6 +15,13 @@
       "when": 1750118400000,
       "tag": "0001_iframes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781676832322,
+      "tag": "0002_scene_composition",
+      "breakpoints": true
     }
   ]
 }

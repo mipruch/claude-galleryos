@@ -57,10 +57,20 @@ export type ConnectionWithRuntime = ConnectionDTO & { running: boolean };
 
 // ── request bodies (API inputs; shared so FE forms stay in sync) ──
 
-/** One action of a scene, as accepted by scene create/update. */
+/**
+ * One action of a scene, as accepted by scene create/update.
+ *
+ * An action targets EITHER a device (`deviceId` + `command`) OR another scene
+ * (`childSceneId`) — the latter runs that scene as a step ("scene composition").
+ * Exactly one target must be set.
+ */
 export interface SceneActionInput {
-  deviceId: string;
-  command: string;
+  /** Device action target. Mutually exclusive with `childSceneId`. */
+  deviceId?: string;
+  /** Required for device actions; omit for sub-scene actions. */
+  command?: string;
+  /** Sub-scene action target: run this scene as a step. Mutually exclusive with `deviceId`. */
+  childSceneId?: string;
   params?: Record<string, unknown>;
   /** Defaults to the action's position in the array if omitted. */
   stepOrder?: number;
