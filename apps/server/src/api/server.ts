@@ -13,6 +13,7 @@ import type { ApiContext } from "./context.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { devicesRoutes } from "./routes/devices.ts";
 import { driversRoutes } from "./routes/drivers.ts";
+import { iframesRoutes } from "./routes/iframes.ts";
 import { logsRoutes } from "./routes/logs.ts";
 import { roomsRoutes } from "./routes/rooms.ts";
 import { scenesRoutes } from "./routes/scenes.ts";
@@ -29,6 +30,7 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...roomsRoutes(ctx),
       ...connectionsRoutes(ctx),
       ...devicesRoutes(ctx),
+      ...iframesRoutes(ctx),
       ...systemRoutes(ctx),
       ...logsRoutes(ctx),
       ...scenesRoutes(ctx),

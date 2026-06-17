@@ -242,6 +242,19 @@ export const uiLayouts = pgTable("ui_layouts", {
 });
 
 // ─────────────────────────────────────────────────────────────
+// iframes — external device UIs embedded as a sidebar item each
+// (e.g. Pixera Webview). One row = one sidebar entry, no enable flag.
+// ─────────────────────────────────────────────────────────────
+export const iframes = pgTable("iframes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+  url: text("url").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+// ─────────────────────────────────────────────────────────────
 // config — runtime key/value settings
 // ─────────────────────────────────────────────────────────────
 export const config = pgTable("config", {

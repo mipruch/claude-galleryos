@@ -14,7 +14,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
-import type { RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
+import type { IframeDTO, RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
   applyRevert,
   deviceKind,
@@ -42,6 +42,7 @@ export const useDevicesStore = defineStore('devices', () => {
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
   const rooms = ref<RoomDTO[]>([])
+  const iframesList = ref<IframeDTO[]>([])
   const states = ref<Record<string, DeviceState>>({})
   const statuses = ref<Record<string, DeviceStatus>>({})
   const loading = ref(false)
@@ -255,15 +256,17 @@ export const useDevicesStore = defineStore('devices', () => {
       // The device list + one batched live snapshot ({ [id]: { state, status } })
       // + rooms (for the "group by room" headings), instead of 2×N per-device
       // fetches.
-      const [list, live, roomList] = await Promise.all([
+      const [list, live, roomList, iframeList] = await Promise.all([
         fetchJson<DeviceRecord[]>(`${API}/devices`),
         fetchJson<Record<string, { state: DeviceState; status: DeviceStatus }>>(
           `${API}/devices/live`,
         ),
         fetchJson<RoomDTO[]>(`${API}/rooms`),
+        fetchJson<IframeDTO[]>(`${API}/iframes`),
       ])
       records.value = list ?? []
       rooms.value = roomList ?? []
+      iframesList.value = [...(iframeList ?? [])].sort((a, b) => a.displayOrder - b.displayOrder)
       for (const [id, snapshot] of Object.entries(live ?? {})) {
         if (snapshot.state) states.value[id] = snapshot.state
         if (snapshot.status) statuses.value[id] = snapshot.status
@@ -308,6 +311,7 @@ export const useDevicesStore = defineStore('devices', () => {
   return {
     records,
     rooms,
+    iframes: iframesList,
     states,
     statuses,
     loading,

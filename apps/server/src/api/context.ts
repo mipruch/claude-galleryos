@@ -10,6 +10,7 @@ import type { SceneEngine } from "../core/SceneEngine.ts";
 import type {
   connectionsRepo,
   devicesRepo,
+  iframesRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -24,6 +25,7 @@ export interface ApiContext {
   rooms: typeof roomsRepo;
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
+  iframes: typeof iframesRepo;
   logs: typeof logsRepo;
   scenes: typeof scenesRepo;
   sceneExecutions: typeof sceneExecutionsRepo;

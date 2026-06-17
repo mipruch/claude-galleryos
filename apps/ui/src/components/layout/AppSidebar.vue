@@ -14,6 +14,8 @@ const rooms = computed(() =>
   [...store.rooms].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)),
 )
 
+const iframes = computed(() => store.iframes)
+
 function linkClass(isActive: boolean): string {
   return [
     'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors outline-none',
@@ -61,22 +63,24 @@ function linkClass(isActive: boolean): string {
         </a>
       </RouterLink>
 
-      <p
-        class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
-      >
-        iFrames
-      </p>
-      <RouterLink
-        :to="`/iframes/pixera`"
-        custom
-        v-slot="{ href, navigate, isActive }"
-      >
-        <a :href="href" :class="linkClass(isActive)" @click="navigate">
-          <!-- <DoorOpenIcon class="size-4 shrink-0" /> -->
-          <span class="flex-1 truncate">Pixera</span>
-          <!-- <span class="text-xs opacity-60">{{ store.roomDeviceCounts[room.id] ?? 0 }}</span> -->
-        </a>
-      </RouterLink>
+      <template v-if="iframes.length">
+        <p
+          class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
+        >
+          Views
+        </p>
+        <RouterLink
+          v-for="iframe in iframes"
+          :key="iframe.id"
+          :to="`/iframes/${iframe.id}`"
+          custom
+          v-slot="{ href, navigate, isActive }"
+        >
+          <a :href="href" :class="linkClass(isActive)" @click="navigate">
+            <span class="flex-1 truncate">{{ iframe.name }}</span>
+          </a>
+        </RouterLink>
+      </template>
     </nav>
   </aside>
 </template>

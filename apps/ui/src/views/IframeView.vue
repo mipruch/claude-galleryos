@@ -1,22 +1,27 @@
 <script setup lang="ts">
-/**
- * The device page — used for both the home (all devices) and per-room routes.
- * The room scope itself is set from the route in `App.vue`; this view just
- * renders the (scope-aware) toolbar and grid.
- */
-const url = "http://10.54.17.99:1338/static/ui_builder/ui_builder.html?device=planetapraha"
-const title = "Pixera"
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useDevicesStore } from '@/stores/devices'
+
+const route = useRoute()
+const store = useDevicesStore()
+
+const iframe = computed(() =>
+  store.iframes.find((f) => f.id === route.params.iframeId),
+)
 </script>
 
 <template>
-
+  <div v-if="iframe" class="size-full">
     <iframe
-        :src="url"
-        :title="title"
-        width="100%"
-        height="100%"
-        frameborder="0"
-    ></iframe>
-
-
+      :src="iframe.url"
+      :title="iframe.name"
+      width="100%"
+      height="100%"
+      frameborder="0"
+    />
+  </div>
+  <div v-else class="flex size-full items-center justify-center text-muted-foreground text-sm">
+    View not found.
+  </div>
 </template>

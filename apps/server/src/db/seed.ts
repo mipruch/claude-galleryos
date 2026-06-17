@@ -9,7 +9,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, rooms } from "@gallery/types/schema";
+import { connections, devices, iframes, rooms } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -493,10 +493,24 @@ async function main(): Promise<void> {
     ])
     .onConflictDoNothing();
 
+  // ── iframes ──────────────────────────────────────────────────
+  await db
+    .insert(iframes)
+    .values([
+      {
+        id: "66666666-6666-6666-6666-666666666601",
+        name: "Pixera",
+        url: "http://10.54.17.99:1338/static/ui_builder/ui_builder.html?device=planetapraha",
+        displayOrder: 0,
+      },
+    ])
+    .onConflictDoNothing();
+
   log.info("Seed complete", {
     rooms: 2,
     connections: 5,
     devices: 16,
+    iframes: 1,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });
   await closeDb();

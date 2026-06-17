@@ -15,6 +15,7 @@ import type { Jsonify } from "./json.ts";
 import {
   connections,
   devices,
+  iframes,
   logs,
   rooms,
   sceneActions,
@@ -32,6 +33,8 @@ export type Scene = typeof scenes.$inferSelect;
 export type SceneAction = typeof sceneActions.$inferSelect;
 export type SceneExecution = typeof sceneExecutions.$inferSelect;
 export type LogRow = typeof logs.$inferInsert;
+export type Iframe = typeof iframes.$inferSelect;
+export type NewIframe = typeof iframes.$inferInsert;
 
 /** A scene plus its ordered actions — the shape `scenesRepo.get` returns. */
 export type SceneWithActions = Scene & { actions: SceneAction[] };
@@ -44,6 +47,7 @@ export type SceneDTO = Jsonify<Scene>;
 export type SceneActionDTO = Jsonify<SceneAction>;
 export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
+export type IframeDTO = Jsonify<Iframe>;
 
 /**
  * A connection as `GET /connections` returns it: the serialized row plus the

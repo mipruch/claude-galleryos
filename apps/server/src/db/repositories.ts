@@ -10,6 +10,7 @@ import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle
 import {
   connections,
   devices,
+  iframes,
   logs,
   rooms,
   sceneActions,
@@ -22,6 +23,7 @@ import type {
   LevelCount,
   NewConnection,
   NewDevice,
+  NewIframe,
   SceneActionInput,
   SceneCreateInput,
   SceneUpdateInput,
@@ -62,6 +64,19 @@ export const roomsRepo = {
   update: (id: string, values: Partial<typeof rooms.$inferInsert>) =>
     first(db.update(rooms).set({ ...values, updatedAt: new Date() }).where(eq(rooms.id, id)).returning()),
   remove: (id: string) => first(db.delete(rooms).where(eq(rooms.id, id)).returning()),
+};
+
+// ── iframes ──────────────────────────────────────────────────
+
+export const iframesRepo = {
+  list: () => db.select().from(iframes).orderBy(iframes.displayOrder),
+  get: (id: string) => first(db.select().from(iframes).where(eq(iframes.id, id)).limit(1)),
+  create: (values: NewIframe) => first(db.insert(iframes).values(values).returning()),
+  update: (id: string, values: Partial<NewIframe>) =>
+    first(
+      db.update(iframes).set({ ...values, updatedAt: new Date() }).where(eq(iframes.id, id)).returning(),
+    ),
+  remove: (id: string) => first(db.delete(iframes).where(eq(iframes.id, id)).returning()),
 };
 
 // ── connections ──────────────────────────────────────────────
