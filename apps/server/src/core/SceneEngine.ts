@@ -7,6 +7,14 @@
  *   - "continue" (default): a failed action is logged; the scene proceeds.
  *   - "abort": a failed action stops the remaining groups and fails the scene.
  *
+ * An action targets either a *device* (`deviceId` + `command`) or a *sub-scene*
+ * (`childSceneId`): running another scene as a step. This lets a parent scene
+ * (e.g. "Turn everything off") be composed from children ("Turn off Hall A", …),
+ * so editing a child propagates to every parent that references it. A sub-scene
+ * runs its full plan to completion at the action's position, with its own
+ * execution row, lock, and events. Pre-flight resolves the whole tree, verifies
+ * every referenced device/scene exists, and rejects cycles.
+ *
  * Simplifications (see PLAN.md §2): no versioning, no pre-state capture, no
  * rollback, no crash recovery. A scene already running is rejected (409).
  *
@@ -28,8 +36,12 @@ import type { Logger } from "../logger.ts";
 // ── scene shapes the engine consumes (decoupled from Drizzle) ─
 
 export interface SceneActionRecord {
-  deviceId: string;
-  command: string;
+  /** Device action target (null for sub-scene actions). */
+  deviceId?: string | null;
+  /** Sub-scene action target: run this scene as a step (null for device actions). */
+  childSceneId?: string | null;
+  /** Device command (null for sub-scene actions). */
+  command?: string | null;
   params: Record<string, unknown>;
   stepOrder: number;
   parallelGroup: number;
@@ -117,8 +129,12 @@ export interface SceneExecutionResult {
 }
 
 export interface DryRunStep {
-  deviceId: string;
-  command: string;
+  /** Device action target (null for sub-scene actions). */
+  deviceId: string | null;
+  /** Sub-scene action target (null for device actions). */
+  childSceneId: string | null;
+  /** Device command (null for sub-scene actions). */
+  command: string | null;
   params: Record<string, unknown>;
   parallelGroup: number;
   delayMs: number;
@@ -134,10 +150,13 @@ export interface DryRunResult {
 interface ActionOutcome {
   success: boolean;
   onFailure: string;
-  deviceId: string;
-  command: string;
+  /** Human-readable target for logs/abort messages (`device d1/on` or `scene s2`). */
+  target: string;
   error?: string;
 }
+
+/** Backstop against runaway recursion if cycle detection is ever bypassed. */
+const MAX_SCENE_DEPTH = 16;
 
 // ── engine ─────────────────────────────────────────────────────
 
@@ -181,7 +200,7 @@ export class SceneEngine {
     opts: { executionId?: string; sourceDetail?: string } = {},
   ): Promise<SceneExecutionResult> {
     const { scene, executionId } = await this.beginRun(sceneId, source, opts);
-    return this.runPlan(scene, executionId);
+    return this.runPlan(scene, executionId, source, 0);
   }
 
   /**
@@ -195,7 +214,7 @@ export class SceneEngine {
     opts: { executionId?: string; sourceDetail?: string } = {},
   ): Promise<{ executionId: string; sceneId: string; status: "running" }> {
     const { scene, executionId } = await this.beginRun(sceneId, source, opts);
-    void this.runPlan(scene, executionId).catch((err) => {
+    void this.runPlan(scene, executionId, source, 0).catch((err) => {
       this.log.warn("background scene run errored", {
         sceneId,
         executionId,
@@ -248,8 +267,9 @@ export class SceneEngine {
     const scene = await this.preflight(sceneId);
     const groups = planGroups(scene.actions);
     const actions: DryRunStep[] = groups.flat().map((a) => ({
-      deviceId: a.deviceId,
-      command: a.command,
+      deviceId: a.deviceId ?? null,
+      childSceneId: a.childSceneId ?? null,
+      command: a.command ?? null,
       params: a.params,
       parallelGroup: a.parallelGroup,
       delayMs: a.delayMs,
@@ -261,22 +281,54 @@ export class SceneEngine {
 
   // ── internals ──────────────────────────────────────────────
 
-  /** Load the scene and verify every referenced device exists. */
+  /**
+   * Load the root scene and recursively validate the whole tree: every device
+   * referenced by a device action exists, every sub-scene resolves, and there are
+   * no cycles. Returns the root scene. A missing *root* is `SceneNotFoundError`;
+   * a missing *sub-scene*, a malformed action, or a cycle is `SceneValidationError`.
+   */
   private async preflight(sceneId: string): Promise<SceneRecord> {
-    const scene = await this.opts.scenes.get(sceneId);
-    if (!scene) throw new SceneNotFoundError(sceneId);
+    return this.validateTree(sceneId, []);
+  }
 
-    const deviceIds = [...new Set(scene.actions.map((a) => a.deviceId))];
+  private async validateTree(sceneId: string, path: string[]): Promise<SceneRecord> {
+    if (path.includes(sceneId)) {
+      throw new SceneValidationError(`scene cycle detected: ${[...path, sceneId].join(" → ")}`);
+    }
+    const scene = await this.opts.scenes.get(sceneId);
+    if (!scene) {
+      if (path.length === 0) throw new SceneNotFoundError(sceneId);
+      throw new SceneValidationError(`scene references unknown sub-scene: ${sceneId}`);
+    }
+
+    // Verify device actions reference existing devices.
+    const deviceIds = [
+      ...new Set(scene.actions.filter((a) => !a.childSceneId && a.deviceId).map((a) => a.deviceId!)),
+    ];
     const checks = await Promise.all(deviceIds.map((id) => this.opts.devices.get(id)));
     const missing = deviceIds.filter((_, i) => !checks[i]);
     if (missing.length) {
       throw new SceneValidationError(`scene references unknown device(s): ${missing.join(", ")}`);
     }
+
+    // Recurse into sub-scene actions (cycle/existence checks).
+    const childPath = [...path, sceneId];
+    for (const a of scene.actions) {
+      if (a.childSceneId) await this.validateTree(a.childSceneId, childPath);
+    }
     return scene;
   }
 
-  /** Run the grouped plan, then record completion + clear the lock. */
-  private async runPlan(scene: SceneRecord, executionId: string): Promise<SceneExecutionResult> {
+  /**
+   * Run the grouped plan, then record completion + clear the lock. `source` is
+   * propagated to nested sub-scene runs; `depth` guards against runaway recursion.
+   */
+  private async runPlan(
+    scene: SceneRecord,
+    executionId: string,
+    source: string,
+    depth: number,
+  ): Promise<SceneExecutionResult> {
     const start = Date.now();
     const groups = planGroups(scene.actions);
 
@@ -286,13 +338,13 @@ export class SceneEngine {
 
     try {
       for (const group of groups) {
-        const outcomes = await Promise.all(group.map((a) => this.runAction(a, executionId)));
+        const outcomes = await Promise.all(group.map((a) => this.runAction(a, executionId, source, depth)));
         for (const o of outcomes) {
           if (o.success) continue;
           failedActions++;
           if (o.onFailure === "abort") {
             aborted = true;
-            abortError ??= `action ${o.command} on ${o.deviceId} failed: ${o.error ?? "unknown"} (on_failure=abort)`;
+            abortError ??= `${o.target} failed: ${o.error ?? "unknown"} (on_failure=abort)`;
           }
         }
         if (aborted) break;
@@ -320,21 +372,68 @@ export class SceneEngine {
     return { executionId, sceneId: scene.id, status: "completed", durationMs, failedActions };
   }
 
-  /** Execute one action: honour delay, call the device, classify the result. */
-  private async runAction(action: SceneActionRecord, executionId: string): Promise<ActionOutcome> {
-    const { deviceId, command, params, delayMs, onFailure } = action;
+  /**
+   * Execute one action: honour delay, then either run a sub-scene or call the
+   * device, and classify the result.
+   */
+  private async runAction(
+    action: SceneActionRecord,
+    executionId: string,
+    source: string,
+    depth: number,
+  ): Promise<ActionOutcome> {
+    const { deviceId, childSceneId, command, params, delayMs, onFailure } = action;
     if (delayMs > 0) await Bun.sleep(delayMs);
+
+    if (childSceneId) return this.runChildScene(childSceneId, onFailure, source, depth);
+
+    const target = `device ${deviceId}/${command}`;
     try {
-      const result = await this.opts.deviceManager.execute(deviceId, command, params);
+      const result = await this.opts.deviceManager.execute(deviceId!, command!, params);
       if (!result.success) {
         this.log.warn("scene action failed", { executionId, deviceId, command, error: result.error });
-        return { success: false, onFailure, deviceId, command, error: result.error };
+        return { success: false, onFailure, target, error: result.error };
       }
-      return { success: true, onFailure, deviceId, command };
+      return { success: true, onFailure, target };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       this.log.warn("scene action threw", { executionId, deviceId, command, error });
-      return { success: false, onFailure, deviceId, command, error };
+      return { success: false, onFailure, target, error };
+    }
+  }
+
+  /**
+   * Run a sub-scene as a step: a full nested run (own execution row, lock, and
+   * events) executed to completion at the action's position. The child counts as
+   * a *failed action* — honouring the parent action's `onFailure` — when its
+   * overall status is "failed" (an "abort" action or an engine error), or when
+   * the nested run is rejected at pre-flight (e.g. the child is already running →
+   * conflict). A "continue"-level failure *inside* the child does not fail the
+   * parent, mirroring how a device action is judged solely by its own outcome.
+   */
+  private async runChildScene(
+    childSceneId: string,
+    onFailure: string,
+    source: string,
+    depth: number,
+  ): Promise<ActionOutcome> {
+    const target = `scene ${childSceneId}`;
+    if (depth + 1 > MAX_SCENE_DEPTH) {
+      const error = `max scene nesting depth (${MAX_SCENE_DEPTH}) exceeded`;
+      this.log.warn("sub-scene aborted", { childSceneId, error });
+      return { success: false, onFailure, target, error };
+    }
+    try {
+      const { scene, executionId } = await this.beginRun(childSceneId, source, {});
+      const result = await this.runPlan(scene, executionId, source, depth + 1);
+      if (result.status !== "completed") {
+        return { success: false, onFailure, target, error: result.error ?? "sub-scene failed" };
+      }
+      return { success: true, onFailure, target };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.log.warn("sub-scene run failed", { childSceneId, error });
+      return { success: false, onFailure, target, error };
     }
   }
 

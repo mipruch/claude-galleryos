@@ -8,6 +8,13 @@
       "when": 1780400175741,
       "tag": "0000_numerous_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781676832322,
+      "tag": "0001_scene_composition",
+      "breakpoints": true
     }
   ]
 }

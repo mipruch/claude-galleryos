@@ -94,16 +94,34 @@ function action(p: Partial<SceneActionRecord> = {}): SceneActionRecord {
   };
 }
 
-function makeEngine(scene: SceneRecord, deviceIdsOverride?: string[]) {
+/** A sub-scene action: run another scene as a step (no device/command). */
+function childAction(childSceneId: string, p: Partial<SceneActionRecord> = {}): SceneActionRecord {
+  return {
+    deviceId: null,
+    childSceneId,
+    command: null,
+    params: {},
+    stepOrder: 0,
+    parallelGroup: 0,
+    delayMs: 0,
+    onFailure: "continue",
+    ...p,
+  };
+}
+
+function makeEngine(scenes: SceneRecord | SceneRecord[], deviceIdsOverride?: string[]) {
+  const list = Array.isArray(scenes) ? scenes : [scenes];
   const executions = makeExec();
   const state = makeState();
   const dm = makeDM();
   const bus = new EventBus();
   const events: GalleryEvent[] = [];
   bus.onAny((e) => events.push(e));
-  const deviceIds = deviceIdsOverride ?? [...new Set(scene.actions.map((a) => a.deviceId))];
+  const deviceIds =
+    deviceIdsOverride ??
+    [...new Set(list.flatMap((s) => s.actions.map((a) => a.deviceId)).filter((d): d is string => !!d))];
   const engine = new SceneEngine({
-    scenes: { async get(id: string) { return id === scene.id ? scene : undefined; } },
+    scenes: { async get(id: string) { return list.find((s) => s.id === id); } },
     executions,
     state,
     deviceManager: dm,
@@ -293,6 +311,103 @@ describe("SceneEngine — startScene (background)", () => {
     const { engine, state } = makeEngine(scene);
     state.active.add("s1");
     await expect(engine.startScene("s1", "rest")).rejects.toBeInstanceOf(SceneConflictError);
+  });
+});
+
+describe("SceneEngine — composition (sub-scenes)", () => {
+  test("a parent composed of sub-scenes runs every child's device actions", async () => {
+    const hallA: SceneRecord = { id: "a", name: "Off A", actions: [action({ deviceId: "da" })] };
+    const hallB: SceneRecord = { id: "b", name: "Off B", actions: [action({ deviceId: "db" })] };
+    const all: SceneRecord = {
+      id: "all",
+      name: "Off all",
+      actions: [childAction("a", { stepOrder: 0 }), childAction("b", { stepOrder: 1 })],
+    };
+    const { engine, dm, state, events } = makeEngine([all, hallA, hallB]);
+
+    const result = await engine.executeScene("all", "test");
+
+    expect(result.status).toBe("completed");
+    expect(dm.calls.map((c) => c.deviceId).sort()).toEqual(["da", "db"]);
+    // Every scene's lock is released (parent + both children).
+    expect(state.active.size).toBe(0);
+    // Each scene produced its own started/completed pair.
+    expect(sceneTypes(events).filter((t) => t === "scene.execute.started")).toHaveLength(3);
+    expect(sceneTypes(events).filter((t) => t === "scene.execute.completed")).toHaveLength(3);
+  });
+
+  test("editing a child is reflected when the parent runs (shared by reference)", async () => {
+    const child: SceneRecord = { id: "c", name: "Child", actions: [action({ deviceId: "d-old" })] };
+    const parent: SceneRecord = { id: "p", name: "Parent", actions: [childAction("c")] };
+    const { engine, dm } = makeEngine([parent, child], ["d-old", "d-new"]);
+
+    // "Edit" the child in place — the parent holds only a reference.
+    child.actions = [action({ deviceId: "d-new" })];
+    await engine.executeScene("p", "test");
+
+    expect(dm.calls.map((c) => c.deviceId)).toEqual(["d-new"]);
+  });
+
+  test("a failing sub-scene with on_failure=abort fails the parent", async () => {
+    // The child fails as a unit because its own action aborts.
+    const child: SceneRecord = {
+      id: "c",
+      name: "Child",
+      actions: [action({ deviceId: "d1", command: "boom", onFailure: "abort" })],
+    };
+    const parent: SceneRecord = {
+      id: "p",
+      name: "Parent",
+      actions: [childAction("c", { onFailure: "abort", parallelGroup: 0 }), action({ deviceId: "d2", parallelGroup: 1 })],
+    };
+    const { engine, dm } = makeEngine([parent, child]);
+    dm.failOn("d1", "boom");
+
+    const result = await engine.executeScene("p", "test");
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("on_failure=abort");
+    // The group after the failing sub-scene never runs.
+    expect(dm.calls.some((c) => c.deviceId === "d2")).toBe(false);
+  });
+
+  test("rejects a cycle at pre-flight (SceneValidationError, nothing runs)", async () => {
+    const a: SceneRecord = { id: "a", name: "A", actions: [childAction("b")] };
+    const b: SceneRecord = { id: "b", name: "B", actions: [childAction("a")] };
+    const { engine, dm, executions } = makeEngine([a, b]);
+
+    await expect(engine.executeScene("a", "test")).rejects.toBeInstanceOf(SceneValidationError);
+    expect(dm.calls).toHaveLength(0);
+    expect(executions.created).toHaveLength(0);
+  });
+
+  test("rejects a reference to a missing sub-scene", async () => {
+    const parent: SceneRecord = { id: "p", name: "Parent", actions: [childAction("ghost")] };
+    const { engine } = makeEngine(parent, []);
+    await expect(engine.executeScene("p", "test")).rejects.toBeInstanceOf(SceneValidationError);
+  });
+
+  test("a sub-scene already running is reported as a failed action (continue)", async () => {
+    const child: SceneRecord = { id: "c", name: "Child", actions: [action({ deviceId: "d1" })] };
+    const parent: SceneRecord = { id: "p", name: "Parent", actions: [childAction("c")] };
+    const { engine, state } = makeEngine([parent, child]);
+    state.active.add("c"); // child is already running standalone
+
+    const result = await engine.executeScene("p", "test");
+
+    expect(result.status).toBe("completed"); // default on_failure=continue
+    expect(result.failedActions).toBe(1);
+  });
+
+  test("dry-run surfaces sub-scene steps without expanding them", async () => {
+    const child: SceneRecord = { id: "c", name: "Child", actions: [action({ deviceId: "d1" })] };
+    const parent: SceneRecord = { id: "p", name: "Parent", actions: [childAction("c")] };
+    const { engine } = makeEngine([parent, child]);
+
+    const result = await engine.dryRun("p");
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({ childSceneId: "c", deviceId: null, command: null });
   });
 });
 

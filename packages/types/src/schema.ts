@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -142,6 +143,12 @@ export const sceneVersions = pgTable(
 // ─────────────────────────────────────────────────────────────
 // scene_actions — the steps of a scene
 // ─────────────────────────────────────────────────────────────
+// An action is either a *device* action (deviceId + command) or a *sub-scene*
+// action (childSceneId): running another scene as a step. Composing scenes from
+// scenes lets a parent like "Turn everything off" reuse "Turn off Hall A" etc.,
+// so editing the child propagates to every parent that references it. The CHECK
+// constraint enforces exactly one target shape; cycles are rejected at run time
+// by the SceneEngine's pre-flight.
 export const sceneActions = pgTable(
   "scene_actions",
   {
@@ -149,18 +156,29 @@ export const sceneActions = pgTable(
     sceneId: uuid("scene_id")
       .notNull()
       .references(() => scenes.id, { onDelete: "cascade" }),
-    deviceId: uuid("device_id")
-      .notNull()
-      .references(() => devices.id, { onDelete: "restrict" }),
+    // Set for device actions; null for sub-scene actions.
+    deviceId: uuid("device_id").references(() => devices.id, { onDelete: "restrict" }),
+    // Set for sub-scene actions; null for device actions. `restrict` stops a
+    // scene from being deleted while another scene still references it.
+    childSceneId: uuid("child_scene_id").references(() => scenes.id, { onDelete: "restrict" }),
     stepOrder: integer("step_order").notNull().default(0),
     parallelGroup: integer("parallel_group").notNull().default(0),
     delayMs: integer("delay_ms").notNull().default(0),
-    command: varchar("command", { length: 100 }).notNull(),
+    // Required for device actions; null for sub-scene actions.
+    command: varchar("command", { length: 100 }),
     params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
     onFailure: varchar("on_failure", { length: 20 }).notNull().default("continue"),
     createdAt: createdAt(),
   },
-  (t) => [index("idx_scene_actions_scene").on(t.sceneId, t.stepOrder)],
+  (t) => [
+    index("idx_scene_actions_scene").on(t.sceneId, t.stepOrder),
+    index("idx_scene_actions_child").on(t.childSceneId),
+    check(
+      "scene_actions_target_chk",
+      sql`(${t.deviceId} IS NOT NULL AND ${t.childSceneId} IS NULL AND ${t.command} IS NOT NULL)
+        OR (${t.childSceneId} IS NOT NULL AND ${t.deviceId} IS NULL)`,
+    ),
+  ],
 );
 
 // ─────────────────────────────────────────────────────────────

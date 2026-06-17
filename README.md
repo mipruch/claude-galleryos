@@ -397,28 +397,41 @@ CREATE INDEX idx_scene_versions_scene ON scene_versions(scene_id);
 
 ### scene_actions
 
-Kroky scény. Každý krok cílí na jedno zařízení s konkrétním příkazem.
+Kroky scény. Každý krok cílí **buď** na jedno zařízení (`device_id` + `command`),
+**nebo** na jinou scénu (`child_scene_id`) — tzv. *kompozice scén* (viz §7.3).
+Sub-scéna se spustí jako krok celá (celý svůj plán). CHECK constraint vynucuje,
+že je nastaven právě jeden z cílů.
 
 ```sql
 CREATE TABLE scene_actions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scene_id        UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
-  device_id       UUID NOT NULL REFERENCES devices(id) ON DELETE RESTRICT,
+  device_id       UUID REFERENCES devices(id) ON DELETE RESTRICT,
+  -- Cíl akce typu zařízení (NULL u sub-scén).
+  child_scene_id  UUID REFERENCES scenes(id) ON DELETE RESTRICT,
+  -- Cíl akce typu sub-scéna: spustí danou scénu jako krok (NULL u akcí zařízení).
+  -- RESTRICT brání smazat scénu, na kterou se odkazuje jiná scéna.
   step_order      INTEGER NOT NULL DEFAULT 0,
   parallel_group  INTEGER NOT NULL DEFAULT 0,
   -- Akce se stejným parallel_group spustí paralelně.
   -- Skupiny se spouštějí sériově vzestupně (0, poté 1, poté 2, ...).
   delay_ms        INTEGER NOT NULL DEFAULT 0,
   -- Pauza před spuštěním *uvnitř* skupiny (pro choreografii).
-  command         VARCHAR(100) NOT NULL,
+  command         VARCHAR(100),
+  -- Příkaz pro zařízení (NULL u sub-scén).
   params          JSONB NOT NULL DEFAULT '{}',
   on_failure      VARCHAR(20) NOT NULL DEFAULT 'continue',
   -- 'abort' | 'continue' | 'rollback'
   -- Rollback je aplikován pouze na 'reversible' příkazy.
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT scene_actions_target_chk CHECK (
+    (device_id IS NOT NULL AND child_scene_id IS NULL AND command IS NOT NULL)
+    OR (child_scene_id IS NOT NULL AND device_id IS NULL)
+  )
 );
 
 CREATE INDEX idx_scene_actions_scene ON scene_actions(scene_id, step_order);
+CREATE INDEX idx_scene_actions_child ON scene_actions(child_scene_id);
 ```
 
 ### scene_executions
@@ -996,9 +1009,36 @@ Scéna "Přednáška sál A":
 - **Redis zámek:** `redisSceneStore` (`scene:{id}:active`) v `src/redis/state.ts`.
 - **REST** `src/api/routes/scenes.ts` a **WS** `scene:execute` handler v `src/api/ws.ts`
   (validuje scénu → emituje `scene.execute.requested` → ack `{ executionId }`).
-- **Testy:** 13 hermetických testů enginu (grupování, on_failure abort/continue,
-  konflikt/404/validace, dry-run, background `startScene`, event trigger),
-  12 testů REST routes (incl. mapování chyb), 2 WS testy + rozšířený DB integration test.
+- **Kompozice scén (sub-scény):** akce může místo zařízení cílit na jinou scénu
+  (`child_scene_id`) — viz níže.
+- **Testy:** 20 hermetických testů enginu (grupování, on_failure abort/continue,
+  konflikt/404/validace, dry-run, background `startScene`, event trigger,
+  kompozice scén), 12 testů REST routes (incl. mapování chyb), 2 WS testy +
+  rozšířený DB integration test.
+
+#### Kompozice scén (sub-scény)
+
+Akce scény může cílit **buď** na zařízení (`device_id` + `command`), **nebo** na
+jinou scénu (`child_scene_id`). Scénu "Vypni vše" tak lze složit ze scén
+"Vypni sál A", "Vypni sál B" a "Vypni Foyer". Protože parent drží jen **odkaz**
+na child scénu, úprava child scény se automaticky promítne do všech parentů, které
+ji používají — žádná duplikace akcí.
+
+- **Provedení:** narazí-li engine na akci se `childSceneId`, spustí celou child
+  scénu jako vnořený běh na pozici té akce — s **vlastním** execution rowem,
+  zámkem a událostmi (`scene.execute.started/completed/failed`). Child běží do
+  konce, pak se pokračuje další skupinou parentu.
+- **Hodnocení úspěchu:** sub-scéna se počítá jako *neúspěšná akce* (a aktivuje
+  `on_failure` rodičovské akce), když je její celkový status `failed` (akce s
+  `abort` nebo chyba enginu), nebo když je vnořený běh odmítnut v pre-flightu
+  (např. child už běží → `SceneConflictError`). Selhání úrovně `continue`
+  *uvnitř* child scény parenta neshodí — stejně jako u akce zařízení se hodnotí
+  jen její vlastní výsledek.
+- **Pre-flight rozbalí celý strom:** ověří existenci všech zařízení i sub-scén a
+  **odmítne cykly** (`SceneValidationError`). `MAX_SCENE_DEPTH = 16` je pojistka
+  proti zacyklení, pokud by detekce cyklů byla obejita.
+- **Integrita v DB:** FK `child_scene_id … ON DELETE RESTRICT` brání smazat scénu,
+  na kterou se odkazuje jiná scéna; CHECK constraint vynucuje právě jeden cíl akce.
 
 ### 7.4 Scheduler
 

@@ -210,13 +210,14 @@ Simplified vs. original spec:
 - [x] **Dry run:** `dryRun(sceneId)` validates + returns the plan **without** touching hardware/lock/DB (live drivers aren't in dry-run mode, so the engine simulates rather than calling them — corrects the PLAN's "pass dryRun to DeviceManager" assumption)
 - [x] Dependencies injected via narrow interfaces (hermetically testable); `start()` subscribes to `scene.execute.requested`
 - [x] Wired into `src/api/context.ts` and `src/index.ts`
+- [x] **Scene composition (sub-scenes):** an action can target another scene via `child_scene_id` instead of a device. A parent ("Turn off everything") is composed of children ("Turn off Hall A/B/Foyer"); editing a child propagates to every parent (reference, not copy). A sub-scene runs its full plan as a nested run (own execution row, lock, events) at the action's position. Pre-flight resolves the whole tree, validates devices + sub-scenes, and rejects cycles (`SceneValidationError`); `MAX_SCENE_DEPTH = 16` backstop. A sub-scene counts as a failed action (honouring `on_failure`) when its overall status is `failed` or the nested run is rejected (e.g. child already running). DB: `scene_actions.device_id`/`command` nullable, new `child_scene_id` FK (`ON DELETE RESTRICT`), CHECK constraint enforcing exactly one target (migration `0001_scene_composition`).
 
 Redis key additions to `src/redis/state.ts`:
 - [x] `redisSceneStore`: `setSceneActive(sceneId)`, `clearSceneActive(sceneId)`, `isSceneActive(sceneId)` (`scene:{id}:active`)
 
 ### 2.3 Scenes REST API `src/api/routes/scenes.ts` ✓
 - [x] `GET    /api/v1/scenes` — `?room_id= &is_favorite= &tags=`
-- [x] `POST   /api/v1/scenes` — `{ name, roomId?, description?, icon?, color?, tags?, actions[] }` (actions validated)
+- [x] `POST   /api/v1/scenes` — `{ name, roomId?, description?, icon?, color?, tags?, actions[] }` (actions validated; each action is a device action `{ deviceId, command, params?, … }` **or** a sub-scene action `{ childSceneId, … }`)
 - [x] `GET    /api/v1/scenes/:id` — scene + actions
 - [x] `PUT    /api/v1/scenes/:id` — replace scene metadata + actions
 - [x] `DELETE /api/v1/scenes/:id`

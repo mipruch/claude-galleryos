@@ -160,12 +160,18 @@ export interface SceneFilter {
   tags?: string[];
 }
 
-/** Map an action input to a row insert for a given scene, defaulting stepOrder. */
+/**
+ * Map an action input to a row insert for a given scene, defaulting stepOrder.
+ * A sub-scene action (`childSceneId`) carries no device/command; a device action
+ * carries no `childSceneId`. The DB CHECK constraint guards the invariant.
+ */
 function toActionRow(sceneId: string, a: SceneActionInput, index: number): typeof sceneActions.$inferInsert {
+  const isSubScene = !!a.childSceneId;
   return {
     sceneId,
-    deviceId: a.deviceId,
-    command: a.command,
+    deviceId: isSubScene ? null : a.deviceId,
+    childSceneId: a.childSceneId ?? null,
+    command: isSubScene ? null : a.command,
     params: a.params ?? {},
     stepOrder: a.stepOrder ?? index,
     parallelGroup: a.parallelGroup ?? 0,
