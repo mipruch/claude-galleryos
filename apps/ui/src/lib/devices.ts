@@ -222,7 +222,9 @@ function collect<T>(items: T[], keyOf: (item: T) => string): { key: string; item
   return [...map.entries()].map(([key, items]) => ({ key, items }))
 }
 
-const UNASSIGNED = '__unassigned__'
+/** Sentinel room key for devices/scenes with no `roomId`. Shared with the scene helpers. */
+export const ROOM_UNASSIGNED = '__unassigned__'
+const UNASSIGNED = ROOM_UNASSIGNED
 const roomKeyOf = (d: DeviceRecord): string => d.roomId ?? UNASSIGNED
 
 /** Subgroups by device type, alphabetical. */

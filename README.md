@@ -1569,10 +1569,31 @@ Klávesnicí ovládaný **command palette** (Raycast/Notion styl,
   `capabilities` na param-less / jednoduché příkazy se stejným `command` /
   `params` / `optimistic` tvarem jako widgety; příkazy s parametry (`setInput`,
   `recall`, `send`) vynechává.
-- **Rozšiřitelné na scény:** výsledky jsou plochý seznam `PaletteItem`ů, každý se
-  svým `onSelect`. Až přibudou scény, stačí přidat položku „Run scene: Cinema“ s
-  `onSelect: () => runScene(...)` — žádná změna toku. 4 unit testy pro
-  `deviceActions` (celkem 22).
+- **Scény v paletě:** výsledky jsou plochý seznam `PaletteItem`ů, každý se svým
+  `onSelect`. Root view teď řadí **nejdřív scény** („Run scene: …“, jedno **↵** =
+  spuštění přes `scenes.execute`) a pak zařízení; obojí používá stejné volné
+  hledání. 4 unit testy pro `deviceActions`.
+
+#### Implementováno (scény — `SceneBar` + `useScenesStore`)
+
+Nad gridem (a toolbarem) jsou **tlačítka scén** (`components/scenes/SceneBar.vue`),
+vždy navrchu stránky:
+
+- **Spuštění jedním klikem** — `scenes.execute(id)` pošle `POST /api/v1/scenes/:id/
+  execute` se `source: "ui"`. Server běží asynchronně (`202 { status: "running" }`);
+  tlačítko ukazuje **spinner**, dokud běh trvá. Stav „běží“ řídí WS události
+  `scene:started` / `scene:completed` / `scene:failed`, které socket v
+  `useDevicesStore` **přesměruje** do `useScenesStore` (`markRunning`/`markFinished`).
+  Vnořené sub-scény emitují vlastní události dle `sceneId`, takže si každá maže svůj
+  vlastní příznak. 409 (scéna už běží) i další chyby se ukážou jako toast.
+- **Které scény jsou vidět** kopíruje filtr gridu: bez filtru **všechny**; při
+  aktivním **room filtru** jen scény dané místnosti (scéna bez místnosti → stejný
+  „Unassigned“ klíč jako zařízení); při **hledání** scény matchující dotaz (napříč
+  všemi). Čisté helpery v `lib/scenes.ts` (`filterScenesByRooms`, `searchScenes`).
+- **Tooltip s popisem** (jako u zařízení) + **Lucide ikona** mapovaná z DB pole
+  `icon` přes `sceneIcon(name)` (case-insensitive, fallback na generickou ikonu),
+  takže scény používají stejnou sadu ikon jako widgety zařízení; volitelná barva
+  z `color`. Scény jdou spustit i z command palette. 9 unit testů pro `lib/scenes`.
 
 ### Princip fungování
 

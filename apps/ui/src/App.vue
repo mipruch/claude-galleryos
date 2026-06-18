@@ -6,18 +6,24 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import DeviceGrid from '@/components/devices/DeviceGrid.vue'
 import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
+import SceneBar from '@/components/scenes/SceneBar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import CommandPalette from '@/components/command/CommandPalette.vue'
 import { useDevicesStore } from '@/stores/devices'
+import { useScenesStore } from '@/stores/scenes'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 const store = useDevicesStore()
+const scenes = useScenesStore()
 const { openPalette } = useCommandPalette()
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
 
-onMounted(() => store.init())
+onMounted(() => {
+  store.init()
+  scenes.fetchAll()
+})
 onBeforeUnmount(() => store.dispose())
 </script>
 
@@ -66,6 +72,7 @@ onBeforeUnmount(() => store.dispose())
           </div>
         </header>
 
+        <SceneBar />
         <DeviceToolbar />
         <DeviceGrid />
       </main>

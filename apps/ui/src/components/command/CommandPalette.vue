@@ -15,8 +15,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Compon
 import { SearchIcon, ChevronRightIcon, CornerDownLeftIcon } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
+import { searchScenes, sceneIcon, type SceneRecord } from '@/lib/scenes'
 import { deviceActions, type DeviceAction } from '@/lib/commands'
 import { useDevicesStore } from '@/stores/devices'
+import { useScenesStore } from '@/stores/scenes'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 interface PaletteItem {
@@ -29,6 +31,7 @@ interface PaletteItem {
 }
 
 const store = useDevicesStore()
+const scenes = useScenesStore()
 const { open, close, toggle } = useCommandPalette()
 
 const query = ref('')
@@ -46,6 +49,11 @@ function deviceSubtitle(d: DeviceRecord): string {
   return [room, typeLabel(d.type)].filter(Boolean).join(' · ')
 }
 
+function sceneSubtitle(s: SceneRecord): string {
+  const room = s.roomId ? roomName.value.get(s.roomId) : undefined
+  return [room, 'Scene'].filter(Boolean).join(' · ')
+}
+
 const results = computed<PaletteItem[]>(() => {
   if (view.value === 'device' && activeDevice.value) {
     const device = activeDevice.value
@@ -58,19 +66,34 @@ const results = computed<PaletteItem[]>(() => {
         onSelect: () => runAction(device, a),
       }))
   }
-  // Root: devices (reuses the same loose search as the grid).
-  return searchDevices(store.devices, query.value, store.rooms).map((d) => ({
-    id: d.id,
-    title: d.name,
-    subtitle: deviceSubtitle(d),
-    icon: ChevronRightIcon,
-    onSelect: () => openDevice(d),
+  // Root: scenes first (one tap = run), then devices (drill into actions). Both
+  // reuse the same loose search the grid uses.
+  const sceneItems: PaletteItem[] = searchScenes(
+    scenes.records.filter((s) => s.enabled),
+    query.value,
+    store.rooms,
+  ).map((s) => ({
+    id: `scene:${s.id}`,
+    title: `Run scene: ${s.name}`,
+    subtitle: sceneSubtitle(s),
+    icon: sceneIcon(s.icon),
+    onSelect: () => runScene(s),
   }))
+  const deviceItems: PaletteItem[] = searchDevices(store.devices, query.value, store.rooms).map(
+    (d) => ({
+      id: d.id,
+      title: d.name,
+      subtitle: deviceSubtitle(d),
+      icon: ChevronRightIcon,
+      onSelect: () => openDevice(d),
+    }),
+  )
+  return [...sceneItems, ...deviceItems]
 })
 
 const emptyText = computed(() => {
   if (view.value === 'device') return 'No quick actions for this device.'
-  return query.value ? 'No devices found.' : 'No devices yet.'
+  return query.value ? 'No scenes or devices found.' : 'Nothing here yet.'
 })
 
 // ── actions ────────────────────────────────────────────────────────────────
@@ -88,6 +111,12 @@ async function runAction(device: DeviceRecord, action: DeviceAction): Promise<vo
   // the error itself on failure.
   const ok = await store.sendCommand(device.id, action.command, action.params, action.optimistic)
   if (ok) toast.success(device.name, { description: action.label })
+}
+
+function runScene(scene: SceneRecord): void {
+  close()
+  // The store toasts start/failure and tracks the running state itself.
+  scenes.execute(scene.id)
 }
 
 function goBack(): void {
@@ -218,7 +247,7 @@ onBeforeUnmount(() => {
             :placeholder="
               view === 'device' && activeDevice
                 ? `${activeDevice.name} — choose an action…`
-                : 'Search devices…'
+                : 'Search scenes & devices…'
             "
             aria-label="Command palette search"
             @keydown="onKeydown"

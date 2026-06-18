@@ -4,7 +4,7 @@ import { computed } from 'vue'
 import { PowerIcon } from '@lucide/vue'
 import DeviceCard from './DeviceCard.vue'
 import { Switch } from '@/components/ui/switch'
-import { readOn, type DeviceRecord } from '@/lib/devices'
+import { readOn, type DeviceRecord, type DeviceState } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
 
 const props = defineProps<{ device: DeviceRecord }>()
