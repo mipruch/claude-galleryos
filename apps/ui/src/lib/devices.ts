@@ -56,8 +56,9 @@ export function readLevel(state: DeviceState | undefined, ...keys: string[]): nu
 export function readOn(state: DeviceState | undefined, ...keys: string[]): boolean {
   for (const key of keys) {
     const v = state?.[key]
-    if (typeof v === 'boolean') return v
+    if (v === true) return true
     if (typeof v === 'string') return v === 'on'
+    // boolean false: keep looking — a later key may carry an authoritative "on"
   }
   return false
 }
