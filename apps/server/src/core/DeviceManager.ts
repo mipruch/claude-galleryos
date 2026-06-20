@@ -15,6 +15,7 @@
  */
 
 import type { DriverKVStore, EndpointDescriptor } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
 import type { Connection, ConnectionStatus, Device, DeviceStatus } from "@gallery/types";
 import { DriverHost, type RestartPolicy } from "../drivers/DriverHost.ts";
 import { EventBus } from "./EventBus.ts";
@@ -182,7 +183,7 @@ export class DeviceManager {
     } catch (err) {
       this.log.error("failed to start connection", {
         connectionId: connection.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
     }
   }

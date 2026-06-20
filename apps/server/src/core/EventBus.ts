@@ -10,35 +10,11 @@
  */
 
 import { EventEmitter } from "node:events";
+import type { EventOf, GalleryEvent, GalleryEventType } from "@gallery/types";
 
-/** The complete set of events flowing through the system. */
-export type GalleryEvent =
-  // Devices
-  | { type: "device.state.changed"; deviceId: string; state: Record<string, unknown>; source: string }
-  | { type: "device.online"; deviceId: string; connectionId: string }
-  | { type: "device.offline"; deviceId: string; connectionId: string; reason: string }
-  // Connections
-  | { type: "connection.connected"; connectionId: string }
-  | { type: "connection.disconnected"; connectionId: string; reason: string }
-  | { type: "connection.error"; connectionId: string; error: string }
-  // Scenes (used by later steps)
-  | { type: "scene.execute.requested"; sceneId: string; source: string; executionId: string }
-  | { type: "scene.execute.started"; sceneId: string; executionId: string }
-  | { type: "scene.execute.completed"; sceneId: string; executionId: string; durationMs: number }
-  | { type: "scene.execute.failed"; sceneId: string; executionId: string; error: string }
-  | { type: "scene.execute.aborted"; sceneId: string; executionId: string }
-  // Inputs (used by later steps)
-  | { type: "input.osc.received"; address: string; args: unknown[] }
-  | { type: "input.tcp.received"; message: string; client: string }
-  // System
-  | { type: "system.driver.crashed"; connectionId: string; driverId: string; error: string }
-  | { type: "system.startup.complete" };
-
-/** Discriminant string of any event. */
-export type GalleryEventType = GalleryEvent["type"];
-
-/** Narrow an event by its `type`. */
-export type EventOf<T extends GalleryEventType> = Extract<GalleryEvent, { type: T }>;
+// The event catalog is the single source of truth in `@gallery/types`; re-exported
+// here so server modules can keep importing it from the bus.
+export type { EventOf, GalleryEvent, GalleryEventType } from "@gallery/types";
 
 const WILDCARD = "*";
 

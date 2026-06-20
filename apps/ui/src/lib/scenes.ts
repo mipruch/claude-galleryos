@@ -29,6 +29,7 @@ import {
 } from '@lucide/vue'
 import type { RoomDTO, SceneDTO } from '@gallery/types'
 import { ROOM_UNASSIGNED } from './devices'
+import { matchesAllTerms, normalize, searchTerms } from './text'
 
 // Re-exported under a UI-local name so components import scene types from here.
 export type { SceneDTO as SceneRecord } from '@gallery/types'
@@ -100,14 +101,6 @@ export function filterScenesByRooms(scenes: SceneDTO[], roomKeys: string[]): Sce
   return scenes.filter((s) => allow.has(sceneRoomKey(s)))
 }
 
-/** Lowercase + strip diacritics, so "Sál" matches "sal". */
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-}
-
 /** All human-readable text a scene can be matched on, normalized. */
 function sceneHaystack(scene: SceneDTO, roomName: string | undefined): string {
   return normalize([scene.name, scene.description ?? '', roomName ?? '', ...scene.tags].join(' '))
@@ -119,11 +112,10 @@ function sceneHaystack(scene: SceneDTO, roomName: string | undefined): string {
  * query returns the input unchanged.
  */
 export function searchScenes(scenes: SceneDTO[], query: string, rooms: RoomDTO[]): SceneDTO[] {
-  const terms = normalize(query).split(/\s+/).filter(Boolean)
+  const terms = searchTerms(query)
   if (!terms.length) return scenes
   const roomName = new Map(rooms.map((r) => [r.id, r.name]))
-  return scenes.filter((s) => {
-    const haystack = sceneHaystack(s, s.roomId ? roomName.get(s.roomId) : undefined)
-    return terms.every((t) => haystack.includes(t))
-  })
+  return scenes.filter((s) =>
+    matchesAllTerms(sceneHaystack(s, s.roomId ? roomName.get(s.roomId) : undefined), terms),
+  )
 }

@@ -63,21 +63,16 @@ export const manifest: DriverManifest = {
         {
           command: "on",
           description: "Power the projector on (POWR 1).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "off",
           description: "Power the projector off (POWR 0).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "setInput",
           description: "Select an input. Accepts a friendly name (HDMI1, RGB1, …) or a raw 2-digit PJLink code.",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["input"],
@@ -89,7 +84,6 @@ export const manifest: DriverManifest = {
         {
           command: "setMute",
           description: "Set AV mute on/off (AVMT 31/30).",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["muted"],

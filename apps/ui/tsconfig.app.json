@@ -5,11 +5,8 @@
   "compilerOptions": {
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,
-    "baseUrl": ".",
-    
-    
 
-    // Path mapping for cleaner imports.
+    // Path mapping for cleaner imports (resolved relative to this file).
     "paths": {
       "@/*": ["./src/*"],
     },

@@ -62,7 +62,6 @@ export const manifest: DriverManifest = {
         {
           command: "send",
           description: "Send a payload, optionally waiting for one response frame.",
-          reversible: false,
           paramsSchema: {
             type: "object",
             required: ["payload"],

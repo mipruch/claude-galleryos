@@ -6,3 +6,4 @@ export type { IDeviceDriver } from "./IDeviceDriver.ts";
 export * from "./types.ts";
 export * from "./ipc.ts";
 export { TcpClient, type TcpClientOptions } from "./transport.ts";
+export { errMsg } from "./util.ts";

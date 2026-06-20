@@ -19,7 +19,7 @@ import {
   SceneValidationError,
 } from "../../core/SceneEngine.ts";
 import type { ApiContext } from "../context.ts";
-import { HttpError, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import { HttpError, paramId, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
 /** Map a thrown SceneEngine error to the right HTTP status. */
 function toHttp(err: unknown): never {
@@ -60,13 +60,12 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
       stepOrder: a.stepOrder !== undefined ? Number(a.stepOrder) : undefined,
       parallelGroup: a.parallelGroup !== undefined ? Number(a.parallelGroup) : undefined,
       delayMs: a.delayMs !== undefined ? Number(a.delayMs) : undefined,
-      onFailure: a.onFailure !== undefined ? String(a.onFailure) : undefined,
+      onFailure: a.onFailure === "abort" || a.onFailure === "continue" ? a.onFailure : undefined,
     };
   });
 }
 
 export function scenesRoutes(ctx: ApiContext): RouteMap {
-  const id = (req: Bun.BunRequest) => (req.params as { id: string }).id;
 
   return {
     "/api/v1/scenes": {
@@ -100,13 +99,13 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
 
     "/api/v1/scenes/:id": {
       GET: route(async (req) => {
-        const scene = await ctx.scenes.get(id(req));
+        const scene = await ctx.scenes.get(paramId(req));
         if (!scene) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(scene);
       }),
       PUT: route(async (req) => {
         const body = await readJson(req);
-        const updated = await ctx.scenes.update(id(req), {
+        const updated = await ctx.scenes.update(paramId(req), {
           name: body.name as string | undefined,
           roomId: (body.roomId as string | undefined) ?? undefined,
           description: body.description as string | undefined,
@@ -120,7 +119,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
         return json(updated);
       }),
       DELETE: route(async (req) => {
-        const removed = await ctx.scenes.remove(id(req));
+        const removed = await ctx.scenes.remove(paramId(req));
         if (!removed) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return noContent();
       }),
@@ -131,7 +130,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
         const body = await readJson(req).catch(() => ({}) as Record<string, unknown>);
         const source = body.source ? String(body.source) : "api";
         try {
-          const result = await ctx.sceneEngine.startScene(id(req), source);
+          const result = await ctx.sceneEngine.startScene(paramId(req), source);
           return json(result, 202);
         } catch (err) {
           toHttp(err);
@@ -142,7 +141,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
     "/api/v1/scenes/:id/execute/dry-run": {
       POST: route(async (req) => {
         try {
-          return json(await ctx.sceneEngine.dryRun(id(req)));
+          return json(await ctx.sceneEngine.dryRun(paramId(req)));
         } catch (err) {
           toHttp(err);
         }
@@ -150,14 +149,14 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
     },
 
     "/api/v1/scenes/:id/executions": {
-      GET: route(async (req) => json(await ctx.sceneExecutions.listByScene(id(req)))),
+      GET: route(async (req) => json(await ctx.sceneExecutions.listByScene(paramId(req)))),
     },
 
     "/api/v1/scenes/:id/favorite": {
       PATCH: route(async (req) => {
         const body = await readJson(req);
         const isFavorite = Boolean(body.is_favorite ?? body.isFavorite);
-        const updated = await ctx.scenes.setFavorite(id(req), isFavorite);
+        const updated = await ctx.scenes.setFavorite(paramId(req), isFavorite);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(updated);
       }),

@@ -1,16 +1,8 @@
 {
   // Root project — used by `tsc --noEmit` (full-monorepo type-check) and editors.
-  // Workspace packages are resolved through bun's node_modules symlinks; the
-  // `paths` mapping below makes `tsc` resolve them without a build step too.
+  // Workspace packages (`@gallery/*`) resolve through bun's node_modules symlinks,
+  // so no `paths` mapping is needed.
   "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@gallery/driver-core": ["./packages/driver-core/src/index.ts"],
-      "@gallery/driver-pjlink": ["./packages/drivers/driver-pjlink/src/index.ts"],
-      "@gallery/driver-tcp-generic": ["./packages/drivers/driver-tcp-generic/src/index.ts"]
-    }
-  },
   // apps/ui uses vue-tsc + browser/DOM types; excluded from this Bun-typed check.
   // Run `bun run typecheck:ui` to type-check the frontend separately.
   "exclude": ["apps/ui"],

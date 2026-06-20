@@ -30,7 +30,7 @@ async function writeJson(key: string, value: unknown): Promise<void> {
  *   - sliders stay at the correct position across all UIs while off, and
  *   - turning back on restores that level without needing to re-set the fader.
  */
-function shouldPreserveBrightness(
+export function shouldPreserveBrightness(
   existing: Record<string, unknown>,
   merged: Record<string, unknown>,
 ): boolean {
@@ -39,7 +39,7 @@ function shouldPreserveBrightness(
 }
 
 /** Merge a driver state patch into the existing stored state. */
-function mergeDeviceState(
+export function mergeDeviceState(
   existing: Record<string, unknown>,
   patch: Record<string, unknown>,
 ): Record<string, unknown> {

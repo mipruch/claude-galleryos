@@ -1281,10 +1281,6 @@ socket.on('device:command:ack', (data: {
 }) => {})
 // Při úspěchu server navíc broadcastne `device:state` ostatním UI (viz níže).
 // Při chybě se NEbroadcastuje nic — jen warn log; origin podle `success: false` vrátí stav.
-
-// Přihlásit se k odběru živého stavu konkrétního zařízení
-socket.emit('device:subscribe', { deviceId: string })
-socket.emit('device:unsubscribe', { deviceId: string })
 ```
 
 ### Server → Klient (broadcast všem)

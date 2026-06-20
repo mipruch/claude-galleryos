@@ -16,10 +16,9 @@
 import type { Connection } from "@gallery/types";
 import { toConnectionRecord } from "../../db/repositories.ts";
 import type { ApiContext } from "../context.ts";
-import { HttpError, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
 export function connectionsRoutes(ctx: ApiContext): RouteMap {
-  const id = (req: Bun.BunRequest) => (req.params as { id: string }).id;
 
   /** Attach the live `running` flag to a connection row. */
   const withRuntime = (row: Connection) => ({
@@ -73,30 +72,38 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
     },
 
     "/api/v1/connections/:id": {
-      GET: route(async (req) => json(withRuntime(await load(id(req))))),
+      GET: route(async (req) => json(withRuntime(await load(paramId(req))))),
       PUT: route(async (req) => {
-        await load(id(req));
+        await load(paramId(req));
         const body = await readJson(req);
-        const updated = await ctx.connections.update(id(req), body);
+        const updated = await ctx.connections.update(paramId(req), {
+          name: body.name as string | undefined,
+          driverId: body.driverId as string | undefined,
+          host: body.host as string | null | undefined,
+          port: body.port as number | null | undefined,
+          protocol: body.protocol as string | undefined,
+          config: body.config as Record<string, unknown> | undefined,
+          enabled: body.enabled as boolean | undefined,
+        });
         // Restart the host so config changes take effect.
         await ctx.deviceManager.stopConnection(updated!.id);
         if (updated!.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(updated!));
         return json(withRuntime(updated!));
       }),
       DELETE: route(async (req) => {
-        await load(id(req));
-        if ((await ctx.connections.deviceCount(id(req))) > 0) {
+        await load(paramId(req));
+        if ((await ctx.connections.deviceCount(paramId(req))) > 0) {
           throw new HttpError(409, "CONFLICT", "connection has devices; delete them first");
         }
-        await ctx.deviceManager.stopConnection(id(req));
-        await ctx.connections.remove(id(req));
+        await ctx.deviceManager.stopConnection(paramId(req));
+        await ctx.connections.remove(paramId(req));
         return noContent();
       }),
     },
 
     "/api/v1/connections/:id/connect": {
       POST: route(async (req) => {
-        const row = await load(id(req));
+        const row = await load(paramId(req));
         await ctx.deviceManager.addConnection(toConnectionRecord(row));
         return json({ connectionId: row.id, running: true });
       }),
@@ -104,15 +111,15 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
 
     "/api/v1/connections/:id/disconnect": {
       POST: route(async (req) => {
-        await load(id(req));
-        await ctx.deviceManager.stopConnection(id(req));
-        return json({ connectionId: id(req), running: false });
+        await load(paramId(req));
+        await ctx.deviceManager.stopConnection(paramId(req));
+        return json({ connectionId: paramId(req), running: false });
       }),
     },
 
     "/api/v1/connections/:id/status": {
       GET: route(async (req) => {
-        const connectionId = id(req);
+        const connectionId = paramId(req);
         await load(connectionId);
         const status = await ctx.state.getConnectionStatus(connectionId);
         return json(status ?? { online: false });

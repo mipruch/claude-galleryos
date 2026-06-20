@@ -15,6 +15,7 @@ import {
   asObject,
   json,
   noContent,
+  paramId,
   query,
   readJson,
   requireFields,
@@ -23,7 +24,6 @@ import {
 } from "../http.ts";
 
 export function devicesRoutes(ctx: ApiContext): RouteMap {
-  const id = (req: Bun.BunRequest) => (req.params as { id: string }).id;
 
   return {
     "/api/v1/devices": {
@@ -91,19 +91,31 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
 
     "/api/v1/devices/:id": {
       GET: route(async (req) => {
-        const device = await ctx.devices.get(id(req));
+        const device = await ctx.devices.get(paramId(req));
         if (!device) throw new HttpError(404, "NOT_FOUND", "device not found");
         return json(device);
       }),
       PUT: route(async (req) => {
         const body = await readJson(req);
-        const updated = await ctx.devices.update(id(req), body);
+        const updated = await ctx.devices.update(paramId(req), {
+          roomId: body.roomId as string | null | undefined,
+          name: body.name as string | undefined,
+          description: body.description as string | undefined,
+          type: body.type as string | undefined,
+          subtype: body.subtype as string | undefined,
+          address: body.address as Record<string, unknown> | undefined,
+          capabilities: body.capabilities as string[] | undefined,
+          metadata: body.metadata as Record<string, unknown> | undefined,
+          icon: body.icon as string | undefined,
+          displayOrder: body.displayOrder as number | undefined,
+          enabled: body.enabled as boolean | undefined,
+        });
         if (!updated) throw new HttpError(404, "NOT_FOUND", "device not found");
         await ctx.deviceManager.refreshConnectionDevices(updated.connectionId);
         return json(updated);
       }),
       DELETE: route(async (req) => {
-        const removed = await ctx.devices.remove(id(req));
+        const removed = await ctx.devices.remove(paramId(req));
         if (!removed) throw new HttpError(404, "NOT_FOUND", "device not found");
         await ctx.deviceManager.refreshConnectionDevices(removed.connectionId);
         return noContent();
@@ -115,18 +127,18 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
         const body = await readJson(req);
         requireFields(body, ["command"]);
         const params = body.params ? asObject(body.params, "params") : {};
-        const result = await ctx.deviceManager.execute(id(req), String(body.command), params);
+        const result = await ctx.deviceManager.execute(paramId(req), String(body.command), params);
         return json(result);
       }),
     },
 
     "/api/v1/devices/:id/state": {
-      GET: route(async (req) => json((await ctx.state.getDeviceState(id(req))) ?? {})),
+      GET: route(async (req) => json((await ctx.state.getDeviceState(paramId(req))) ?? {})),
     },
 
     "/api/v1/devices/:id/status": {
       GET: route(async (req) =>
-        json((await ctx.state.getDeviceStatus(id(req))) ?? { online: false }),
+        json((await ctx.state.getDeviceStatus(paramId(req))) ?? { online: false }),
       ),
     },
   };

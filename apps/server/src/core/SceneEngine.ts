@@ -30,6 +30,8 @@
  */
 
 import type { CommandResult } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
+import type { ExecutionStatus, OnFailure } from "@gallery/types";
 import type { EventBus } from "./EventBus.ts";
 import type { Logger } from "../logger.ts";
 
@@ -47,7 +49,7 @@ export interface SceneActionRecord {
   parallelGroup: number;
   delayMs: number;
   /** "continue" | "abort" */
-  onFailure: string;
+  onFailure: OnFailure;
 }
 
 export interface SceneRecord {
@@ -138,7 +140,7 @@ export interface DryRunStep {
   params: Record<string, unknown>;
   parallelGroup: number;
   delayMs: number;
-  onFailure: string;
+  onFailure: OnFailure;
 }
 export interface DryRunResult {
   sceneId: string;
@@ -149,7 +151,7 @@ export interface DryRunResult {
 
 interface ActionOutcome {
   success: boolean;
-  onFailure: string;
+  onFailure: OnFailure;
   /** Human-readable target for logs/abort messages (`device d1/on` or `scene s2`). */
   target: string;
   error?: string;
@@ -176,7 +178,7 @@ export class SceneEngine {
         // Failures already surfaced as scene.execute.failed; just trace here.
         this.log.debug("requested scene run ended with error", {
           sceneId: e.sceneId,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMsg(err),
         });
       });
     });
@@ -218,7 +220,7 @@ export class SceneEngine {
       this.log.warn("background scene run errored", {
         sceneId,
         executionId,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
     });
     return { executionId, sceneId, status: "running" };
@@ -352,7 +354,7 @@ export class SceneEngine {
     } catch (err) {
       // Unexpected engine error (not a normal action failure).
       aborted = true;
-      abortError = err instanceof Error ? err.message : String(err);
+      abortError = errMsg(err);
     }
 
     const durationMs = Date.now() - start;
@@ -396,7 +398,7 @@ export class SceneEngine {
       }
       return { success: true, onFailure, target };
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errMsg(err);
       this.log.warn("scene action threw", { executionId, deviceId, command, error });
       return { success: false, onFailure, target, error };
     }
@@ -413,7 +415,7 @@ export class SceneEngine {
    */
   private async runChildScene(
     childSceneId: string,
-    onFailure: string,
+    onFailure: OnFailure,
     source: string,
     depth: number,
   ): Promise<ActionOutcome> {
@@ -431,7 +433,7 @@ export class SceneEngine {
       }
       return { success: true, onFailure, target };
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errMsg(err);
       this.log.warn("sub-scene run failed", { childSceneId, error });
       return { success: false, onFailure, target, error };
     }
@@ -440,7 +442,7 @@ export class SceneEngine {
   /** Update the execution row without letting a DB hiccup mask the run outcome. */
   private async safeUpdateStatus(
     id: string,
-    status: string,
+    status: ExecutionStatus,
     durationMs?: number,
     errorMessage?: string,
   ): Promise<void> {
@@ -449,7 +451,7 @@ export class SceneEngine {
     } catch (err) {
       this.log.warn("failed to update execution status", {
         executionId: id,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
     }
   }

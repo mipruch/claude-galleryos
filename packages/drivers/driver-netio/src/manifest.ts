@@ -115,22 +115,16 @@ export const manifest: DriverManifest = {
         {
           command: "on",
           description: "Switch the outlet ON.",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "off",
           description: "Switch the outlet OFF.",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "toggle",
           description: "Invert the outlet state (ON→OFF or OFF→ON).",
-          reversible: false,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
@@ -138,7 +132,6 @@ export const manifest: DriverManifest = {
           description:
             "Switch the outlet ON for a short period, then switch it back OFF. " +
             "Useful for momentary triggers (e.g. door release, reboot button).",
-          reversible: false,
           paramsSchema: {
             type: "object",
             properties: {
@@ -156,7 +149,6 @@ export const manifest: DriverManifest = {
         {
           command: "shortOff",
           description: "Switch the outlet OFF briefly, then switch it back ON (power-cycle).",
-          reversible: false,
           paramsSchema: {
             type: "object",
             properties: {

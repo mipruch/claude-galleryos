@@ -14,6 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import type { OnFailure } from "./enums.ts";
 import {
   bigserial,
   boolean,
@@ -167,7 +168,7 @@ export const sceneActions = pgTable(
     // Required for device actions; null for sub-scene actions.
     command: varchar("command", { length: 100 }),
     params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
-    onFailure: varchar("on_failure", { length: 20 }).notNull().default("continue"),
+    onFailure: varchar("on_failure", { length: 20 }).$type<OnFailure>().notNull().default("continue"),
     createdAt: createdAt(),
   },
   (t) => [

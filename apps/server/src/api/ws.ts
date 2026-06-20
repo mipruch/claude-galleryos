@@ -10,47 +10,67 @@
  */
 
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
-import type { ClientEvent, ServerMessage } from "@gallery/types";
-import type { GalleryEvent } from "../core/EventBus.ts";
+import type {
+  ClientEvent,
+  EventOf,
+  GalleryEvent,
+  GalleryEventType,
+  ServerEvent,
+  ServerMessage,
+  ServerMessageData,
+} from "@gallery/types";
 import type { ApiContext } from "./context.ts";
+import { errMsg } from "@gallery/driver-core";
 import { logger } from "../logger.ts";
 
 const log = logger.child("ws");
 const BROADCAST_TOPIC = "events";
 
-/** Serialise a server→client message. `event` is constrained to the shared contract. */
-const envelope = (event: ServerMessage["event"], data: unknown): string =>
+/** Build a typed server→client envelope. `data` is checked against the event. */
+const envelope = <E extends ServerEvent>(event: E, data: ServerMessageData<E>): string =>
   JSON.stringify({ event, data });
+
+/**
+ * Project each internal event onto its wire message (or `null` to keep it
+ * server-side). The mapped type makes this table exhaustive: adding a
+ * `GalleryEvent` without a projection here is a compile error — no event can be
+ * silently dropped.
+ */
+const PROJECTIONS: { [T in GalleryEventType]: (e: EventOf<T>) => ServerMessage | null } = {
+  "device.state.changed": (e) => ({
+    event: "device:state",
+    data: { deviceId: e.deviceId, state: e.state, source: e.source, timestamp: new Date().toISOString() },
+  }),
+  "device.online": (e) => ({ event: "device:online", data: { deviceId: e.deviceId } }),
+  "device.offline": (e) => ({ event: "device:offline", data: { deviceId: e.deviceId, reason: e.reason } }),
+  "connection.connected": (e) => ({ event: "connection:connected", data: { connectionId: e.connectionId } }),
+  "connection.disconnected": (e) => ({
+    event: "connection:disconnected",
+    data: { connectionId: e.connectionId, reason: e.reason },
+  }),
+  "connection.error": (e) => ({ event: "driver:error", data: { connectionId: e.connectionId, message: e.error } }),
+  "scene.execute.requested": () => null,
+  "scene.execute.started": (e) => ({ event: "scene:started", data: { sceneId: e.sceneId, executionId: e.executionId } }),
+  "scene.execute.completed": (e) => ({
+    event: "scene:completed",
+    data: { sceneId: e.sceneId, executionId: e.executionId, durationMs: e.durationMs },
+  }),
+  "scene.execute.failed": (e) => ({
+    event: "scene:failed",
+    data: { sceneId: e.sceneId, executionId: e.executionId, error: e.error },
+  }),
+  "input.osc.received": () => null,
+  "input.tcp.received": () => null,
+  "system.driver.crashed": (e) => ({
+    event: "driver:error",
+    data: { connectionId: e.connectionId, driverId: e.driverId, message: e.error },
+  }),
+  "system.startup.complete": () => null,
+};
 
 /** Translate an internal event into a client-facing message (or drop it). */
 export function toClientMessage(e: GalleryEvent): ServerMessage | null {
-  switch (e.type) {
-    case "device.state.changed":
-      return {
-        event: "device:state",
-        data: { deviceId: e.deviceId, state: e.state, source: e.source, timestamp: new Date().toISOString() },
-      };
-    case "device.online":
-      return { event: "device:online", data: { deviceId: e.deviceId } };
-    case "device.offline":
-      return { event: "device:offline", data: { deviceId: e.deviceId, reason: e.reason } };
-    case "connection.connected":
-      return { event: "connection:connected", data: { connectionId: e.connectionId } };
-    case "connection.disconnected":
-      return { event: "connection:disconnected", data: { connectionId: e.connectionId, reason: e.reason } };
-    case "connection.error":
-      return { event: "driver:error", data: { connectionId: e.connectionId, message: e.error } };
-    case "scene.execute.started":
-      return { event: "scene:started", data: { sceneId: e.sceneId, executionId: e.executionId } };
-    case "scene.execute.completed":
-      return { event: "scene:completed", data: { sceneId: e.sceneId, executionId: e.executionId, durationMs: e.durationMs } };
-    case "scene.execute.failed":
-      return { event: "scene:failed", data: { sceneId: e.sceneId, executionId: e.executionId, error: e.error } };
-    case "system.driver.crashed":
-      return { event: "driver:error", data: { connectionId: e.connectionId, driverId: e.driverId, message: e.error } };
-    default:
-      return null;
-  }
+  return (PROJECTIONS[e.type] as (ev: GalleryEvent) => ServerMessage | null)(e);
 }
 
 /** Build the Bun WebSocket handlers, closing over the API context. */
@@ -126,8 +146,7 @@ async function onDeviceCommand(
   data: WsData,
 ): Promise<void> {
   const deviceId = String(data.deviceId ?? "");
-  // Use Object.assign to default params without an extra ?? branch.
-  const params = Object.assign({}, data.params as Record<string, unknown>);
+  const params = { ...((data.params as Record<string, unknown>) ?? {}) };
   try {
     const result = await ctx.deviceManager.execute(deviceId, String(data.command ?? ""), params);
     ws.send(envelope("device:command:ack", { deviceId, ...result }));
@@ -136,22 +155,6 @@ async function onDeviceCommand(
     // can uniformly check `ack.success` to decide stay-vs-revert.
     ws.send(envelope("device:command:ack", { deviceId, success: false, error: errMsg(err) }));
   }
-}
-
-async function onSubscribe(
-  ws: ServerWebSocket<unknown>,
-  _ctx: ApiContext,
-  data: WsData,
-): Promise<void> {
-  ws.subscribe(`device:${String(data.deviceId ?? "")}`);
-}
-
-async function onUnsubscribe(
-  ws: ServerWebSocket<unknown>,
-  _ctx: ApiContext,
-  data: WsData,
-): Promise<void> {
-  ws.unsubscribe(`device:${String(data.deviceId ?? "")}`);
 }
 
 async function onSceneExecute(
@@ -182,8 +185,6 @@ async function onSceneExecute(
 const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
   "device:state:patch": onStatePatch,
   "device:command": onDeviceCommand,
-  "device:subscribe": onSubscribe,
-  "device:unsubscribe": onUnsubscribe,
   "scene:execute": onSceneExecute,
 };
 
@@ -224,11 +225,7 @@ export function setupBroadcast(server: Server<unknown>, ctx: ApiContext): void {
       lastStateByDevice.set(event.deviceId, serialized);
     }
 
-    const recipients = server.publish(BROADCAST_TOPIC, envelope(message.event, message.data));
+    const recipients = server.publish(BROADCAST_TOPIC, JSON.stringify(message));
     log.info("broadcast →", { event: message.event, recipients, data: message.data });
   });
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

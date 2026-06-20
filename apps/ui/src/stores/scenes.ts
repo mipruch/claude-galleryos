@@ -3,15 +3,13 @@
  *
  * Scenes are loaded once over HTTP (`GET /api/v1/scenes`) and executed with
  * `POST /api/v1/scenes/:id/execute` (the server runs them asynchronously and
- * returns `202 { status: "running" }`). Live progress arrives over the same
- * WebSocket the devices store owns: `scene:started` / `scene:completed` /
- * `scene:failed` events flip the per-scene `running` flag (see the devices store,
- * which routes those events here). Any device state the scene changes is pushed
- * separately as `device:state`, so the device cards update on their own.
+ * returns `202 { status: "running" }`). Live progress arrives over the shared
+ * realtime socket: `scene:started` / `scene:completed` / `scene:failed` flip the
+ * per-scene `running` flag. Any device state a scene changes is pushed separately
+ * as `device:state`, so the device cards update on their own.
  *
  * Which scenes are *visible* follows the device grid's room filter and search box
- * (shared, single source of truth): no filter → all scenes; a room filter → only
- * that room's scenes; a non-blank search → scenes matching the query.
+ * (shared, single source of truth).
  */
 
 import { defineStore } from 'pinia'
@@ -19,12 +17,15 @@ import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { SceneDTO } from '@gallery/types'
 import { filterScenesByRooms, searchScenes } from '@/lib/scenes'
+import { errMsg, fetchJson } from '@/lib/http'
 import { useDevicesStore } from './devices'
+import { useRealtimeStore } from './realtime'
 
 const API = '/api/v1'
 
 export const useScenesStore = defineStore('scenes', () => {
   const devices = useDevicesStore()
+  const rt = useRealtimeStore()
 
   const records = ref<SceneDTO[]>([])
   const loading = ref(false)
@@ -32,13 +33,11 @@ export const useScenesStore = defineStore('scenes', () => {
   /** Scene ids currently executing (for spinner / disabled button feedback). */
   const running = ref<Record<string, boolean>>({})
 
-  // Live progress: the devices store owns the socket and relays scene events
-  // here (one-way dependency, no import cycle). Nested sub-scenes emit their own
-  // events keyed by sceneId, so each clears its own running flag.
-  devices.onSceneEvent((e) => {
-    if (e.kind === 'started') markRunning(e.sceneId)
-    else markFinished(e.sceneId, e.kind === 'failed' ? e.error : undefined)
-  })
+  // Live progress over the shared socket. Nested sub-scenes emit their own events
+  // keyed by sceneId, so each clears its own running flag.
+  rt.on('scene:started', (d) => markRunning(d.sceneId))
+  rt.on('scene:completed', (d) => markFinished(d.sceneId))
+  rt.on('scene:failed', (d) => markFinished(d.sceneId, d.error))
 
   // Enabled scenes, then filtered to match the grid: search overrides the room
   // filter (just like devices), otherwise the active room filter narrows them.
@@ -55,11 +54,9 @@ export const useScenesStore = defineStore('scenes', () => {
     loading.value = true
     error.value = null
     try {
-      const res = await fetch(`${API}/scenes`)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      records.value = (await res.json()) as SceneDTO[]
+      records.value = (await fetchJson<SceneDTO[]>(`${API}/scenes`)) ?? []
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
+      error.value = errMsg(err)
       toast.error('Could not load scenes', { description: error.value })
     } finally {
       loading.value = false
@@ -71,33 +68,24 @@ export const useScenesStore = defineStore('scenes', () => {
   /**
    * Trigger a scene run. Marks it running immediately for feedback; the WS
    * completion event clears that. A non-2xx response (e.g. 409 already running)
-   * surfaces a toast and clears the flag right away.
+   * surfaces the server's message and clears the flag right away.
    */
   async function execute(id: string): Promise<void> {
     running.value = { ...running.value, [id]: true }
     try {
-      const res = await fetch(`${API}/scenes/${id}/execute`, {
+      await fetchJson(`${API}/scenes/${id}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: 'ui' }),
       })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null
-        const msg = body?.error?.message ?? `${res.status} ${res.statusText}`
-        markFinished(id)
-        toast.error(`${sceneName(id)}: could not run`, { description: msg })
-        return
-      }
       toast.success(sceneName(id), { description: 'Scene started' })
     } catch (err) {
       markFinished(id)
-      toast.error(`${sceneName(id)}: could not run`, {
-        description: err instanceof Error ? err.message : String(err),
-      })
+      toast.error(`${sceneName(id)}: could not run`, { description: errMsg(err) })
     }
   }
 
-  // ── WS-driven progress (called by the devices store's socket handler) ───────
+  // ── WS-driven progress ──────────────────────────────────────────────────────
   function markRunning(id: string): void {
     running.value = { ...running.value, [id]: true }
   }

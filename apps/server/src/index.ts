@@ -9,6 +9,7 @@
  */
 
 import { appConfig } from "./config.ts";
+import { errMsg } from "@gallery/driver-core";
 import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
@@ -144,6 +145,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("Fatal startup error", { error: err instanceof Error ? err.message : String(err) });
+  log.error("Fatal startup error", { error: errMsg(err) });
   process.exit(1);
 });

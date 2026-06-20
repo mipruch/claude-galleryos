@@ -18,6 +18,7 @@
  */
 
 import type { HealthStatus } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
 import type { EventBus } from "./EventBus.ts";
 import type { LiveStateStore, DeviceRecord } from "./DeviceManager.ts";
 import type { Logger } from "../logger.ts";
@@ -54,6 +55,8 @@ export interface WatchdogOptions {
 export class Watchdog {
   private connectionTimer: ReturnType<typeof setInterval> | null = null;
   private endpointTimer: ReturnType<typeof setInterval> | null = null;
+  /** In-flight staggered endpoint-check timeouts, cleared on stop(). */
+  private readonly endpointTimeouts = new Set<ReturnType<typeof setTimeout>>();
   private running = false;
   private readonly log: Logger;
   private readonly connectionIntervalMs: number;
@@ -88,6 +91,8 @@ export class Watchdog {
   stop(): void {
     if (this.connectionTimer) clearInterval(this.connectionTimer);
     if (this.endpointTimer) clearInterval(this.endpointTimer);
+    for (const t of this.endpointTimeouts) clearTimeout(t);
+    this.endpointTimeouts.clear();
     this.connectionTimer = null;
     this.endpointTimer = null;
     this.running = false;
@@ -106,10 +111,7 @@ export class Watchdog {
     try {
       health = await this.opts.target.healthCheckConnection(connectionId);
     } catch (err) {
-    //   this.log.warn("connection health check threw", {
-    //     connectionId,
-    //     error: err instanceof Error ? err.message : String(err),
-    //   });
+      this.log.warn("connection health check threw", { connectionId, error: errMsg(err) });
       return;
     }
 
@@ -160,10 +162,11 @@ export class Watchdog {
     const delayStep = this.endpointIntervalMs / allDevices.length;
 
     allDevices.forEach(({ deviceId, connectionId }, i) => {
-      setTimeout(
-        () => void this.checkOneEndpoint(deviceId, connectionId),
-        Math.floor(i * delayStep),
-      );
+      const t = setTimeout(() => {
+        this.endpointTimeouts.delete(t);
+        void this.checkOneEndpoint(deviceId, connectionId);
+      }, Math.floor(i * delayStep));
+      this.endpointTimeouts.add(t);
     });
   }
 
@@ -174,7 +177,7 @@ export class Watchdog {
     } catch (err) {
       this.log.warn("endpoint health check threw", {
         deviceId,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
       return;
     }

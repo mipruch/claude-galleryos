@@ -8,7 +8,7 @@
  * (green connected · yellow reconnecting · red disconnected · grey disabled),
  * its name, type and any error, plus a switch to enable/disable it.
  */
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { ServerIcon, CircleAlertIcon, ChevronDownIcon } from '@lucide/vue'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
@@ -18,7 +18,6 @@ import { STATE_COLOR, STATE_DOT, STATE_LABEL } from '@/lib/connections'
 const store = useConnectionsStore()
 
 onMounted(() => store.init())
-onBeforeUnmount(() => store.dispose())
 </script>
 
 <template>

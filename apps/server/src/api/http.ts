@@ -7,6 +7,8 @@
  */
 
 import type { Server } from "bun";
+import { errMsg } from "@gallery/driver-core";
+import type { ApiError } from "@gallery/types";
 import { logger } from "../logger.ts";
 
 const httpLog = logger.child("api.http");
@@ -36,20 +38,19 @@ export const json = (data: unknown, status = 200): Response => Response.json(dat
 
 export const noContent = (): Response => new Response(null, { status: 204 });
 
+/** Build a typed `ApiError` JSON response. */
+const errorResponse = (body: ApiError, status: number): Response => Response.json(body, { status });
+
 /** Convert any thrown value into a JSON error response. */
 export function toErrorResponse(err: unknown): Response {
   if (err instanceof HttpError) {
-    return Response.json({ error: err.message, code: err.code, details: err.details }, { status: err.status });
+    return errorResponse({ error: err.message, code: err.code, details: err.details }, err.status);
   }
-  const message = err instanceof Error ? err.message : String(err);
+  const error = errMsg(err);
   // Map known DeviceManager errors to sensible status codes.
-  if (message.includes("device not found")) {
-    return Response.json({ error: message, code: "NOT_FOUND" }, { status: 404 });
-  }
-  if (message.includes("no active driver")) {
-    return Response.json({ error: message, code: "DRIVER_UNAVAILABLE" }, { status: 503 });
-  }
-  return Response.json({ error: message, code: "INTERNAL_ERROR" }, { status: 500 });
+  if (error.includes("device not found")) return errorResponse({ error, code: "NOT_FOUND" }, 404);
+  if (error.includes("no active driver")) return errorResponse({ error, code: "DRIVER_UNAVAILABLE" }, 503);
+  return errorResponse({ error, code: "INTERNAL_ERROR" }, 500);
 }
 
 /** Wrap a handler so thrown errors become JSON error responses, and log the request. */
@@ -69,7 +70,7 @@ export function route(fn: Handler): Handler {
         path,
         status: res.status,
         ms: Date.now() - start,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
       return res;
     }
@@ -112,3 +113,6 @@ export function asObject(value: unknown, field: string): Record<string, unknown>
 export function query(req: Request, key: string): string | undefined {
   return new URL(req.url).searchParams.get(key) ?? undefined;
 }
+
+/** Read the `:id` path parameter from a Bun route request. */
+export const paramId = (req: Bun.BunRequest): string => (req.params as { id: string }).id;

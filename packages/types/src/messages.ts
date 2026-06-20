@@ -36,7 +36,7 @@ export type ServerMessage =
   | WsEnvelope<"scene:failed", { sceneId: string; executionId: string; error: string }>
   | WsEnvelope<
       "device:command:ack",
-      { deviceId: string; success?: boolean; durationMs?: number; state?: DeviceState; error?: string }
+      { deviceId: string; success: boolean; durationMs?: number; state?: DeviceState; error?: string }
     >
   | WsEnvelope<
       "scene:execute:ack",
@@ -51,8 +51,6 @@ export type ClientMessage =
       { deviceId: string; command: string; params?: Record<string, unknown> }
     >
   | WsEnvelope<"device:state:patch", { deviceId: string; state: DeviceState }>
-  | WsEnvelope<"device:subscribe", { deviceId: string }>
-  | WsEnvelope<"device:unsubscribe", { deviceId: string }>
   | WsEnvelope<"scene:execute", { sceneId: string; source?: string }>;
 
 /** Discriminant strings. */

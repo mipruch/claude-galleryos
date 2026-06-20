@@ -146,9 +146,19 @@ describe("Watchdog — Layer 1 (connection health)", () => {
     expect(connStatus.get("conn-1")?.online).toBe(true);
   });
 
-  test("swallows healthCheck errors without crashing", async () => {
+  test("swallows healthCheck errors without crashing — and logs them", async () => {
     const bus = new EventBus();
     const { store } = makeStateStore();
+    // Recording logger so we can assert the failure is actually surfaced (a bare
+    // "didn't throw" check let a commented-out log slip through once).
+    const warnings: string[] = [];
+    const recording = {
+      child: () => recording,
+      debug() {},
+      info() {},
+      error() {},
+      warn: (msg: string) => warnings.push(msg),
+    } as unknown as typeof logger;
 
     const target: WatchdogTarget = {
       listRunningConnectionIds: () => ["conn-bad"],
@@ -157,12 +167,12 @@ describe("Watchdog — Layer 1 (connection health)", () => {
       endpointHealthCheck: async () => null,
     };
 
-    watchdog = new Watchdog({ target, state: store, eventBus: bus, logger, connectionIntervalMs: INTERVAL, endpointIntervalMs: 60_000 });
+    watchdog = new Watchdog({ target, state: store, eventBus: bus, logger: recording, connectionIntervalMs: INTERVAL, endpointIntervalMs: 60_000 });
     watchdog.start();
 
-    // Must not throw; Watchdog keeps running.
-    await Bun.sleep(INTERVAL * 3);
-    expect(watchdog).toBeDefined();
+    // Keeps running (doesn't throw) and surfaces the failure as a warning.
+    await waitFor(() => warnings.some((w) => w.includes("connection health check threw")));
+    expect(warnings.length).toBeGreaterThan(0);
   });
 });
 

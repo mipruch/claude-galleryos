@@ -67,10 +67,6 @@ export interface CommandDefinition {
   description: string;
   /** JSON Schema for the command's `params` object. */
   paramsSchema: JsonSchema;
-  /** Whether the command can be undone during a scene rollback. */
-  reversible: boolean;
-  /** Optional hint used by the scene engine to estimate choreography timing. */
-  estimatedDurationMs?: number;
 }
 
 /** A kind of addressable endpoint that can live under a connection. */

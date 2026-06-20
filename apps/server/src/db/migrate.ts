@@ -11,6 +11,7 @@
  */
 
 import { migrate } from "drizzle-orm/bun-sql/migrator";
+import { errMsg } from "@gallery/driver-core";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db, sqlClient } from "./client.ts";
@@ -33,7 +34,7 @@ async function setupTimescale(): Promise<void> {
     log.info("TimescaleDB hypertable configured for 'logs'");
   } catch (err) {
     log.warn("TimescaleDB setup skipped (extension unavailable?)", {
-      error: err instanceof Error ? err.message : String(err),
+      error: errMsg(err),
     });
   }
 }

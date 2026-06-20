@@ -2,7 +2,7 @@
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}", "**/*.test.ts", "**/test/**/*.ts", "**/__tests__/**/*.ts"],
 	"workspaces": {
-		"packages": ["apps/*", "packages/driver-core", "packages/drivers/*"]
+		"packages": ["apps/*", "packages/types", "packages/driver-core", "packages/drivers/*"]
 	},
 	"duplicates": {
 		"minOccurrences": 3,
@@ -17,7 +17,7 @@
 	},
 	"rules": {
     },
-    "ignorePatterns": ["**/*.generated.ts", "**/*.d.ts", "**/manuals/**", "apps/server/src/db/schema.ts"],
+    "ignorePatterns": ["**/*.generated.ts", "**/*.d.ts", "**/manuals/**", "packages/types/src/schema.ts"],
     "overrides": [
         {
             "files": ["**/*.test.ts", "**/test/**", "**/__tests__/**"],

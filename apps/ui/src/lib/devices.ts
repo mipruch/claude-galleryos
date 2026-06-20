@@ -9,6 +9,7 @@
  */
 
 import type { DeviceDTO as DeviceRecord, DeviceState, RoomDTO } from '@gallery/types'
+import { matchesAllTerms, normalize, searchTerms } from './text'
 
 // Re-exported under the UI's historical names so widgets keep importing from
 // `@/lib/devices`. `DeviceDTO` is the JSON-wire shape of a `devices` row.
@@ -143,14 +144,6 @@ export function filterByRooms(devices: DeviceRecord[], roomKeys: string[]): Devi
   return devices.filter((d) => allow.has(roomKeyOf(d)))
 }
 
-/** Lowercase + strip diacritics, so "Sál" matches "sal". */
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-}
-
 /** All human-readable text a device can be matched on, normalized. */
 function deviceHaystack(device: DeviceRecord, roomName: string | undefined): string {
   return normalize(
@@ -176,13 +169,12 @@ export function searchDevices(
   query: string,
   rooms: RoomDTO[],
 ): DeviceRecord[] {
-  const terms = normalize(query).split(/\s+/).filter(Boolean)
+  const terms = searchTerms(query)
   if (!terms.length) return devices
   const roomName = new Map(rooms.map((r) => [r.id, r.name]))
-  return devices.filter((d) => {
-    const haystack = deviceHaystack(d, d.roomId ? roomName.get(d.roomId) : undefined)
-    return terms.every((t) => haystack.includes(t))
-  })
+  return devices.filter((d) =>
+    matchesAllTerms(deviceHaystack(d, d.roomId ? roomName.get(d.roomId) : undefined), terms),
+  )
 }
 
 /** A room available to filter on, with its device count. */

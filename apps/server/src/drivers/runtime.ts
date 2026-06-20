@@ -26,6 +26,7 @@ import type {
   IDeviceDriver,
   StateChangeEvent,
 } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
 import { getDriverRegistration } from "./registry.ts";
 
 // `process.send` exists because we were spawned with IPC enabled.
@@ -95,7 +96,7 @@ async function reply(requestId: string, fn: () => Promise<unknown>): Promise<voi
     const result = await fn();
     send({ kind: "reply", requestId, result });
   } catch (err) {
-    send({ kind: "reply", requestId, error: err instanceof Error ? err.message : String(err) });
+    send({ kind: "reply", requestId, error: errMsg(err) });
   }
 }
 
@@ -163,10 +164,6 @@ async function handleMessage(msg: CoreToDriverMessage): Promise<void> {
       await d.unsubscribeFromEndpoint?.(msg.endpoint);
       return;
   }
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 // ── serial message pump ──────────────────────────────────────
