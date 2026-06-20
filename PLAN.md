@@ -343,14 +343,26 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         Raycast/Notion-style keyboard-first modal — search a device, ↑/↓ select,
         ↵ to drill into its quick actions (from `deviceActions(device)`), ↵ to
         run (optimistic + toast); Esc/⌫ steps back, Esc/click-outside closes.
-        Results are a flat `PaletteItem[]` so future "Run scene: …" items slot in
-        via their own `onSelect`. Header trigger button for discoverability.
+        Results are a flat `PaletteItem[]`; the root now lists "Run scene: …"
+        items first (one ↵ = run) then devices. Header trigger button for
+        discoverability.
+  - [x] **Scenes: `useScenesStore` + `SceneBar`:** scene buttons pinned above the
+        device grid (`SceneBar`). One tap runs the scene (`POST /scenes/:id/execute`,
+        `source: "ui"`); a spinner shows while it runs, driven by the
+        `scene:started`/`scene:completed`/`scene:failed` WS events (routed from the
+        devices socket into the scenes store). Visible scenes follow the grid's
+        room filter + search (all by default; a room filter narrows to that room;
+        a search matches across all) via pure helpers in `lib/scenes.ts`
+        (`filterScenesByRooms`, `searchScenes`). Each button has a description
+        tooltip and a Lucide icon mapped from the DB `icon` name (`sceneIcon`,
+        falling back to a generic icon) so scenes use the same icon set as the
+        device widgets. Scenes are also runnable from the command palette.
   - [x] **Command confirm/rollback:** `sendCommand` is optimistic but now awaits
         `device:command:ack` and returns `Promise<boolean>` — on `success:false`
         it rolls back the optimistic patch (`snapshotState`/`applyRevert`) and
         shows an error toast; on success it adopts any authoritative `state`.
         Per-device FIFO; a dropped socket resolves outstanding commands as failed.
-  - [ ] Remaining shared stores: scenes, system, layout, logs, drivers
+  - [ ] Remaining shared stores: system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

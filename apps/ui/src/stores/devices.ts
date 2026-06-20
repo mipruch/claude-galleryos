@@ -31,6 +31,13 @@ import {
   type GroupMode,
 } from '@/lib/devices'
 
+/** Scene progress relayed from the socket to any listener (e.g. the scenes store). */
+export interface SceneWsEvent {
+  kind: 'started' | 'completed' | 'failed'
+  sceneId: string
+  error?: string
+}
+
 const API = '/api/v1'
 
 function wsUrl(): string {
@@ -155,9 +162,26 @@ export const useDevicesStore = defineStore('devices', () => {
     'device:online': (d) => setOnline(d.deviceId, true),
     'device:offline': (d) => setOnline(d.deviceId, false),
     'device:command:ack': (d) => onCommandAck(d),
+    // Scene progress is consumed by the scenes store, which registers via
+    // `onSceneEvent`. Relaying through a listener (rather than importing the
+    // scenes store here) keeps the store dependency one-way and cycle-free.
+    'scene:started': (d) => emitSceneEvent({ kind: 'started', sceneId: d.sceneId }),
+    'scene:completed': (d) => emitSceneEvent({ kind: 'completed', sceneId: d.sceneId }),
+    'scene:failed': (d) => emitSceneEvent({ kind: 'failed', sceneId: d.sceneId, error: d.error }),
     'driver:error': (d) => {
       if (d.message) toast.error('Driver error', { description: d.message })
     },
+  }
+
+  // Scene-event fan-out: listeners (the scenes store) subscribe via onSceneEvent.
+  const sceneListeners = new Set<(e: SceneWsEvent) => void>()
+  function emitSceneEvent(e: SceneWsEvent): void {
+    for (const fn of sceneListeners) fn(e)
+  }
+  /** Subscribe to relayed scene WS events; returns an unsubscribe fn. */
+  function onSceneEvent(fn: (e: SceneWsEvent) => void): () => void {
+    sceneListeners.add(fn)
+    return () => sceneListeners.delete(fn)
   }
 
   function handleMessage(raw: unknown): void {
@@ -348,6 +372,7 @@ export const useDevicesStore = defineStore('devices', () => {
     sendCommand,
     patchState,
     patchDeviceState,
+    onSceneEvent,
     dispose,
   }
 })

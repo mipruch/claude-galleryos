@@ -56,8 +56,9 @@ export function readLevel(state: DeviceState | undefined, ...keys: string[]): nu
 export function readOn(state: DeviceState | undefined, ...keys: string[]): boolean {
   for (const key of keys) {
     const v = state?.[key]
-    if (typeof v === 'boolean') return v
+    if (v === true) return true
     if (typeof v === 'string') return v === 'on'
+    // boolean false: keep looking — a later key may carry an authoritative "on"
   }
   return false
 }
@@ -221,7 +222,9 @@ function collect<T>(items: T[], keyOf: (item: T) => string): { key: string; item
   return [...map.entries()].map(([key, items]) => ({ key, items }))
 }
 
-const UNASSIGNED = '__unassigned__'
+/** Sentinel room key for devices/scenes with no `roomId`. Shared with the scene helpers. */
+export const ROOM_UNASSIGNED = '__unassigned__'
+const UNASSIGNED = ROOM_UNASSIGNED
 const roomKeyOf = (d: DeviceRecord): string => d.roomId ?? UNASSIGNED
 
 /** Subgroups by device type, alphabetical. */

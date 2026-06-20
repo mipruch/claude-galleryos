@@ -5,18 +5,31 @@ import { SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
 import 'vue-sonner/style.css'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import DeviceGrid from '@/components/devices/DeviceGrid.vue'
+import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
+import SceneBar from '@/components/scenes/SceneBar.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import CommandPalette from '@/components/command/CommandPalette.vue'
 import { useDevicesStore } from '@/stores/devices'
+import { useScenesStore } from '@/stores/scenes'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 const store = useDevicesStore()
+const scenes = useScenesStore()
 const route = useRoute()
 const { openPalette } = useCommandPalette()
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
+
+// The URL is the source of truth for the device scope: `/` → all devices,
+// `/rooms/:roomId` → that room. Runs immediately so a refresh restores scope.
+watch(
+  () => route.params.roomId,
+  (id) => store.setRoomScope(typeof id === 'string' && id ? id : null),
+  { immediate: true },
+)
 
 // The URL is the source of truth for the device scope: `/` → all devices,
 // `/rooms/:roomId` → that room. Runs immediately so a refresh restores scope.
@@ -32,7 +45,10 @@ const pageSubtitle = computed(() => {
   return `${n} ${n === 1 ? 'device' : 'devices'}`
 })
 
-onMounted(() => store.init())
+onMounted(() => {
+  store.init()
+  scenes.fetchAll()
+})
 onBeforeUnmount(() => store.dispose())
 </script>
 
