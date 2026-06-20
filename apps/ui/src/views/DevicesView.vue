@@ -6,10 +6,13 @@
  */
 import DeviceToolbar from '@/components/devices/DeviceToolbar.vue'
 import DeviceGrid from '@/components/devices/DeviceGrid.vue'
+import SceneBar from '@/components/scenes/SceneBar.vue'
+
 </script>
 
 <template>
   <div class="px-6 py-6 max-w-5xl mx-auto">
+    <SceneBar />
     <DeviceToolbar />
     <DeviceGrid />
   </div>
