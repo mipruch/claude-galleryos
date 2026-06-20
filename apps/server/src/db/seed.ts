@@ -9,7 +9,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, iframes, rooms } from "@gallery/types/schema";
+import { connections, devices, iframes, rooms, sceneActions, scenes } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -493,6 +493,160 @@ async function main(): Promise<void> {
     ])
     .onConflictDoNothing();
 
+  // Scenes
+const SCENE_LIGHTS_ON    = "77777777-7777-7777-7777-777777777701";
+const SCENE_MIC_ON       = "77777777-7777-7777-7777-777777777702";
+const SCENE_PROJECTOR_ON = "77777777-7777-7777-7777-777777777703";
+const SCENE_LECTURE_START = "77777777-7777-7777-7777-777777777704";
+
+// Scene action IDs
+const ACT_LIGHTS_SPOT1   = "88888888-8888-8888-8888-888888888801";
+const ACT_LIGHTS_SPOT2   = "88888888-8888-8888-8888-888888888802";
+const ACT_LIGHTS_WASH1   = "88888888-8888-8888-8888-888888888803";
+const ACT_MIC_UNMUTE     = "88888888-8888-8888-8888-888888888804";
+const ACT_MIC_LEVEL      = "88888888-8888-8888-8888-888888888805";
+const ACT_PROJ_ON        = "88888888-8888-8888-8888-888888888806";
+const ACT_LECTURE_LIGHTS = "88888888-8888-8888-8888-888888888807";
+const ACT_LECTURE_MIC    = "88888888-8888-8888-8888-888888888808";
+const ACT_LECTURE_PROJ   = "88888888-8888-8888-8888-888888888809";
+
+  // ── scenes ───────────────────────────────────────────────────
+  await db
+    .insert(scenes)
+    .values([
+      {
+        id: SCENE_LIGHTS_ON,
+        roomId: ROOM_HALL,
+        name: "Světla zapnout",
+        description: "Turns on the main spots and wash lights at lecture brightness",
+        icon: "lightbulb",
+        color: "#F59E0B",
+        isFavorite: true,
+        tags: ["lights", "hall"],
+      },
+      {
+        id: SCENE_MIC_ON,
+        roomId: ROOM_HALL,
+        name: "Mikrofon zapnout",
+        description: "Unmutes microphone 1 and sets a comfortable gain level",
+        icon: "microphone",
+        color: "#8B5CF6",
+        isFavorite: false,
+        tags: ["audio", "hall"],
+      },
+      {
+        id: SCENE_PROJECTOR_ON,
+        roomId: ROOM_HALL,
+        name: "Projektor zapnout",
+        description: "Sends power-on to the Barco projector via PJLink",
+        icon: "projector",
+        color: "#3B82F6",
+        isFavorite: true,
+        tags: ["video", "hall"],
+      },
+      {
+        id: SCENE_LECTURE_START,
+        roomId: ROOM_HALL,
+        name: "Přednáška — spustit",
+        description: "All-in-one lecture start: lights → microphone → projector",
+        icon: "play-circle",
+        color: "#10B981",
+        isFavorite: true,
+        tags: ["lecture", "hall", "composite"],
+      },
+    ])
+    .onConflictDoNothing();
+
+  // ── scene actions ────────────────────────────────────────────
+  await db
+    .insert(sceneActions)
+    .values([
+      // SCENE_LIGHTS_ON — parallel: all three fixtures at once
+      {
+        id: ACT_LIGHTS_SPOT1,
+        sceneId: SCENE_LIGHTS_ON,
+        deviceId: DEV_DALI_SPOT1,
+        stepOrder: 0,
+        parallelGroup: 0,
+        command: "setBrightness",
+        params: { level: 80 },
+      },
+      {
+        id: ACT_LIGHTS_SPOT2,
+        sceneId: SCENE_LIGHTS_ON,
+        deviceId: DEV_DALI_SPOT2,
+        stepOrder: 0,
+        parallelGroup: 0,
+        command: "setBrightness",
+        params: { level: 80 },
+      },
+      {
+        id: ACT_LIGHTS_WASH1,
+        sceneId: SCENE_LIGHTS_ON,
+        deviceId: DEV_DALI_WASH1,
+        stepOrder: 0,
+        parallelGroup: 0,
+        command: "setBrightness",
+        params: { level: 50 },
+      },
+
+      // SCENE_MIC_ON — unmute then set level sequentially
+      {
+        id: ACT_MIC_UNMUTE,
+        sceneId: SCENE_MIC_ON,
+        deviceId: DEV_BSS_MIC1,
+        stepOrder: 0,
+        parallelGroup: 0,
+        command: "setMute",
+        params: { mute: false },
+      },
+      {
+        id: ACT_MIC_LEVEL,
+        sceneId: SCENE_MIC_ON,
+        deviceId: DEV_BSS_MIC1,
+        stepOrder: 1,
+        parallelGroup: 1,
+        delayMs: 200,
+        command: "setLevel",
+        params: { level: -6 },
+      },
+
+      // SCENE_PROJECTOR_ON — single power-on command
+      {
+        id: ACT_PROJ_ON,
+        sceneId: SCENE_PROJECTOR_ON,
+        deviceId: DEV_PROJECTOR,
+        stepOrder: 0,
+        parallelGroup: 0,
+        command: "on",
+        params: {},
+      },
+
+      // SCENE_LECTURE_START — sub-scenes in sequence: lights → mic → projector
+      {
+        id: ACT_LECTURE_LIGHTS,
+        sceneId: SCENE_LECTURE_START,
+        childSceneId: SCENE_LIGHTS_ON,
+        stepOrder: 0,
+        parallelGroup: 0,
+      },
+      {
+        id: ACT_LECTURE_MIC,
+        sceneId: SCENE_LECTURE_START,
+        childSceneId: SCENE_MIC_ON,
+        stepOrder: 1,
+        parallelGroup: 1,
+      },
+      {
+        id: ACT_LECTURE_PROJ,
+        sceneId: SCENE_LECTURE_START,
+        childSceneId: SCENE_PROJECTOR_ON,
+        stepOrder: 2,
+        parallelGroup: 2,
+      },
+    ])
+    .onConflictDoNothing();
+
   // ── iframes ──────────────────────────────────────────────────
   await db
     .insert(iframes)
@@ -510,6 +664,8 @@ async function main(): Promise<void> {
     rooms: 2,
     connections: 5,
     devices: 16,
+    scenes: 4,
+    sceneActions: 9,
     iframes: 1,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });
