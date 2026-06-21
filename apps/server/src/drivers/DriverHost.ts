@@ -165,6 +165,9 @@ export class DriverHost extends EventEmitter {
     );
   }
 
+  // NOT YET EXPOSED: the discovery IPC round-trip is fully plumbed (here, in
+  // runtime.ts, and in the driver interface), but no DeviceManager method or HTTP
+  // route calls it yet — wiring `POST /connections/:id/discover` is a future task.
   discoverEndpoints(): Promise<EndpointDescriptor[]> {
     return this.request((requestId) => ({ kind: "discoverEndpoints", requestId }), DISCOVERY_TIMEOUT_MS);
   }

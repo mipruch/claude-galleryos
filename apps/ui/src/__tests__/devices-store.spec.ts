@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { RoomDTO } from '@gallery/types'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
+import { makeDevice, makeRoom } from './fixtures'
 
 beforeAll(() => {
   // The store opens a WebSocket lazily; stub the global so setup never throws.
@@ -18,11 +19,11 @@ beforeAll(() => {
 beforeEach(() => setActivePinia(createPinia()))
 
 function dev(id: string, roomId: string | null, type = 'light'): DeviceRecord {
-  return { id, name: id, roomId, type, subtype: 'dali.fixture', enabled: true, displayOrder: 0 } as unknown as DeviceRecord
+  return makeDevice({ id, name: id, roomId, type, subtype: 'dali.fixture' })
 }
 
 function room(id: string, name: string): RoomDTO {
-  return { id, name, displayOrder: 0 } as unknown as RoomDTO
+  return makeRoom({ id, name })
 }
 
 describe('devices store — room scope', () => {
