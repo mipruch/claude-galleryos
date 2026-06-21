@@ -90,7 +90,12 @@ async function handleInit(config: ConnectionConfig, dryRun: boolean): Promise<vo
   await driver.init(config, buildContext(dryRun));
 }
 
-/** Run a request handler and reply with its result or error. */
+/**
+ * Executes a handler function and sends an IPC reply with its result or error.
+ *
+ * @param requestId - The request identifier to include in the reply message
+ * @param fn - The handler function to execute
+ */
 async function reply(requestId: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     const result = await fn();
@@ -100,7 +105,12 @@ async function reply(requestId: string, fn: () => Promise<unknown>): Promise<voi
   }
 }
 
-/** Handle one inbound message. Driver must be initialised for non-init kinds. */
+/**
+ * Dispatches a single inbound IPC message to its appropriate handler.
+ *
+ * Routes initialization and storage replies without requiring the driver. For all other message kinds,
+ * the driver must be initialized; requests with a `requestId` receive error replies if the driver is unavailable.
+ */
 async function handleMessage(msg: CoreToDriverMessage): Promise<void> {
   if (msg.kind === "init") {
     await handleInit(msg.config, msg.dryRun);

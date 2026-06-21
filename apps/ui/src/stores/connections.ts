@@ -46,6 +46,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (d.connectionId) patchStatus(d.connectionId, { lastError: d.message })
   })
 
+  /**
+   * Merges a partial status update into the live status for a connection, defaulting to offline if no existing status is present.
+   */
   function patchStatus(id: string, patch: Partial<ConnectionStatus>): void {
     if (!id) return
     statuses.value[id] = { ...(statuses.value[id] ?? { online: false }), ...patch }
@@ -73,11 +76,18 @@ export const useConnectionsStore = defineStore('connections', () => {
     () => enabledCount.value > 0 && connectedCount.value === enabledCount.value,
   )
 
-  // ── data loading ──────────────────────────────────────────────────────────
+  /**
+   * Initializes the store by loading all connection records and their live statuses.
+   */
   async function init(): Promise<void> {
     await fetchAll()
   }
 
+  /**
+   * Fetches and loads all connection records and live statuses.
+   *
+   * Displays an error toast if the fetch fails.
+   */
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
@@ -93,7 +103,14 @@ export const useConnectionsStore = defineStore('connections', () => {
     }
   }
 
-  /** Enable/disable a connection (restarts or stops its driver subprocess). */
+  /**
+   * Enables or disables a connection, restarting or stopping its driver.
+   *
+   * Optimistically updates the local state immediately. If the server update fails, reverts the change and displays an error message.
+   *
+   * @param id - The connection ID
+   * @param value - Whether to enable (true) or disable (false) the connection
+   */
   async function setEnabled(id: string, value: boolean): Promise<void> {
     // Optimistic: flip the flag locally so the switch responds instantly.
     const before = records.value.find((c) => c.id === id)
@@ -110,6 +127,11 @@ export const useConnectionsStore = defineStore('connections', () => {
     }
   }
 
+  /**
+   * Adds a connection record or updates an existing one by ID.
+   *
+   * @param record - The connection record to add or update.
+   */
   function replaceRecord(record: ConnectionRecord): void {
     const i = records.value.findIndex((c) => c.id === record.id)
     if (i >= 0) records.value[i] = record

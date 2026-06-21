@@ -68,7 +68,11 @@ const PROJECTIONS: { [T in GalleryEventType]: (e: EventOf<T>) => ServerMessage |
   "system.startup.complete": () => null,
 };
 
-/** Translate an internal event into a client-facing message (or drop it). */
+/**
+ * Translates an internal event into a client-facing message (or drops it).
+ *
+ * @returns The `ServerMessage` to broadcast to connected clients, or `null` to drop the event without forwarding.
+ */
 export function toClientMessage(e: GalleryEvent): ServerMessage | null {
   return (PROJECTIONS[e.type] as (ev: GalleryEvent) => ServerMessage | null)(e);
 }
@@ -140,6 +144,9 @@ async function onStatePatch(
   ctx.eventBus.emit({ type: "device.state.changed", deviceId, state: stored ?? patch, source: "ui" });
 }
 
+/**
+ * Executes a device command and sends the result back to the client.
+ */
 async function onDeviceCommand(
   ws: ServerWebSocket<unknown>,
   ctx: ApiContext,
@@ -157,6 +164,13 @@ async function onDeviceCommand(
   }
 }
 
+/**
+ * Initiates execution of a scene after validating it exists.
+ *
+ * Sends error responses if the scene ID is missing or the scene does not exist.
+ * Otherwise generates an execution ID, emits an execution request event, and sends
+ * an acknowledgment with the execution details.
+ */
 async function onSceneExecute(
   ws: ServerWebSocket<unknown>,
   ctx: ApiContext,

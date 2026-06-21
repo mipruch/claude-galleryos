@@ -41,7 +41,14 @@ export const noContent = (): Response => new Response(null, { status: 204 });
 /** Build a typed `ApiError` JSON response. */
 const errorResponse = (body: ApiError, status: number): Response => Response.json(body, { status });
 
-/** Convert any thrown value into a JSON error response. */
+/**
+ * Converts any thrown value into a standardized JSON error response.
+ *
+ * `HttpError` instances use their stored status and code. Other errors are analyzed for known
+ * patterns ("device not found" → 404, "no active driver" → 503) and default to 500.
+ *
+ * @returns A JSON response with error details containing `error`, `code`, and optional `details`
+ */
 export function toErrorResponse(err: unknown): Response {
   if (err instanceof HttpError) {
     return errorResponse({ error: err.message, code: err.code, details: err.details }, err.status);
@@ -111,7 +118,11 @@ export function asObject(value: unknown, field: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-/** Read a query-string parameter. */
+/**
+ * Retrieves a query-string parameter value by name.
+ *
+ * @returns The value of the query parameter, or `undefined` if not present
+ */
 export function query(req: Request, key: string): string | undefined {
   return new URL(req.url).searchParams.get(key) ?? undefined;
 }

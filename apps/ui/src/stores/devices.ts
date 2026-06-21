@@ -141,6 +141,12 @@ export const useDevicesStore = defineStore('devices', () => {
     if (d.message) toast.error('Driver error', { description: d.message })
   })
 
+  /**
+   * Merges a state patch into the local device state.
+   *
+   * @param id - Device identifier
+   * @param patch - Partial state changes to merge
+   */
   function mergeState(id: string, patch: DeviceState): void {
     if (id) states.value[id] = { ...states.value[id], ...patch }
   }
@@ -176,6 +182,11 @@ export const useDevicesStore = defineStore('devices', () => {
   const deviceName = (id: string): string =>
     records.value.find((r) => r.id === id)?.name ?? 'Device'
 
+  /**
+   * Processes a device command acknowledgement, reverting failed commands and applying authoritative state updates.
+   *
+   * On failure, reverts any optimistic changes and displays an error toast. On success, merges the post-command state from the server. Resolves the pending command promise in either case.
+   */
   function onCommandAck(d: ServerMessageData<'device:command:ack'>): void {
     const entry = dequeuePending(d.deviceId)
     if (!d.success) {
@@ -216,11 +227,16 @@ export const useDevicesStore = defineStore('devices', () => {
     rt.send({ event: 'device:state:patch', data: { deviceId: id, state: patch } })
   }
 
-  // ── data loading ──────────────────────────────────────────────────────────
+  /**
+   * Loads device metadata and initial state from the server.
+   */
   async function init(): Promise<void> {
     await fetchAll()
   }
 
+  /**
+   * Loads device metadata, rooms, iframes, and live device state from the server.
+   */
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
@@ -250,10 +266,12 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   /**
-   * Send a control command over the WebSocket and resolve to whether it
-   * succeeded. `optimistic` is merged into the local state immediately for
-   * instant feedback; the command then awaits the server's `device:command:ack`.
-   * On failure the optimistic patch is rolled back and an error toast is shown.
+   * Sends a device control command over the WebSocket.
+   *
+   * If `optimistic` is provided, those state changes are applied immediately for instant feedback and automatically reverted if the command fails.
+   *
+   * @param optimistic - Optional state patch to apply immediately; reverted on command failure
+   * @returns `true` if the command succeeded, `false` if offline or the command failed
    */
   function sendCommand(
     deviceId: string,

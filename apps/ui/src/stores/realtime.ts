@@ -14,6 +14,11 @@ import { computed } from 'vue'
 import { useWebSocket } from '@vueuse/core'
 import type { ClientMessage, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 
+/**
+ * Builds a WebSocket URL for the realtime connection.
+ *
+ * @returns A WebSocket URL string pointing to `/ws` on the current host, using wss for HTTPS or ws for HTTP.
+ */
 function wsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   return `${proto}://${location.host}/ws`
@@ -30,6 +35,11 @@ export const useRealtimeStore = defineStore('realtime', () => {
 
   const connected = computed(() => status.value === 'OPEN')
 
+  /**
+   * Routes incoming WebSocket messages to registered event handlers.
+   *
+   * @param raw - Raw message payload, expected to be a JSON-serialized ServerMessage
+   */
   function dispatch(raw: unknown): void {
     let msg: ServerMessage
     try {
@@ -41,7 +51,13 @@ export const useRealtimeStore = defineStore('realtime', () => {
     if (set) for (const fn of set) fn(msg.data)
   }
 
-  /** Register a handler for one server event; returns an unsubscribe fn. */
+  /**
+   * Registers a handler for a server event.
+   *
+   * @param event - The server event to listen for
+   * @param handler - The callback invoked when the event is received
+   * @returns A function that unregisters the handler when called
+   */
   function on<E extends ServerEvent>(
     event: E,
     handler: (data: ServerMessageData<E>) => void,

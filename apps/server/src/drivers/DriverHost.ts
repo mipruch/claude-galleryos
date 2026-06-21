@@ -333,7 +333,13 @@ export class DriverHost extends EventEmitter {
   }
 }
 
-/** Compact metadata for IPC trace logging. */
+/**
+ * Builds metadata for IPC message tracing.
+ *
+ * Extracts the message kind, request ID (if present), and command name (for `executeCommand` messages).
+ *
+ * @returns A metadata object containing the message kind and optional request identifiers.
+ */
 function ipcMeta(msg: CoreToDriverMessage | DriverToCoreMessage): Record<string, unknown> {
   const meta: Record<string, unknown> = { kind: msg.kind };
   if ("requestId" in msg && msg.requestId) meta.requestId = msg.requestId;

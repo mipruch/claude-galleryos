@@ -9,13 +9,25 @@ import type { ApiError } from '@gallery/types'
 export const errMsg = (err: unknown): string =>
   err instanceof Error ? err.message : String(err)
 
-/** Read the server's `{ error, code }` body, falling back to the status line. */
+/**
+ * Extracts an error message from an HTTP response.
+ *
+ * Returns the `error` field from the response body if available, otherwise falls back
+ * to a string composed of the response status code and status text.
+ *
+ * @returns The server-provided error message, or status code and text if unavailable.
+ */
 async function readApiError(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as ApiError | null
   return body?.error ?? `${res.status} ${res.statusText}`
 }
 
-/** Fetch JSON, throwing the server's error message on a non-2xx response. */
+/**
+ * Fetches and parses JSON from a URL.
+ *
+ * @returns The parsed JSON response as type T, or `null` for 204 No Content responses
+ * @throws If the response status is not 2xx, throws an `Error` with the server's error message
+ */
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> {
   const res = await fetch(url, init)
   if (!res.ok) throw new Error(await readApiError(res))

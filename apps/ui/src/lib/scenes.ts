@@ -107,9 +107,12 @@ function sceneHaystack(scene: SceneDTO, roomName: string | undefined): string {
 }
 
 /**
- * Loose, multi-field search across name, description, room and tags. Case- and
- * accent-insensitive; every whitespace-separated term must appear (AND). An empty
- * query returns the input unchanged.
+ * Searches scenes across name, description, room, and tags.
+ *
+ * The search is case- and accent-insensitive. Every search term must match (AND logic).
+ * An empty query returns all scenes unchanged.
+ *
+ * @returns The filtered array of scenes matching all search terms.
  */
 export function searchScenes(scenes: SceneDTO[], query: string, rooms: RoomDTO[]): SceneDTO[] {
   const terms = searchTerms(query)

@@ -44,6 +44,13 @@ function wireAuditLog(): void {
   });
 }
 
+/**
+ * Initializes and starts the GalleryOS server.
+ *
+ * Sets up core components (DeviceManager, Watchdog, SceneEngine, API server),
+ * establishes infrastructure connections (Redis, database logging), and
+ * registers graceful shutdown handlers for SIGINT and SIGTERM.
+ */
 async function main(): Promise<void> {
   log.info("GalleryOS server starting", {
     env: appConfig.env,

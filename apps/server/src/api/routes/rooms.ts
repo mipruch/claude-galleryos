@@ -7,6 +7,11 @@
 import type { ApiContext } from "../context.ts";
 import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
+/**
+ * Registers CRUD endpoints for rooms.
+ *
+ * @returns A route map with endpoints for managing rooms
+ */
 export function roomsRoutes(ctx: ApiContext): RouteMap {
 
   return {
