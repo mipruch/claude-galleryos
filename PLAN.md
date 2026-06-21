@@ -420,6 +420,70 @@ Step 9   InputMapper + TcpInputServer + Mappings API
 
 ---
 
+## Pending design decisions
+
+These items from the codebase review need a call before anyone starts coding.
+Each is labelled **[DECIDE]** in the original refactor analysis.
+
+### D1 · Manifest reserved fields — keep or remove?
+`CommandDefinition` (`driver-core/src/types.ts`) carries `reversible` and
+`estimatedDurationMs`. Rollback/choreography was dropped (PLAN §2); nothing
+reads these fields today. Every driver manifest fills them for nothing.
+**Options:** remove from the type + all manifests, or add a `// reserved for
+rollback (PLAN §2, not implemented)` comment and leave.
+
+### C3 · Split ownership of live status (DeviceManager vs Watchdog)
+Both `DeviceManager` and `Watchdog` write `connection:{id}:status` and emit
+`connection.connected/disconnected`; likewise for `device:{id}:status`. They
+can briefly disagree and double-emit.
+**Proposed split:** DeviceManager owns the *transport* transition (socket
+open/close); Watchdog owns *liveness re-confirmation* and only emits on a
+real change (no double-emit). Needs explicit sign-off on which module emits
+what, then document it in both files.
+
+### E4 · Single shared WebSocket (currently two connections opened)
+Per README/PLAN the UI uses a single `/ws` connection. Reality: `realtime.ts`
+was introduced to centralise this, but confirm in the network panel that only
+one `/ws` connection is visible when both `useDevicesStore` and
+`useConnectionsStore` are mounted. If two still open, move ownership entirely
+into `useRealtimeStore` and have both stores subscribe to it.
+
+### H1 · DALI brightness logic placement — driver or core?
+`redis/state.ts` `shouldPreserveBrightness`/`mergeDeviceState` hardcodes DALI
+semantics ("brightness 0 when off → keep last level") into the generic live-
+state store. That's driver behaviour leaking into core.
+**Options:** (a) move logic into the DALI drivers (emit the intended state so
+the core store never needs to know); (b) express it as a per-endpoint-type
+state-merge policy the store looks up. Either is valid; needs a call so the
+DALI drivers are updated consistently.
+
+### G7 · apps/ui vs packages/ui — resolve before building admin UI
+README §3 depicts a shared `packages/ui` component library. Reality is a
+single `apps/ui` with `components/ui/` inside it, no `packages/ui`.
+**Options:** (a) keep one `apps/ui` with route-based admin/user layouts
+(simplest; matches current trajectory); (b) split into `apps/ui` (user) +
+`apps/admin` (or `packages/ui` shared lib). Decide and update the README
+so the next builder isn't misled. Must be decided before admin UI work starts.
+
+### A6 · Route manifest / shared API contract in `@gallery/types`
+The typed `api` client (`apps/ui/src/lib/api.ts`) exists and covers the
+current routes. Before the admin UI adds many more calls, decide whether to
+introduce a **shared route-contract object** in `@gallery/types` (method + path
++ input type + output type) that both the server's router and the UI client
+reference — so a route signature change is a compile error on both sides.
+**Options:** (a) keep the hand-written typed client as-is (light, no extra
+abstraction); (b) add a route manifest to `@gallery/types` and derive the
+client from it. Avoid heavy frameworks (tRPC/OpenAPI codegen) without sign-off.
+
+### G9 · Broadcast topic separation (forward-looking, for auth/admin)
+Every client receives all events on the single `events` topic, including
+`driver:error` and scene internals. Fine today (no auth, user panel only).
+When the admin UI + auth (P6) arrive, user-panel clients probably shouldn't see
+admin-only events. **No action now** — design topic/role separation when auth
+lands. Note here so it isn't forgotten.
+
+---
+
 ## New files at a glance
 
 ```
