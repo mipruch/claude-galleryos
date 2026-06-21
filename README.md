@@ -2359,6 +2359,7 @@ Admin UI builder je navržen tak, aby šlo přidat nový typ widgetu jako Vue ko
 
 ```
 400 BAD_REQUEST         - Nevalidní vstup (detail v 'details')
+400 VALIDATION          - Vstup neodpovídá schématu driveru — Ajv chyby v 'details'
 404 NOT_FOUND           - Entita nenalezena
 409 CONFLICT            - Konflikt (např. scéna běží, connection má devices)
 422 UNPROCESSABLE       - Validní JSON ale nevalidní business logika

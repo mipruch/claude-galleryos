@@ -17,6 +17,11 @@ import type { Connection } from "@gallery/types";
 import { toConnectionRecord } from "../../db/repositories.ts";
 import type { ApiContext } from "../context.ts";
 import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import { assertValidConnectionConfig } from "../validation.ts";
+
+/** Effective value of a PUT field: `undefined` keeps the current value. */
+const effective = <T>(patch: T | null | undefined, current: T | null): T | null =>
+  patch === undefined ? current : patch;
 
 export function connectionsRoutes(ctx: ApiContext): RouteMap {
 
@@ -42,6 +47,12 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
         if (!ctx.driverRegistry.has(driverId)) {
           throw new HttpError(400, "BAD_REQUEST", `unknown driver: ${driverId}`);
         }
+        const config = (body.config as Record<string, unknown> | undefined) ?? {};
+        assertValidConnectionConfig(driverId, {
+          host: body.host ?? undefined,
+          port: body.port ?? undefined,
+          ...config,
+        });
         const created = await ctx.connections.create({
           name: String(body.name),
           driverId,
@@ -74,8 +85,18 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
     "/api/v1/connections/:id": {
       GET: route(async (req) => json(withRuntime(await load(paramId(req))))),
       PUT: route(async (req) => {
-        await load(paramId(req));
+        const existing = await load(paramId(req));
         const body = await readJson(req);
+        // Validate the post-update state: a partial PUT must still leave a
+        // connection whose config satisfies the (possibly new) driver's schema.
+        const driverId = (body.driverId as string | undefined) ?? existing.driverId;
+        const config =
+          (body.config as Record<string, unknown> | undefined) ?? (existing.config as Record<string, unknown>) ?? {};
+        assertValidConnectionConfig(driverId, {
+          host: effective(body.host as string | null | undefined, existing.host) ?? undefined,
+          port: effective(body.port as number | null | undefined, existing.port) ?? undefined,
+          ...config,
+        });
         const updated = await ctx.connections.update(paramId(req), {
           name: body.name as string | undefined,
           driverId: body.driverId as string | undefined,

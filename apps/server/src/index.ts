@@ -31,6 +31,7 @@ import { DeviceManager } from "./core/DeviceManager.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { startApiServer } from "./api/server.ts";
+import { assertValidCommandParams } from "./api/validation.ts";
 
 const log = logger.child("bootstrap");
 
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
     driverKVStore: redisDriverStore,
     supportsSubscriptions: (driverId) =>
       driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
+    validateParams: assertValidCommandParams,
     restart: {
       maxAttempts: appConfig.driver.restartMaxAttempts,
       baseDelayMs: appConfig.driver.restartBaseDelayMs,

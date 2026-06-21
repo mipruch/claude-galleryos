@@ -11,13 +11,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import type {
   ConnectionRecord,
-  ConnectionStatus,
   DeviceManagerRepo,
   DeviceRecord,
-  DeviceStatus,
   LiveStateStore,
 } from "../../src/core/DeviceManager.ts";
+import type { ConnectionStatus, DeviceStatus } from "@gallery/types";
 import { EventBus, type GalleryEvent } from "../../src/core/EventBus.ts";
+import { assertValidCommandParams } from "../../src/api/validation.ts";
 import { logger } from "../../src/logger.ts";
 import { memoryStore } from "../mocks/context.ts";
 import { startPjlinkMock, type PjlinkMockServer } from "../mocks/mock-devices.ts";
@@ -157,6 +157,29 @@ describe("DeviceManager", () => {
     // readState serves the cached value from the state store.
     const read = await dm.readState(DEV_ID);
     expect(read).toMatchObject({ power: "on" });
+  }, 20_000);
+
+  test("rejects a command with invalid params at the validation choke point", async () => {
+    const bus = new EventBus();
+    const state = makeFakeState();
+
+    dm = new DeviceManager({
+      repo: makeRepo(mock.port),
+      state: state.store,
+      eventBus: bus,
+      logger,
+      driverKVStore: () => memoryStore(),
+      // The real manifest validator: setMute requires `muted: boolean`.
+      validateParams: assertValidCommandParams,
+      commandTimeoutMs: 5_000,
+    });
+    await dm.start();
+
+    // Wrong-typed param is rejected before it ever reaches the driver.
+    await expect(dm.execute(DEV_ID, "setMute", { muted: "nope" })).rejects.toThrow(/invalid params/);
+    // A valid command on the same device still goes through.
+    const ok = await dm.execute(DEV_ID, "on", {});
+    expect(ok.success).toBe(true);
   }, 20_000);
 });
 

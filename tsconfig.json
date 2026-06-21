@@ -8,7 +8,9 @@
   "exclude": ["apps/ui"],
   "include": [
     "apps/*/src/**/*.ts",
+    "apps/server/test/**/*.ts",
     "packages/driver-core/src/**/*.ts",
-    "packages/drivers/*/src/**/*.ts"
+    "packages/drivers/*/src/**/*.ts",
+    "packages/drivers/*/test/**/*.ts"
   ]
 }

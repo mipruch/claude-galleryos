@@ -8,7 +8,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Watchdog, type WatchdogTarget } from "../../src/core/Watchdog.ts";
 import { EventBus, type GalleryEvent } from "../../src/core/EventBus.ts";
-import type { LiveStateStore, ConnectionStatus, DeviceStatus, DeviceRecord } from "../../src/core/DeviceManager.ts";
+import type { LiveStateStore, DeviceRecord } from "../../src/core/DeviceManager.ts";
+import type { ConnectionStatus, DeviceStatus } from "@gallery/types";
 import type { HealthStatus } from "@gallery/driver-core";
 import { logger } from "../../src/logger.ts";
 

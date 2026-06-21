@@ -19,10 +19,9 @@ import {
   type ConnectionStatus,
   type ConnState,
 } from '@/lib/connections'
-import { errMsg, fetchJson } from '@/lib/http'
+import { errMsg } from '@/lib/http'
+import { api } from '@/lib/api'
 import { useRealtimeStore } from './realtime'
-
-const API = '/api/v1'
 
 /** A connection paired with its derived live state — what the UI renders. */
 interface ConnectionView extends ConnectionRecord {
@@ -83,10 +82,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     loading.value = true
     error.value = null
     try {
-      const [list, live] = await Promise.all([
-        fetchJson<ConnectionRecord[]>(`${API}/connections`),
-        fetchJson<Record<string, ConnectionStatus>>(`${API}/connections/live`),
-      ])
+      const [list, live] = await Promise.all([api.connections.list(), api.connections.live()])
       records.value = list ?? []
       statuses.value = live ?? {}
     } catch (err) {
@@ -105,11 +101,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (before) before.enabled = value
 
     try {
-      const updated = await fetchJson<ConnectionRecord>(`${API}/connections/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: value }),
-      })
+      const updated = await api.connections.update(id, { enabled: value })
       if (updated) replaceRecord(updated)
     } catch (err) {
       // Revert on failure.

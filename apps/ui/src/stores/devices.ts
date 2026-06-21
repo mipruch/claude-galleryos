@@ -26,10 +26,9 @@ import {
   type DeviceStatus,
   type GroupMode,
 } from '@/lib/devices'
-import { errMsg, fetchJson } from '@/lib/http'
+import { errMsg } from '@/lib/http'
+import { api } from '@/lib/api'
 import { useRealtimeStore } from './realtime'
-
-const API = '/api/v1'
 
 export const useDevicesStore = defineStore('devices', () => {
   const rt = useRealtimeStore()
@@ -230,12 +229,10 @@ export const useDevicesStore = defineStore('devices', () => {
       // + rooms (for the "group by room" headings), instead of 2×N per-device
       // fetches.
       const [list, live, roomList, iframeList] = await Promise.all([
-        fetchJson<DeviceRecord[]>(`${API}/devices`),
-        fetchJson<Record<string, { state: DeviceState; status: DeviceStatus }>>(
-          `${API}/devices/live`,
-        ),
-        fetchJson<RoomDTO[]>(`${API}/rooms`),
-        fetchJson<IframeDTO[]>(`${API}/iframes`),
+        api.devices.list(),
+        api.devices.live(),
+        api.rooms.list(),
+        api.iframes.list(),
       ])
       records.value = list ?? []
       rooms.value = roomList ?? []

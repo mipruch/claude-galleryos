@@ -56,6 +56,32 @@ Small pieces that unblock everything; land first.
 - [x] `GET /api/v1/logs/stats` — counts by level for last 24 h / 7 d
 - [x] `GET /api/v1/logs/executions` — scene execution history with outcome + duration
 
+### 0.4 Input validation (Ajv) `src/api/validation.ts` ✓
+- [x] Compile each driver manifest's `connectionSchema` / endpoint `addressSchema` /
+      command `paramsSchema` with Ajv (cached per driver+schema; `ajv-formats` for
+      `hostname`). Failures throw `HttpError(400, "VALIDATION", …, ajvErrors)`.
+- [x] Enforced at three points: `connections` POST/PUT (config, recombined
+      `{host, port, …config}`), `devices` POST/PUT (address), and a **single choke
+      point** for command params — an injected `validateParams` on
+      `DeviceManager.execute()` that covers REST, WebSocket, and scene execution
+      uniformly (a bad param → REST 400 / WS `ack.success:false` / failed scene action).
+- [x] Reconciled the seed to the canonical params it had drifted from (`level` 0..1,
+      `setMute {muted}`); a hermetic `test/db/seed-conformance.test.ts` validates every
+      seeded connection config / device address / scene-action param against the
+      manifests, so the seed can't drift out of spec again.
+
+### 0.5 Continuous integration `.github/workflows/ci.yml` ✓
+- [x] `check` job (the gate): `bun run typecheck` (now also type-checks the server
+      `test/**`), `bun test apps/server packages`, and UI `vitest run`. UI lint and
+      `fallow` run too but are informational (red on vendored UI primitives / scaffolding).
+- [x] `integration` job: TimescaleDB + Redis service containers → `migrate` →
+      `GALLERY_INTEGRATION=1` suite. Bun pinned to the production image's version.
+
+### 0.6 Typed API client `apps/ui/src/lib/api.ts` ✓
+- [x] One typed `api` object over the whole REST surface, keyed to the `@gallery/types`
+      DTOs — a server contract change is now a UI compile error. The `devices` /
+      `connections` / `scenes` stores call it instead of hand-written `fetch('/api/v1/…')`.
+
 ---
 
 ## Priority 1 — Drivers

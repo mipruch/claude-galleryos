@@ -15,13 +15,15 @@
   },
   "dependencies": {
     "@gallery/driver-bss": "workspace:*",
-    "@gallery/driver-dali-foxtron": "workspace:*",
-    "@gallery/driver-netio": "workspace:*",
     "@gallery/driver-core": "workspace:*",
+    "@gallery/driver-dali-foxtron": "workspace:*",
     "@gallery/driver-dali-lunatone": "workspace:*",
+    "@gallery/driver-netio": "workspace:*",
     "@gallery/driver-pjlink": "workspace:*",
     "@gallery/driver-tcp-generic": "workspace:*",
     "@gallery/types": "workspace:*",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "drizzle-orm": "^0.45.2",
     "winston": "^3.19.0",
     "winston-transport": "^4.9.0"

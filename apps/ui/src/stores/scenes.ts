@@ -17,11 +17,10 @@ import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { SceneDTO } from '@gallery/types'
 import { filterScenesByRooms, searchScenes } from '@/lib/scenes'
-import { errMsg, fetchJson } from '@/lib/http'
+import { errMsg } from '@/lib/http'
+import { api } from '@/lib/api'
 import { useDevicesStore } from './devices'
 import { useRealtimeStore } from './realtime'
-
-const API = '/api/v1'
 
 export const useScenesStore = defineStore('scenes', () => {
   const devices = useDevicesStore()
@@ -54,7 +53,7 @@ export const useScenesStore = defineStore('scenes', () => {
     loading.value = true
     error.value = null
     try {
-      records.value = (await fetchJson<SceneDTO[]>(`${API}/scenes`)) ?? []
+      records.value = (await api.scenes.list()) ?? []
     } catch (err) {
       error.value = errMsg(err)
       toast.error('Could not load scenes', { description: error.value })
@@ -73,11 +72,7 @@ export const useScenesStore = defineStore('scenes', () => {
   async function execute(id: string): Promise<void> {
     running.value = { ...running.value, [id]: true }
     try {
-      await fetchJson(`${API}/scenes/${id}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'ui' }),
-      })
+      await api.scenes.execute(id, 'ui')
       toast.success(sceneName(id), { description: 'Scene started' })
     } catch (err) {
       markFinished(id)
