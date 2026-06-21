@@ -63,7 +63,7 @@ onMounted(() => store.init())
               class="text-destructive mt-0.5 flex items-start gap-1 text-xs"
             >
               <CircleAlertIcon class="mt-0.5 size-3 shrink-0" />
-              <span class="break-words">{{ c.status.lastError }}</span>
+              <span class="wrap-break-words">{{ c.status.lastError }}</span>
             </div>
           </div>
 
