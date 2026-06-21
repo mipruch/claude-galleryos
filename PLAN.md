@@ -264,36 +264,61 @@ Redis key additions to `src/redis/state.ts`:
 
 ---
 
-## Priority 3 — Scheduling
+## Priority 3 — Scheduling ✓
 
-**Timezone handling:** `Bun.cron` runs in UTC only. For per-job timezones, compute the next UTC fire time using `Temporal.ZonedDateTime` (built into Bun) and schedule via `setTimeout`. After each fire, recompute the *next* occurrence — this handles DST transitions correctly because the offset is recalculated fresh each time rather than assumed constant.
+**Timezone handling:** cron expressions run in each job's own IANA timezone; the
+Scheduler computes the absolute **UTC** fire time and schedules via `setTimeout`.
+After each fire it recomputes the *next* occurrence, so DST transitions are
+handled correctly — the offset is sampled fresh each time rather than assumed
+constant. (Storage + computation are UTC; conversion to local time is display
+logic only.)
 
-Example: a job set to `0 9 * * *` in `Europe/Prague` fires at 08:00 UTC in winter and 07:00 UTC in summer. Recomputing after each fire always gives the correct next UTC timestamp regardless of which side of a DST boundary we're on.
+⚠️ **PLAN correction:** §3 assumed `Temporal.ZonedDateTime` is built into Bun, but
+it is **not** available in the runtime (Bun 1.3.x, no Temporal global). The
+wall-clock ↔ UTC conversions are implemented with `Intl.DateTimeFormat` instead
+(always present, fully DST-aware). Same outcome — the example below holds: a job
+set to `0 9 * * *` in `Europe/Prague` fires at 08:00 UTC in winter and 07:00 UTC
+in summer.
 
-### 3.1 `Scheduler` `src/core/Scheduler.ts`
-- [ ] On `start()`: load all enabled `scheduled_jobs` from DB; schedule each
-- [ ] `scheduleJob(row)`:
-  - Parse cron expression (validate it's a valid 5-field expression)
-  - Compute next UTC fire time using `Temporal.ZonedDateTime.from({ ...parsed, timeZone })` + cron logic
-  - Schedule via `setTimeout` to that UTC timestamp
-  - After each fire: call `SceneEngine.executeScene(sceneId, 'scheduler')`, update `last_run_at` + `next_run_at` in DB, reschedule
-- [ ] On startup: compare `next_run_at` vs `NOW()` — if a job should have fired and didn't, log a warning (do not auto-run)
-- [ ] Dynamic API: `addJob(row)`, `removeJob(id)`, `reloadJob(id)` — used by schedules REST controller
-- [ ] `stop()` — cancel all pending timeouts gracefully
-- [ ] Wire into `src/api/context.ts` and `src/index.ts`
+### 3.1 `Scheduler` `src/core/Scheduler.ts` ✓
+- [x] On `start()`: load all enabled `scheduled_jobs`; arm one `setTimeout` per job
+- [x] `scheduleJob(row)`: validate + compute next UTC fire (`computeNextRun`),
+      persist `next_run_at`, arm the timer; after each fire call
+      `SceneEngine.executeScene(sceneId, 'scheduler', { sourceDetail })`, persist
+      `last_run_at`, and re-arm the next occurrence
+- [x] Long-delay safety: waits over `setTimeout`'s ~24.8-day clamp are chunked and
+      re-evaluated, so far-future crons (e.g. a yearly Feb-29 job) still fire
+- [x] On startup: compare `next_run_at` vs now — a missed run is **warned** (never
+      auto-run), then the job is re-armed going forward
+- [x] Dynamic API: `addJob(row)`, `removeJob(id)`, `reloadJob(id)` — used by the
+      schedules REST controller so cron changes apply without a server restart
+- [x] `stop()` — cancels all pending timers gracefully (wired into shutdown)
+- [x] Wired into `src/api/context.ts` and `src/index.ts`; clock + timer functions
+      are injectable so the engine is testable with virtual time (no real timers)
 
-### 3.2 Next-runs helper
-- [ ] `computeNextRuns(cronExpr, timezone, count)` — pure function returning next N UTC timestamps
-- [ ] Used by `GET /schedules/:id/next` and displayed in the Admin UI later
+### 3.2 Next-runs helper `src/core/cron.ts` ✓
+- [x] `computeNextRuns(cronExpr, timezone, count, from?)` — pure function returning
+      the next N UTC timestamps; `computeNextRun(...)` for the single next one
+- [x] Full 5-field cron grammar: `*`, lists, ranges, steps, and Vixie DOM/DOW
+      OR-semantics; `parseCron`/`isValidCron` for validation (→ HTTP 400)
+- [x] Used by `GET /schedules/:id/next`, the Scheduler, and the seed-conformance test
 
-### 3.3 Schedules REST API `src/api/routes/schedules.ts`
-- [ ] `GET    /api/v1/schedules`
-- [ ] `POST   /api/v1/schedules` — `{ name, sceneId, cron, timezone, enabled }`
-- [ ] `GET    /api/v1/schedules/:id`
-- [ ] `PUT    /api/v1/schedules/:id` → `Scheduler.reloadJob()`
-- [ ] `DELETE /api/v1/schedules/:id` → `Scheduler.removeJob()`
-- [ ] `PATCH  /api/v1/schedules/:id/toggle` — enable/disable without delete
-- [ ] `GET    /api/v1/schedules/:id/next` — next 5 fire times (preview, uses `computeNextRuns`)
+### 3.3 Schedules REST API `src/api/routes/schedules.ts` ✓
+- [x] `GET    /api/v1/schedules`
+- [x] `POST   /api/v1/schedules` — `{ name, sceneId, cron, timezone?, enabled? }`
+      (cron + timezone validated → 400; unknown `sceneId` → 400 not a raw FK 500;
+      arms the live Scheduler)
+- [x] `GET    /api/v1/schedules/:id`
+- [x] `PUT    /api/v1/schedules/:id` → `Scheduler.reloadJob()`
+- [x] `DELETE /api/v1/schedules/:id` → `Scheduler.removeJob()`
+- [x] `PATCH  /api/v1/schedules/:id/toggle` — explicit `{ enabled }` or flips current
+- [x] `GET    /api/v1/schedules/:id/next` — next N (default 5, `?count=`) UTC fire times
+
+**Types/repos/seed/tests:** `ScheduledJob`/`ScheduledJobDTO` + `ScheduleCreateInput`
+in `@gallery/types`; `scheduledJobsRepo` (CRUD + `setEnabled` + Scheduler
+write-backs); three sample jobs in the seed (validated by the seed-conformance
+test). 45 new tests: pure cron parser/next-runs (incl. winter/summer + spring-
+forward DST), the Scheduler with virtual time, and the REST routes.
 
 ---
 

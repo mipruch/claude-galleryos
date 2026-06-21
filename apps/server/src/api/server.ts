@@ -17,6 +17,7 @@ import { iframesRoutes } from "./routes/iframes.ts";
 import { logsRoutes } from "./routes/logs.ts";
 import { roomsRoutes } from "./routes/rooms.ts";
 import { scenesRoutes } from "./routes/scenes.ts";
+import { schedulesRoutes } from "./routes/schedules.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { makeWebSocketHandlers, setupBroadcast } from "./ws.ts";
 
@@ -34,6 +35,7 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...systemRoutes(ctx),
       ...logsRoutes(ctx),
       ...scenesRoutes(ctx),
+      ...schedulesRoutes(ctx),
       // WebSocket upgrade endpoint.
       "/ws": (req, server) => {
         if (server.upgrade(req, { data: {} })) return undefined;

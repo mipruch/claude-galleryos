@@ -1044,17 +1044,47 @@ ji používají — žádná duplikace akcí.
 
 `apps/server/src/core/Scheduler.ts`
 
-Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a naplánuje je.
+Načte všechny aktivní `scheduled_jobs` záznamy z DB při startu a naplánuje je.
 
-**Timezone handling:** `Bun.cron` je UTC-only. Scheduler proto počítá přesný UTC čas příštího spuštění pomocí `Temporal.ZonedDateTime` (vestavěné v Bun) a používá `setTimeout`. Po každém spuštění se čas přepočítá znovu — tím je správně ošetřen přechod letního/zimního času.
+**Timezone handling:** cron výraz každého jobu se interpretuje v jeho vlastní IANA
+timezone; Scheduler spočítá **absolutní UTC** čas příštího spuštění a naplánuje ho
+přes `setTimeout`. Po každém spuštění se příští výskyt přepočítá znovu — tím je
+správně ošetřen přechod letního/zimního času (offset se vzorkuje pokaždé čerstvě,
+ne jako konstanta). Úložiště i výpočty jsou v UTC; převod do lokálního času je
+záležitost zobrazovací logiky.
 
-Klíčové vlastnosti:
+> ⚠️ **Oprava návrhu:** PLAN §3 předpokládal `Temporal.ZonedDateTime` „vestavěné
+> v Bun", to ale v runtime **není** (Bun 1.3.x, žádný Temporal global). Převody
+> wall-clock ↔ UTC jsou proto implementovány přes `Intl.DateTimeFormat` (vždy
+> dostupné, plně DST-aware). Výsledek je stejný: job `0 9 * * *` v `Europe/Prague`
+> spustí v zimě v 08:00 UTC a v létě v 07:00 UTC.
 
-- Dynamický reload — Admin může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
-- Timezone-aware — každý job má vlastní timezone; DST je ošetřeno přepočtem po každém spuštění.
-- Po každém spuštění: aktualizuje `last_run_at` a `next_run_at` v DB.
-- Job spouští scénu přes `SceneEngine.executeScene(sceneId, 'scheduler')`.
-- Při výpadku a restartu serveru: při startu ověří, zda neproběhl missed job (job měl proběhnout a neproběhl), a pokud ano, loguje varování. Automatické doplnění vynechaných jobů se **nespouští** — je to galerie, ne kritická infrastruktura.
+**Implementováno (Priorita 3):**
+
+- **`src/core/cron.ts`** — čistý, samostatně testovaný modul. `parseCron` /
+  `isValidCron` validují celou 5-položkovou gramatiku (`*`, seznamy, rozsahy,
+  kroky `*/15`, Vixie OR-sémantika pro day-of-month + day-of-week).
+  `computeNextRuns(cronExpr, timezone, count, from?)` vrací příštích N UTC instantů
+  (a `computeNextRun` jeden). Dvouprůchodový převod wall-clock → UTC zvládá DST
+  mezery i překryvy.
+- **`Scheduler`** — jeden `setTimeout` na job mířící na příští UTC čas. Po
+  spuštění: zapíše `last_run_at`, spustí scénu přes
+  `SceneEngine.executeScene(sceneId, 'scheduler', { sourceDetail: 'scheduler:{id}' })`
+  (neблокuje rescheduling — pomalý/konfliktní běh nezdrží přeplánování) a přepočítá
+  + ozbrojí příští výskyt (zapíše `next_run_at`).
+- **Dlouhé čekání:** prodlevy přes ~24,8 dne (limit `setTimeout`) se štěpí a
+  přehodnocují, takže i vzdálené cron joby (např. roční 29. 2.) spolehlivě spustí.
+- **Dynamický reload** — `addJob` / `removeJob` / `reloadJob(id)`; schedules REST
+  controller je volá po create/update/toggle/delete, takže změny cronu platí za
+  běhu bez restartu serveru.
+- **Missed-run při startu:** porovná `next_run_at` s aktuálním časem — vynechaný
+  běh **zaloguje varování** (nikdy ho automaticky nedohání — je to galerie, ne
+  kritická infrastruktura) a job přeplánuje dál.
+- **Testovatelnost:** hodiny (`now`) i časovače (`setTimer`/`clearTimer`) jsou
+  injektovatelné, takže `Scheduler` se testuje s virtuálním časem bez reálných
+  timerů, DB i SceneEngine.
+- **`stop()`** zruší všechny čekající timery (zapojeno do graceful shutdownu).
+- Zapojeno do `src/api/context.ts` a `src/index.ts`; REST viz §8 `/schedules`.
 
 ### 7.5 Watchdog
 
