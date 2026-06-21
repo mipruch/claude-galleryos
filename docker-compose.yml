@@ -66,10 +66,25 @@ services:
     networks:
       - gallery_net
 
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - postgres
+    networks:
+      - gallery_net
+
 volumes:
   postgres_data:
   redis_data:
   server_logs:
+  grafana_data:
 
 networks:
   gallery_net:
