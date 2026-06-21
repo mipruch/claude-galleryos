@@ -95,13 +95,17 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
       }),
       PUT: route(async (req) => {
         const body = await readJson(req);
+        // Parse the address up front so a non-object value is rejected (400)
+        // before persistence, even when subtype is absent and validation below
+        // is skipped.
+        const parsedAddress = body.address === undefined ? undefined : asObject(body.address, "address");
         // Re-validate addressing only when the request touches it. Validates the
         // effective post-update endpoint type + address against the manifest.
         if (body.address !== undefined || body.subtype !== undefined) {
           const existing = await ctx.devices.get(paramId(req));
           if (!existing) throw new HttpError(404, "NOT_FOUND", "device not found");
           const subtype = (body.subtype as string | undefined) ?? existing.subtype ?? undefined;
-          const address = (body.address as Record<string, unknown> | undefined) ?? existing.address;
+          const address = parsedAddress ?? existing.address;
           if (subtype) {
             const connection = await ctx.connections.get(existing.connectionId);
             if (connection) assertValidDeviceAddress(connection.driverId, subtype, asObject(address, "address"));
@@ -113,7 +117,7 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
           description: body.description as string | undefined,
           type: body.type as string | undefined,
           subtype: body.subtype as string | undefined,
-          address: body.address as Record<string, unknown> | undefined,
+          address: parsedAddress,
           capabilities: body.capabilities as string[] | undefined,
           metadata: body.metadata as Record<string, unknown> | undefined,
           icon: body.icon as string | undefined,

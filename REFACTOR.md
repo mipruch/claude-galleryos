@@ -28,7 +28,7 @@ This is a **menu, not a script.** Follow these rules so nothing surprising lands
 5. **After each item:** run `bun run typecheck`, `bun test` (server),
    `bun run test:ui` (UI), and `bunx fallow` (per CLAUDE.md). All must stay green.
 6. **Effort tags:** 🟢 small (<1h) · 🟡 medium · 🔴 large/multi-file.
-   **Risk tags:** ⚠️ behaviour-changing · 🧪 needs/【deserves a test · [DECIDE] needs a call.
+   **Risk tags:** ⚠️ behaviour-changing · 🧪 needs/deserves a test · [DECIDE] needs a call.
 7. If a file/line reference has drifted, **find the named symbol** rather than
    trusting the line number, and re-confirm the issue still exists before editing.
 

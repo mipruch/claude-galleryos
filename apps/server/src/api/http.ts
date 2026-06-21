@@ -50,7 +50,9 @@ export function toErrorResponse(err: unknown): Response {
   // Map known DeviceManager errors to sensible status codes.
   if (error.includes("device not found")) return errorResponse({ error, code: "NOT_FOUND" }, 404);
   if (error.includes("no active driver")) return errorResponse({ error, code: "DRIVER_UNAVAILABLE" }, 503);
-  return errorResponse({ error, code: "INTERNAL_ERROR" }, 500);
+  // Unexpected failures: keep the detail in logs (route() logs `error`), but
+  // return a generic message so internals don't leak to clients.
+  return errorResponse({ error: "internal server error", code: "INTERNAL_ERROR" }, 500);
 }
 
 /** Wrap a handler so thrown errors become JSON error responses, and log the request. */

@@ -52,6 +52,11 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
     } else if (!a.deviceId || !a.command) {
       throw new HttpError(400, "BAD_REQUEST", `actions[${i}] requires deviceId and command, or childSceneId`);
     }
+    // Reject unknown onFailure values instead of silently dropping them — a typo
+    // would otherwise change execution behaviour (fall back to the default).
+    if (a.onFailure !== undefined && a.onFailure !== "abort" && a.onFailure !== "continue") {
+      throw new HttpError(400, "BAD_REQUEST", `actions[${i}].onFailure must be "abort" or "continue"`);
+    }
     return {
       deviceId: isSubScene ? undefined : String(a.deviceId),
       command: isSubScene ? undefined : String(a.command),
@@ -60,7 +65,7 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
       stepOrder: a.stepOrder !== undefined ? Number(a.stepOrder) : undefined,
       parallelGroup: a.parallelGroup !== undefined ? Number(a.parallelGroup) : undefined,
       delayMs: a.delayMs !== undefined ? Number(a.delayMs) : undefined,
-      onFailure: a.onFailure === "abort" || a.onFailure === "continue" ? a.onFailure : undefined,
+      onFailure: a.onFailure as "abort" | "continue" | undefined,
     };
   });
 }
@@ -155,7 +160,12 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
     "/api/v1/scenes/:id/favorite": {
       PATCH: route(async (req) => {
         const body = await readJson(req);
-        const isFavorite = Boolean(body.is_favorite ?? body.isFavorite);
+        // Require an actual boolean — `Boolean("false")` is `true`, so coercion
+        // would silently flip the flag for string payloads.
+        const isFavorite = body.is_favorite ?? body.isFavorite;
+        if (typeof isFavorite !== "boolean") {
+          throw new HttpError(400, "BAD_REQUEST", "`is_favorite` must be a boolean");
+        }
         const updated = await ctx.scenes.setFavorite(paramId(req), isFavorite);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(updated);

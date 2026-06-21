@@ -48,10 +48,12 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
           throw new HttpError(400, "BAD_REQUEST", `unknown driver: ${driverId}`);
         }
         const config = (body.config as Record<string, unknown> | undefined) ?? {};
+        // host/port are dedicated columns — they must win over any same-named
+        // keys in the freeform config blob, so spread config first.
         assertValidConnectionConfig(driverId, {
+          ...config,
           host: body.host ?? undefined,
           port: body.port ?? undefined,
-          ...config,
         });
         const created = await ctx.connections.create({
           name: String(body.name),
@@ -92,10 +94,11 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
         const driverId = (body.driverId as string | undefined) ?? existing.driverId;
         const config =
           (body.config as Record<string, unknown> | undefined) ?? (existing.config as Record<string, unknown>) ?? {};
+        // host/port are dedicated columns — spread config first so they win.
         assertValidConnectionConfig(driverId, {
+          ...config,
           host: effective(body.host as string | null | undefined, existing.host) ?? undefined,
           port: effective(body.port as number | null | undefined, existing.port) ?? undefined,
-          ...config,
         });
         const updated = await ctx.connections.update(paramId(req), {
           name: body.name as string | undefined,
@@ -106,10 +109,11 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
           config: body.config as Record<string, unknown> | undefined,
           enabled: body.enabled as boolean | undefined,
         });
+        if (!updated) throw new HttpError(404, "NOT_FOUND", "connection not found");
         // Restart the host so config changes take effect.
-        await ctx.deviceManager.stopConnection(updated!.id);
-        if (updated!.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(updated!));
-        return json(withRuntime(updated!));
+        await ctx.deviceManager.stopConnection(updated.id);
+        if (updated.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(updated));
+        return json(withRuntime(updated));
       }),
       DELETE: route(async (req) => {
         await load(paramId(req));

@@ -161,29 +161,35 @@ describe("routes reject invalid input with 400", () => {
 
   test("POST /connections with a missing host → 400 VALIDATION", async () => {
     server = Bun.serve({ port: 0, routes: { ...connectionsRoutes(ctx) } });
-    base = `http://localhost:${server.port}`;
-    const { status, body } = await req(base, "POST", "/api/v1/connections", {
-      name: "X",
-      driverId: "pjlink",
-      port: 4352,
-    });
-    expect(status).toBe(400);
-    expect(body.code).toBe("VALIDATION");
-    server.stop(true);
+    try {
+      base = `http://localhost:${server.port}`;
+      const { status, body } = await req(base, "POST", "/api/v1/connections", {
+        name: "X",
+        driverId: "pjlink",
+        port: 4352,
+      });
+      expect(status).toBe(400);
+      expect(body.code).toBe("VALIDATION");
+    } finally {
+      server.stop(true);
+    }
   });
 
   test("POST /devices with a bad address → 400 VALIDATION", async () => {
     server = Bun.serve({ port: 0, routes: { ...devicesRoutes(ctx) } });
-    base = `http://localhost:${server.port}`;
-    const { status, body } = await req(base, "POST", "/api/v1/devices", {
-      connectionId: "c1",
-      name: "Sock",
-      type: "power",
-      subtype: "netio.socket",
-      address: { outputId: 99 }, // out of the 1..8 range
-    });
-    expect(status).toBe(400);
-    expect(body.code).toBe("VALIDATION");
-    server.stop(true);
+    try {
+      base = `http://localhost:${server.port}`;
+      const { status, body } = await req(base, "POST", "/api/v1/devices", {
+        connectionId: "c1",
+        name: "Sock",
+        type: "power",
+        subtype: "netio.socket",
+        address: { outputId: 99 }, // out of the 1..8 range
+      });
+      expect(status).toBe(400);
+      expect(body.code).toBe("VALIDATION");
+    } finally {
+      server.stop(true);
+    }
   });
 });
