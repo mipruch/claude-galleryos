@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { deviceActions } from '@/lib/commands'
 import type { DeviceRecord } from '@/lib/devices'
+import { makeDevice } from './fixtures'
 
 function dev(capabilities: string[]): DeviceRecord {
-  return { id: 'd', name: 'D', type: 'custom', capabilities } as unknown as DeviceRecord
+  return makeDevice({ id: 'd', name: 'D', type: 'custom', capabilities })
 }
 
 describe('deviceActions', () => {

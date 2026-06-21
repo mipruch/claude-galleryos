@@ -252,6 +252,10 @@ export class DeviceManager {
     });
   }
 
+  // Optimistic: on `connected` this flips *every* endpoint to online the instant
+  // the transport opens, before any per-endpoint probe — so the UI may briefly show
+  // green for an endpoint that's actually unreachable. Watchdog's layer-2 endpoint
+  // checks correct it on the next tick. Intentional (fast feedback) for now.
   /** Update every device of a connection to online/offline + emit events. */
   private markDevices(connectionId: string, online: boolean, reason = ""): void {
     const devices = this.devicesByConnection.get(connectionId) ?? [];

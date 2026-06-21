@@ -9,24 +9,15 @@ import {
   searchScenes,
 } from '@/lib/scenes'
 import { ROOM_UNASSIGNED } from '@/lib/devices'
+import { makeRoom, makeScene } from './fixtures'
 
 /** Minimal scene fixture — only the fields the helpers read. */
 function scene(id: string, over: Partial<SceneDTO> = {}): SceneDTO {
-  return {
-    id,
-    name: id,
-    roomId: null,
-    description: null,
-    icon: null,
-    color: null,
-    enabled: true,
-    tags: [],
-    ...over,
-  } as unknown as SceneDTO
+  return makeScene({ id, name: id, ...over })
 }
 
 function room(id: string, name: string): RoomDTO {
-  return { id, name, displayOrder: 0 } as unknown as RoomDTO
+  return makeRoom({ id, name })
 }
 
 describe('sceneIcon', () => {

@@ -38,11 +38,18 @@ export type ServerMessage =
       "device:command:ack",
       { deviceId: string; success: boolean; durationMs?: number; state?: DeviceState; error?: string }
     >
-  | WsEnvelope<
-      "scene:execute:ack",
-      { sceneId?: string; executionId?: string; status?: string; error?: string }
-    >
+  | WsEnvelope<"scene:execute:ack", SceneExecuteAck>
   | WsEnvelope<"error", { message: string }>;
+
+/**
+ * Reply to a `scene:execute` request: either the run was accepted (`status:
+ * "requested"`, with the new `executionId`) or it was rejected (`error`). Split
+ * into a discriminated success/error shape so consumers narrow on `error` instead
+ * of probing every optional field.
+ */
+export type SceneExecuteAck =
+  | { status: "requested"; sceneId: string; executionId: string; error?: never }
+  | { error: string; sceneId?: string; status?: never; executionId?: never };
 
 // ── client → server ──────────────────────────────────────────
 export type ClientMessage =

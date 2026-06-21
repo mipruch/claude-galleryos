@@ -13,13 +13,15 @@ import {
   type DeviceRecord,
 } from '@/lib/devices'
 
+import { makeDevice, makeRoom } from './fixtures'
+
 /** Minimal device fixture — only the fields the grouping helpers read. */
 function dev(id: string, type: string, roomId: string | null = null): DeviceRecord {
-  return { id, name: id, type, roomId, displayOrder: 0 } as unknown as DeviceRecord
+  return makeDevice({ id, name: id, type, roomId })
 }
 
 function room(id: string, name: string, displayOrder: number): RoomDTO {
-  return { id, name, displayOrder } as unknown as RoomDTO
+  return makeRoom({ id, name, displayOrder })
 }
 
 describe('snapshotState / applyRevert (optimistic rollback)', () => {
@@ -105,9 +107,9 @@ describe('roomOptionsOf', () => {
 describe('searchDevices', () => {
   const rooms = [room('r1', 'Sál A', 0), room('r2', 'Foyer', 1)]
   const list: DeviceRecord[] = [
-    { id: 'a', name: 'Projector', description: 'Main hall beamer', type: 'video', roomId: 'r1' } as unknown as DeviceRecord,
-    { id: 'b', name: 'Ceiling Light', description: null, type: 'light', roomId: 'r2' } as unknown as DeviceRecord,
-    { id: 'c', name: 'Mic 1', description: 'Lectern microphone', type: 'audio', roomId: null } as unknown as DeviceRecord,
+    makeDevice({ id: 'a', name: 'Projector', description: 'Main hall beamer', type: 'video', roomId: 'r1' }),
+    makeDevice({ id: 'b', name: 'Ceiling Light', description: null, type: 'light', roomId: 'r2' }),
+    makeDevice({ id: 'c', name: 'Mic 1', description: 'Lectern microphone', type: 'audio', roomId: null }),
   ]
 
   it('returns everything for a blank query', () => {

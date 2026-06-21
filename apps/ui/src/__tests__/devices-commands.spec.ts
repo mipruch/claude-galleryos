@@ -8,6 +8,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord, DeviceState } from '@/lib/devices'
+import { makeDevice } from './fixtures'
 
 // Fake realtime store: a real ref for `connected` (so the store's watcher fires),
 // a handler registry we can invoke, and a record of what was sent.
@@ -48,7 +49,7 @@ const fireAck = (data: Record<string, unknown>): void =>
   g.__rtHandlers.get('device:command:ack')?.(data)
 
 function dev(id: string): DeviceRecord {
-  return { id, name: id.toUpperCase(), enabled: true, displayOrder: 0, type: 'light', subtype: 'dali.fixture' } as unknown as DeviceRecord
+  return makeDevice({ id, name: id.toUpperCase(), type: 'light', subtype: 'dali.fixture' })
 }
 
 function setup(initial: Record<string, DeviceState> = {}) {
