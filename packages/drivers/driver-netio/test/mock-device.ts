@@ -48,6 +48,12 @@ export interface NetioMockServer {
   writes: Array<{ ID: number; Action: number; Delay?: number }[]>;
 }
 
+/**
+ * Creates and starts an in-process HTTP mock server that simulates a NETIO device's JSON M2M API.
+ *
+ * @param opts - Optional configuration for the mock server (number of outputs, authentication credentials, and write callback)
+ * @returns A mock server instance with methods to control and monitor output state
+ */
 export function startNetioMock(opts: NetioMockOptions = {}): NetioMockServer {
   const numOutputs = opts.numOutputs ?? 4;
   const writes: Array<{ ID: number; Action: number; Delay?: number }[]> = [];

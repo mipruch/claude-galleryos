@@ -23,6 +23,11 @@ import { assertValidConnectionConfig } from "../validation.ts";
 const effective = <T>(patch: T | null | undefined, current: T | null): T | null =>
   patch === undefined ? current : patch;
 
+/**
+ * Defines API routes for managing connections and their runtime state.
+ *
+ * @returns A route map defining connection CRUD and runtime lifecycle endpoints.
+ */
 export function connectionsRoutes(ctx: ApiContext): RouteMap {
 
   /** Attach the live `running` flag to a connection row. */

@@ -49,6 +49,11 @@ export const useScenesStore = defineStore('scenes', () => {
 
   const isRunning = (id: string): boolean => running.value[id] === true
 
+  /**
+   * Fetches all scenes from the server and updates the store.
+   *
+   * If the fetch fails, displays an error toast with the failure reason.
+   */
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
@@ -65,9 +70,9 @@ export const useScenesStore = defineStore('scenes', () => {
   const sceneName = (id: string): string => records.value.find((s) => s.id === id)?.name ?? 'Scene'
 
   /**
-   * Trigger a scene run. Marks it running immediately for feedback; the WS
-   * completion event clears that. A non-2xx response (e.g. 409 already running)
-   * surfaces the server's message and clears the flag right away.
+   * Executes a scene and displays feedback on success or failure.
+   *
+   * @param id - The scene ID to execute
    */
   async function execute(id: string): Promise<void> {
     running.value = { ...running.value, [id]: true }
@@ -80,7 +85,11 @@ export const useScenesStore = defineStore('scenes', () => {
     }
   }
 
-  // ── WS-driven progress ──────────────────────────────────────────────────────
+  /**
+   * Marks a scene as running in the execution progress state.
+   *
+   * @param id - The ID of the scene being executed
+   */
   function markRunning(id: string): void {
     running.value = { ...running.value, [id]: true }
   }

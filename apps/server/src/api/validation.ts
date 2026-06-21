@@ -32,6 +32,13 @@ addFormats(ajv);
 
 const validators = new Map<string, ValidateFunction>();
 
+/**
+ * Retrieves or compiles a cached validator for the given schema.
+ *
+ * @param key - The cache key for this schema
+ * @param schema - The JSON Schema to validate against
+ * @returns The compiled validator function
+ */
 function compiled(key: string, schema: JsonSchema): ValidateFunction {
   let validate = validators.get(key);
   if (!validate) {
@@ -52,7 +59,13 @@ function summarize(errors: ErrorObject[] | null | undefined): string {
     .join("; ");
 }
 
-/** Validate `data` against `schema`; throw 400 VALIDATION on failure. */
+/**
+ * Validates data against a JSON schema, throwing an HttpError on validation failure.
+ * 
+ * @param key - Cache key for the compiled validator
+ * @param what - Error message prefix used when validation fails
+ * @throws HttpError with status 400 and code "VALIDATION" if validation fails, with summarized errors in the message and full error details attached
+ */
 function assertValid(key: string, schema: JsonSchema, data: unknown, what: string): void {
   const validate = compiled(key, schema);
   if (!validate(data)) {
@@ -60,12 +73,27 @@ function assertValid(key: string, schema: JsonSchema, data: unknown, what: strin
   }
 }
 
+/**
+ * Retrieves a driver manifest from the registry.
+ *
+ * @param driverId - The identifier of the driver to look up
+ * @returns The driver manifest
+ * @throws HttpError with code 400 if the driver is not found
+ */
 function manifestOf(driverId: string): DriverManifest {
   const manifest = driverRegistry.get(driverId);
   if (!manifest) throw new HttpError(400, "BAD_REQUEST", `unknown driver: ${driverId}`);
   return manifest;
 }
 
+/**
+ * Retrieves an endpoint type definition from a driver manifest.
+ *
+ * @param manifest - The driver manifest to search
+ * @param endpointType - The endpoint type name to look up
+ * @returns The endpoint type definition matching the requested type
+ * @throws HttpError with status 400 and code "BAD_REQUEST" if the endpoint type is not found
+ */
 function endpointOf(manifest: DriverManifest, endpointType: string): EndpointTypeDefinition {
   const endpoint = manifest.endpointTypes.find((e) => e.type === endpointType);
   if (!endpoint) {
@@ -75,9 +103,9 @@ function endpointOf(manifest: DriverManifest, endpointType: string): EndpointTyp
 }
 
 /**
- * Validate a connection's settings against the driver's `connectionSchema`.
- * `form` is the form-level shape `{ host, port, ...config }` — host/port are
- * stored as columns but the schema describes the whole admin form.
+ * Validates a connection configuration against the driver's schema.
+ *
+ * @throws Throws an error if the connection configuration does not match the schema.
  */
 export function assertValidConnectionConfig(driverId: string, form: Record<string, unknown>): void {
   const manifest = manifestOf(driverId);
@@ -91,8 +119,9 @@ export function assertValidDeviceAddress(driverId: string, endpointType: string,
 }
 
 /**
- * Validate a command's `params` against its `paramsSchema`. Also rejects
- * commands the endpoint type doesn't declare (the manifest is the contract).
+ * Validates a command's parameters against its schema and ensures the command is defined in the endpoint type.
+ *
+ * Throws an HTTP 400 error if the command is unknown or if the parameters fail validation.
  */
 export function assertValidCommandParams(
   driverId: string,

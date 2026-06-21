@@ -615,7 +615,12 @@ const SEED_IFRAMES = [
 ];
 
 // ── inserter ─────────────────────────────────────────────────
-// Dependency order: rooms → connections → devices → scenes → actions → iframes.
+/**
+ * Populates the database with sample data for rooms, connections, devices, scenes, scene actions, and iframes.
+ *
+ * Records are inserted idempotently; calling this function multiple times does not create duplicates.
+ * Closes the database connection when complete.
+ */
 
 async function main(): Promise<void> {
   await db.insert(rooms).values(SEED_ROOMS).onConflictDoNothing();

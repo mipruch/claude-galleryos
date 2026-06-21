@@ -96,6 +96,11 @@ const patch = <T>(path: string, body?: unknown) => fetchJson<T>(`${API}${path}`,
 const del = (path: string) => fetchJson<null>(`${API}${path}`, jsonInit('DELETE'))
 
 type QueryValue = string | number | boolean | undefined
+/**
+ * Builds a URL query string from optional parameters.
+ *
+ * @returns A query string prefixed with `?`, or an empty string if no parameters are provided
+ */
 function qs(params?: Record<string, QueryValue>): string {
   if (!params) return ''
   const sp = new URLSearchParams()

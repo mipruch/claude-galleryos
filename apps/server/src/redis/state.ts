@@ -38,7 +38,13 @@ export function shouldPreserveBrightness(
   return turningOff && !merged.brightness && !!existing.brightness;
 }
 
-/** Merge a driver state patch into the existing stored state. */
+/**
+ * Merges a state patch into the existing device state, preserving the previous brightness value when turning off the device unless the patch specifies a new brightness.
+ *
+ * @param existing - The current stored device state
+ * @param patch - The state values to merge
+ * @returns The merged device state
+ */
 export function mergeDeviceState(
   existing: Record<string, unknown>,
   patch: Record<string, unknown>,

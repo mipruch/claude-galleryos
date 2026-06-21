@@ -19,6 +19,12 @@ import { closeDb, db, sqlClient } from "./client.ts";
 const log = logger.child("migrate");
 const migrationsFolder = new URL("./migrations", import.meta.url).pathname;
 
+/**
+ * Configures TimescaleDB hypertable settings for the logs table.
+ *
+ * This operation is idempotent and gracefully skips if the TimescaleDB extension
+ * is unavailable (e.g., in plain PostgreSQL environments).
+ */
 async function setupTimescale(): Promise<void> {
   try {
     await sqlClient`CREATE EXTENSION IF NOT EXISTS timescaledb`;

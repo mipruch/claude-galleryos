@@ -24,6 +24,15 @@ import {
 } from "../http.ts";
 import { assertValidDeviceAddress } from "../validation.ts";
 
+/**
+ * Defines HTTP route handlers for device management operations.
+ *
+ * Provides endpoints for querying, creating, updating, and deleting devices, as well as
+ * executing commands and retrieving live state and status information.
+ *
+ * @param ctx - The API context providing device, connection, and state management
+ * @returns A route map with handlers for device CRUD, command execution, and state queries
+ */
 export function devicesRoutes(ctx: ApiContext): RouteMap {
 
   return {

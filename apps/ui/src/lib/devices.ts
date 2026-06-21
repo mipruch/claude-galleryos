@@ -144,7 +144,11 @@ export function filterByRooms(devices: DeviceRecord[], roomKeys: string[]): Devi
   return devices.filter((d) => allow.has(roomKeyOf(d)))
 }
 
-/** All human-readable text a device can be matched on, normalized. */
+/**
+ * Builds a normalized search string from all human-readable device properties.
+ *
+ * @returns A normalized concatenation of device name, description, room name, type label, and subtype.
+ */
 function deviceHaystack(device: DeviceRecord, roomName: string | undefined): string {
   return normalize(
     [
@@ -159,10 +163,16 @@ function deviceHaystack(device: DeviceRecord, roomName: string | undefined): str
 }
 
 /**
- * Loose, multi-field search across name, description, room, type and subtype.
- * Case- and accent-insensitive; every whitespace-separated term must appear
- * somewhere (AND), so "hall light" matches a light in the Hall. An empty query
- * returns the input unchanged.
+ * Filters devices based on a search query.
+ *
+ * Search is performed across device name, description, room name, type, and
+ * subtype. Matching is case- and accent-insensitive. All whitespace-separated
+ * search terms must match somewhere on the device (AND logic). For example,
+ * "hall light" matches any light fixture assigned to a room named "Hall".
+ * An empty query returns all devices unchanged.
+ *
+ * @param rooms - Available rooms, used to enrich the search with room names.
+ * @returns The devices matching all search terms.
  */
 export function searchDevices(
   devices: DeviceRecord[],

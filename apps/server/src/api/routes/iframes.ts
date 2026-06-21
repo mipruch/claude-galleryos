@@ -7,6 +7,11 @@
 import type { ApiContext } from "../context.ts";
 import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
+/**
+ * Configures HTTP routes for managing embedded iframe entries.
+ *
+ * @returns A route map with handlers for iframe CRUD operations.
+ */
 export function iframesRoutes(ctx: ApiContext): RouteMap {
 
   return {

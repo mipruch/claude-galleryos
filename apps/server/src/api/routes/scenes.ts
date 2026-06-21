@@ -21,7 +21,14 @@ import {
 import type { ApiContext } from "../context.ts";
 import { HttpError, paramId, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
-/** Map a thrown SceneEngine error to the right HTTP status. */
+/**
+ * Converts SceneEngine errors to HTTP errors with appropriate status codes.
+ *
+ * - `SceneNotFoundError` → 404
+ * - `SceneConflictError` → 409
+ * - `SceneValidationError` → 400
+ * - Other errors are rethrown unchanged
+ */
 function toHttp(err: unknown): never {
   if (err instanceof SceneNotFoundError) throw new HttpError(404, "NOT_FOUND", err.message);
   if (err instanceof SceneConflictError) throw new HttpError(409, "CONFLICT", err.message);
@@ -29,7 +36,15 @@ function toHttp(err: unknown): never {
   throw err;
 }
 
-/** Coerce a request body's `actions` field into validated SceneActionInput[]. */
+/**
+ * Validates and normalizes action items from a request body into scene action inputs.
+ *
+ * Each action targets either a child scene via `childSceneId`, or a device via `deviceId` and `command`, but not both. Optional numeric fields (`stepOrder`, `parallelGroup`, `delayMs`) are converted to numbers. The `onFailure` field is accepted only as `"abort"` or `"continue"`.
+ *
+ * @param raw - The `actions` field from the request body
+ * @returns The normalized action list, or `undefined` if the input is `undefined`
+ * @throws When the input is not an array, when any action is not an object, or when field constraints are violated
+ */
 function parseActions(raw: unknown): SceneActionInput[] | undefined {
   if (raw === undefined) return undefined;
   if (!Array.isArray(raw)) throw new HttpError(400, "BAD_REQUEST", "`actions` must be an array");
@@ -65,6 +80,12 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
   });
 }
 
+/**
+ * Creates HTTP routes for scene management including CRUD operations and execution features.
+ *
+ * @param ctx - The API context providing access to scene services and the scene engine
+ * @returns Route definitions mapped to endpoint paths under `/api/v1/scenes`
+ */
 export function scenesRoutes(ctx: ApiContext): RouteMap {
 
   return {
