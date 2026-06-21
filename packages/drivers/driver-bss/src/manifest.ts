@@ -124,7 +124,6 @@ export const manifest: DriverManifest = {
         {
           command: "setLevel",
           description: "Set the fader level (0..1) via SET PERCENT.",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["level"],
@@ -134,7 +133,6 @@ export const manifest: DriverManifest = {
         {
           command: "setMute",
           description: "Mute or unmute the channel.",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["muted"],

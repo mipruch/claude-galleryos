@@ -15,6 +15,7 @@
  */
 
 import type { DriverKVStore, EndpointDescriptor } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
 import type { Connection, ConnectionStatus, Device, DeviceStatus } from "@gallery/types";
 import { DriverHost, type RestartPolicy } from "../drivers/DriverHost.ts";
 import { EventBus } from "./EventBus.ts";
@@ -77,6 +78,19 @@ export interface DeviceManagerOptions {
    * Omitted → no auto-subscribe (poll-only behaviour).
    */
   supportsSubscriptions?: (driverId: string) => boolean;
+  /**
+   * Validates a command's params against the driver manifest before it is sent.
+   * Injected (built from the DriverRegistry) so the manager stays free of the
+   * API/validation layer. Throws on invalid params; the throw surfaces as a
+   * REST 400 / WS ack failure / failed scene action depending on the caller.
+   * Omitted → no validation (used by hermetic unit tests).
+   */
+  validateParams?: (
+    driverId: string,
+    endpointType: string,
+    command: string,
+    params: Record<string, unknown>,
+  ) => void;
   dryRun?: boolean;
   restart?: RestartPolicy;
   commandTimeoutMs?: number;
@@ -182,7 +196,7 @@ export class DeviceManager {
     } catch (err) {
       this.log.error("failed to start connection", {
         connectionId: connection.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg(err),
       });
     }
   }
@@ -285,6 +299,10 @@ export class DeviceManager {
       const device = await this.resolveDevice(deviceId);
       const host = this.hosts.get(device.connectionId);
       if (!host) throw new Error(`no active driver for connection ${device.connectionId}`);
+
+      // Validate params against the manifest before anything reaches the driver.
+      const driverId = this.driverIds.get(device.connectionId);
+      if (driverId) this.opts.validateParams?.(driverId, device.endpointType, command, params);
 
       // Log the command going out to the device.
       this.log.info("command requested", { deviceId, device: device.name, command, params });

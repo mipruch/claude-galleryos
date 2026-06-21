@@ -1,10 +1,9 @@
 /**
  * Connection store — drives the backend-connection status indicator.
  *
- * Mirrors the devices store lifecycle (see README §9 for the WS protocol):
  *   1. `init()` fetches every connection + its Redis status over HTTP once.
- *   2. A WebSocket (`/ws`) streams live changes: `connection:connected`,
- *      `connection:disconnected`, `driver:error`.
+ *   2. The shared realtime socket (`stores/realtime`) streams live changes:
+ *      `connection:connected`, `connection:disconnected`, `driver:error`.
  *
  * Enabling / disabling a connection is a `PUT /connections/:id` which restarts
  * (or stops) its driver subprocess server-side; we adopt the returned row so the
@@ -13,22 +12,16 @@
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
-import type { ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
 import {
   connState,
   type ConnectionRecord,
   type ConnectionStatus,
   type ConnState,
 } from '@/lib/connections'
-
-const API = '/api/v1'
-
-function wsUrl(): string {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}/ws`
-}
+import { errMsg } from '@/lib/http'
+import { api } from '@/lib/api'
+import { useRealtimeStore } from './realtime'
 
 /** A connection paired with its derived live state — what the UI renders. */
 interface ConnectionView extends ConnectionRecord {
@@ -37,39 +30,25 @@ interface ConnectionView extends ConnectionRecord {
 }
 
 export const useConnectionsStore = defineStore('connections', () => {
+  const rt = useRealtimeStore()
+
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<ConnectionRecord[]>([])
   const statuses = ref<Record<string, ConnectionStatus>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const realtime = computed(() => rt.connected)
 
-  // ── WebSocket (live status updates) ───────────────────────────────────────
-  const { status: wsStatus, open, close } = useWebSocket(wsUrl(), {
-    immediate: false,
-    autoReconnect: { retries: -1, delay: 2000 },
-    onMessage: (_ws, ev) => handleMessage(ev.data),
+  // ── live status updates (registered on the shared socket) ─────────────────
+  rt.on('connection:connected', (d) => patchStatus(d.connectionId, { online: true, lastError: undefined }))
+  rt.on('connection:disconnected', (d) => patchStatus(d.connectionId, { online: false, lastError: d.reason }))
+  rt.on('driver:error', (d) => {
+    if (d.connectionId) patchStatus(d.connectionId, { lastError: d.message })
   })
-  const realtime = computed(() => wsStatus.value === 'OPEN')
 
-  // Handlers are typed against the shared WS contract: each `data` is narrowed
-  // to that event's payload (`ServerMessageData<E>`).
-  const handlers: { [E in ServerEvent]?: (data: ServerMessageData<E>) => void } = {
-    'connection:connected': (d) => patchStatus(d.connectionId, { online: true, lastError: undefined }),
-    'connection:disconnected': (d) =>
-      patchStatus(d.connectionId, { online: false, lastError: d.reason }),
-    'driver:error': (d) => {
-      if (d.connectionId) patchStatus(d.connectionId, { lastError: d.message })
-    },
-  }
-
-  function handleMessage(raw: unknown): void {
-    const msg = parseEnvelope(raw)
-    if (!msg) return
-    // The dynamic event→handler lookup can't preserve the event/data correlation;
-    // each handler body is still fully typed by the map above.
-    ;(handlers[msg.event] as ((data: unknown) => void) | undefined)?.(msg.data)
-  }
-
+  /**
+   * Merges a partial status update into the live status for a connection, defaulting to offline if no existing status is present.
+   */
   function patchStatus(id: string, patch: Partial<ConnectionStatus>): void {
     if (!id) return
     statuses.value[id] = { ...(statuses.value[id] ?? { online: false }), ...patch }
@@ -97,31 +76,41 @@ export const useConnectionsStore = defineStore('connections', () => {
     () => enabledCount.value > 0 && connectedCount.value === enabledCount.value,
   )
 
-  // ── data loading ──────────────────────────────────────────────────────────
+  /**
+   * Initializes the store by loading all connection records and their live statuses.
+   */
   async function init(): Promise<void> {
     await fetchAll()
-    open()
   }
 
+  /**
+   * Fetches and loads all connection records and live statuses.
+   *
+   * Displays an error toast if the fetch fails.
+   */
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const [list, live] = await Promise.all([
-        fetchJson<ConnectionRecord[]>(`${API}/connections`),
-        fetchJson<Record<string, ConnectionStatus>>(`${API}/connections/live`),
-      ])
+      const [list, live] = await Promise.all([api.connections.list(), api.connections.live()])
       records.value = list ?? []
       statuses.value = live ?? {}
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
+      error.value = errMsg(err)
       toast.error('Could not load connections', { description: error.value })
     } finally {
       loading.value = false
     }
   }
 
-  /** Enable/disable a connection (restarts or stops its driver subprocess). */
+  /**
+   * Enables or disables a connection, restarting or stopping its driver.
+   *
+   * Optimistically updates the local state immediately. If the server update fails, reverts the change and displays an error message.
+   *
+   * @param id - The connection ID
+   * @param value - Whether to enable (true) or disable (false) the connection
+   */
   async function setEnabled(id: string, value: boolean): Promise<void> {
     // Optimistic: flip the flag locally so the switch responds instantly.
     const before = records.value.find((c) => c.id === id)
@@ -129,29 +118,24 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (before) before.enabled = value
 
     try {
-      const updated = await fetchJson<ConnectionRecord>(`${API}/connections/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: value }),
-      })
+      const updated = await api.connections.update(id, { enabled: value })
       if (updated) replaceRecord(updated)
     } catch (err) {
       // Revert on failure.
       if (snapshot) replaceRecord(snapshot)
-      toast.error('Could not update connection', {
-        description: err instanceof Error ? err.message : String(err),
-      })
+      toast.error('Could not update connection', { description: errMsg(err) })
     }
   }
 
+  /**
+   * Adds a connection record or updates an existing one by ID.
+   *
+   * @param record - The connection record to add or update.
+   */
   function replaceRecord(record: ConnectionRecord): void {
     const i = records.value.findIndex((c) => c.id === record.id)
     if (i >= 0) records.value[i] = record
     else records.value.push(record)
-  }
-
-  function dispose(): void {
-    close()
   }
 
   return {
@@ -168,21 +152,5 @@ export const useConnectionsStore = defineStore('connections', () => {
     init,
     fetchAll,
     setEnabled,
-    dispose,
   }
 })
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> {
-  const res = await fetch(url, init)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`)
-  if (res.status === 204) return null
-  return (await res.json()) as T
-}
-
-function parseEnvelope(raw: unknown): ServerMessage | null {
-  try {
-    return JSON.parse(String(raw)) as ServerMessage
-  } catch {
-    return null
-  }
-}

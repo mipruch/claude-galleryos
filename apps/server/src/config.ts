@@ -32,7 +32,7 @@ export const appConfig = {
     filePath: str("LOG_FILE_PATH", "./logs/gallery.log"),
     retentionDays: int("LOG_RETENTION_DAYS", 90),
   },
-  
+
   db: {
     url: str("DATABASE_URL", "postgresql://gallery:gallery_dev_password@localhost:5432/gallery"),
   },

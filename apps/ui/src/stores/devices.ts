@@ -1,20 +1,16 @@
 /**
  * Device store — single source of truth for the user UI.
  *
- * Lifecycle (see README §9 for the WS protocol):
- *   1. `init()` fetches every device + its Redis state/status over HTTP once.
- *   2. A WebSocket (`/ws`) then streams live changes: `device:state`,
- *      `device:online`, `device:offline`.
- *   3. Control commands go *back* over the same socket as `device:command`.
- *
- * The native Bun WS uses a JSON envelope: `{ event, data }`.
+ * Hydrates every device + its Redis state/status over HTTP once (`init`), then
+ * live-updates over the shared realtime socket (`stores/realtime`): `device:state`,
+ * `device:online`, `device:offline`, `device:command:ack`. Control commands go back
+ * over the same socket as `device:command`.
  */
 
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { useWebSocket } from '@vueuse/core'
 import { toast } from 'vue-sonner'
-import type { IframeDTO, RoomDTO, ServerEvent, ServerMessage, ServerMessageData } from '@gallery/types'
+import type { IframeDTO, RoomDTO, ServerMessageData } from '@gallery/types'
 import {
   applyRevert,
   deviceKind,
@@ -30,22 +26,13 @@ import {
   type DeviceStatus,
   type GroupMode,
 } from '@/lib/devices'
-
-/** Scene progress relayed from the socket to any listener (e.g. the scenes store). */
-export interface SceneWsEvent {
-  kind: 'started' | 'completed' | 'failed'
-  sceneId: string
-  error?: string
-}
-
-const API = '/api/v1'
-
-function wsUrl(): string {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}/ws`
-}
+import { errMsg } from '@/lib/http'
+import { api } from '@/lib/api'
+import { useRealtimeStore } from './realtime'
 
 export const useDevicesStore = defineStore('devices', () => {
+  const rt = useRealtimeStore()
+
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
   const rooms = ref<RoomDTO[]>([])
@@ -54,6 +41,7 @@ export const useDevicesStore = defineStore('devices', () => {
   const statuses = ref<Record<string, DeviceStatus>>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const connected = computed(() => rt.connected)
 
   // ── room scope (driven by the route; null = home / all devices) ───────────
   const roomScope = ref<string | null>(null)
@@ -103,9 +91,6 @@ export const useDevicesStore = defineStore('devices', () => {
   )
 
   // Type/room options for the filter chips, each with a per-option device count.
-  // These (and the grid) operate on the *scoped* devices, so a room page only
-  // offers the types/rooms present there. The command palette uses `devices`
-  // (all), so it keeps searching globally regardless of the current page.
   const deviceTypes = computed(() => deviceTypesOf(scopedDevices.value))
   const typeCounts = computed<Record<string, number>>(() => {
     const counts: Record<string, number> = {}
@@ -147,51 +132,21 @@ export const useDevicesStore = defineStore('devices', () => {
   const stateOf = (id: string): DeviceState => states.value[id] ?? {}
   const statusOf = (id: string): DeviceStatus => statuses.value[id] ?? { online: false }
 
-  // ── WebSocket (live updates + outgoing commands) ──────────────────────────
-  const { status, send, open, close } = useWebSocket(wsUrl(), {
-    immediate: false,
-    autoReconnect: { retries: -1, delay: 2000 },
-    onMessage: (_ws, ev) => handleMessage(ev.data),
+  // ── live updates (registered on the shared socket) ────────────────────────
+  rt.on('device:state', (d) => mergeState(d.deviceId, d.state))
+  rt.on('device:online', (d) => setOnline(d.deviceId, true))
+  rt.on('device:offline', (d) => setOnline(d.deviceId, false))
+  rt.on('device:command:ack', onCommandAck)
+  rt.on('driver:error', (d) => {
+    if (d.message) toast.error('Driver error', { description: d.message })
   })
-  const connected = computed(() => status.value === 'OPEN')
 
-  // Map of server → client events to their handlers (README §9). Each `data` is
-  // narrowed to that event's payload via the shared `ServerMessageData<E>`.
-  const handlers: { [E in ServerEvent]?: (data: ServerMessageData<E>) => void } = {
-    'device:state': (d) => mergeState(d.deviceId, d.state),
-    'device:online': (d) => setOnline(d.deviceId, true),
-    'device:offline': (d) => setOnline(d.deviceId, false),
-    'device:command:ack': (d) => onCommandAck(d),
-    // Scene progress is consumed by the scenes store, which registers via
-    // `onSceneEvent`. Relaying through a listener (rather than importing the
-    // scenes store here) keeps the store dependency one-way and cycle-free.
-    'scene:started': (d) => emitSceneEvent({ kind: 'started', sceneId: d.sceneId }),
-    'scene:completed': (d) => emitSceneEvent({ kind: 'completed', sceneId: d.sceneId }),
-    'scene:failed': (d) => emitSceneEvent({ kind: 'failed', sceneId: d.sceneId, error: d.error }),
-    'driver:error': (d) => {
-      if (d.message) toast.error('Driver error', { description: d.message })
-    },
-  }
-
-  // Scene-event fan-out: listeners (the scenes store) subscribe via onSceneEvent.
-  const sceneListeners = new Set<(e: SceneWsEvent) => void>()
-  function emitSceneEvent(e: SceneWsEvent): void {
-    for (const fn of sceneListeners) fn(e)
-  }
-  /** Subscribe to relayed scene WS events; returns an unsubscribe fn. */
-  function onSceneEvent(fn: (e: SceneWsEvent) => void): () => void {
-    sceneListeners.add(fn)
-    return () => sceneListeners.delete(fn)
-  }
-
-  function handleMessage(raw: unknown): void {
-    const msg = parseEnvelope(raw)
-    if (!msg) return
-    // The dynamic event→handler lookup can't preserve the event/data correlation;
-    // each handler body is still fully typed by the map above.
-    ;(handlers[msg.event] as ((data: unknown) => void) | undefined)?.(msg.data)
-  }
-
+  /**
+   * Merges a state patch into the local device state.
+   *
+   * @param id - Device identifier
+   * @param patch - Partial state changes to merge
+   */
   function mergeState(id: string, patch: DeviceState): void {
     if (id) states.value[id] = { ...states.value[id], ...patch }
   }
@@ -227,9 +182,14 @@ export const useDevicesStore = defineStore('devices', () => {
   const deviceName = (id: string): string =>
     records.value.find((r) => r.id === id)?.name ?? 'Device'
 
+  /**
+   * Processes a device command acknowledgement, reverting failed commands and applying authoritative state updates.
+   *
+   * On failure, reverts any optimistic changes and displays an error toast. On success, merges the post-command state from the server. Resolves the pending command promise in either case.
+   */
   function onCommandAck(d: ServerMessageData<'device:command:ack'>): void {
     const entry = dequeuePending(d.deviceId)
-    if (d.success === false) {
+    if (!d.success) {
       if (entry?.revert) states.value[d.deviceId] = applyRevert(stateOf(d.deviceId), entry.revert)
       toast.error(`${deviceName(d.deviceId)}: command failed`, {
         description: d.error ?? 'Unknown error',
@@ -238,7 +198,7 @@ export const useDevicesStore = defineStore('devices', () => {
       // Authoritative post-command state (may correct a clamped optimistic value).
       mergeState(d.deviceId, d.state)
     }
-    entry?.resolve(d.success !== false)
+    entry?.resolve(d.success)
   }
 
   // A dropped socket can never deliver outstanding acks — resolve them as failed
@@ -264,15 +224,19 @@ export const useDevicesStore = defineStore('devices', () => {
   function patchDeviceState(id: string, patch: DeviceState): void {
     mergeState(id, patch) // optimistic local
     if (!connected.value) return
-    send(JSON.stringify({ event: 'device:state:patch', data: { deviceId: id, state: patch } }))
+    rt.send({ event: 'device:state:patch', data: { deviceId: id, state: patch } })
   }
 
-  // ── data loading ──────────────────────────────────────────────────────────
+  /**
+   * Loads device metadata and initial state from the server.
+   */
   async function init(): Promise<void> {
     await fetchAll()
-    open()
   }
 
+  /**
+   * Loads device metadata, rooms, iframes, and live device state from the server.
+   */
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
@@ -281,12 +245,10 @@ export const useDevicesStore = defineStore('devices', () => {
       // + rooms (for the "group by room" headings), instead of 2×N per-device
       // fetches.
       const [list, live, roomList, iframeList] = await Promise.all([
-        fetchJson<DeviceRecord[]>(`${API}/devices`),
-        fetchJson<Record<string, { state: DeviceState; status: DeviceStatus }>>(
-          `${API}/devices/live`,
-        ),
-        fetchJson<RoomDTO[]>(`${API}/rooms`),
-        fetchJson<IframeDTO[]>(`${API}/iframes`),
+        api.devices.list(),
+        api.devices.live(),
+        api.rooms.list(),
+        api.iframes.list(),
       ])
       records.value = list ?? []
       rooms.value = roomList ?? []
@@ -296,7 +258,7 @@ export const useDevicesStore = defineStore('devices', () => {
         if (snapshot.status) statuses.value[id] = snapshot.status
       }
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
+      error.value = errMsg(err)
       toast.error('Could not load devices', { description: error.value })
     } finally {
       loading.value = false
@@ -304,10 +266,12 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   /**
-   * Send a control command over the WebSocket and resolve to whether it
-   * succeeded. `optimistic` is merged into the local state immediately for
-   * instant feedback; the command then awaits the server's `device:command:ack`.
-   * On failure the optimistic patch is rolled back and an error toast is shown.
+   * Sends a device control command over the WebSocket.
+   *
+   * If `optimistic` is provided, those state changes are applied immediately for instant feedback and automatically reverted if the command fails.
+   *
+   * @param optimistic - Optional state patch to apply immediately; reverted on command failure
+   * @returns `true` if the command succeeded, `false` if offline or the command failed
    */
   function sendCommand(
     deviceId: string,
@@ -324,12 +288,8 @@ export const useDevicesStore = defineStore('devices', () => {
 
     return new Promise<boolean>((resolve) => {
       enqueuePending(deviceId, { revert, resolve })
-      send(JSON.stringify({ event: 'device:command', data: { deviceId, command, params } }))
+      rt.send({ event: 'device:command', data: { deviceId, command, params } })
     })
-  }
-
-  function dispose(): void {
-    close()
   }
 
   return {
@@ -372,21 +332,5 @@ export const useDevicesStore = defineStore('devices', () => {
     sendCommand,
     patchState,
     patchDeviceState,
-    onSceneEvent,
-    dispose,
   }
 })
-
-async function fetchJson<T>(url: string): Promise<T | null> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`)
-  return (await res.json()) as T
-}
-
-function parseEnvelope(raw: unknown): ServerMessage | null {
-  try {
-    return JSON.parse(String(raw)) as ServerMessage
-  } catch {
-    return null
-  }
-}

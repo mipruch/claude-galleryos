@@ -122,21 +122,16 @@ export const manifest: DriverManifest = {
         {
           command: "on",
           description: "Switch the fixture on at maximum brightness (Recall Max Level).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "off",
           description: "Switch the fixture off (DALI Off command, no fade).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "setBrightness",
           description: "Set brightness level 0..1 via DALI DAPC (Direct Arc Power Control). 0 = off.",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["level"],
@@ -148,7 +143,6 @@ export const manifest: DriverManifest = {
         {
           command: "recall",
           description: "Recall a stored DALI scene (0–15).",
-          reversible: false,
           paramsSchema: {
             type: "object",
             required: ["scene"],

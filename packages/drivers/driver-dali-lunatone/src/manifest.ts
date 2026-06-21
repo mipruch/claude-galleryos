@@ -93,21 +93,16 @@ export const manifest: DriverManifest = {
         {
           command: "on",
           description: "Switch the fixture on (ControlData { switchable: true }).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "off",
           description: "Switch the fixture off (ControlData { switchable: false }).",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "setBrightness",
           description: "Dim the fixture to a level 0..1 (ControlData { dimmable: 0..100 }).",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["level"],
@@ -119,7 +114,6 @@ export const manifest: DriverManifest = {
         {
           command: "recall",
           description: "Recall a stored DALI scene 0..15 (ControlData { scene }).",
-          reversible: false,
           paramsSchema: {
             type: "object",
             required: ["scene"],

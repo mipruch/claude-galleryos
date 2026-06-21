@@ -12,6 +12,7 @@
  */
 
 import type { Jsonify } from "./json.ts";
+import type { OnFailure } from "./enums.ts";
 import {
   connections,
   devices,
@@ -79,7 +80,7 @@ export interface SceneActionInput {
   /** Delay (ms) applied before this action runs. */
   delayMs?: number;
   /** "continue" (default) or "abort". */
-  onFailure?: string;
+  onFailure?: OnFailure;
 }
 
 export interface SceneCreateInput {
@@ -94,6 +95,15 @@ export interface SceneCreateInput {
 }
 
 export type SceneUpdateInput = Partial<SceneCreateInput>;
+
+// ── API errors ───────────────────────────────────────────────
+
+/** Error envelope every REST endpoint returns on failure (server + UI share it). */
+export interface ApiError {
+  error: string;
+  code: string;
+  details?: unknown;
+}
 
 // ── log read model ───────────────────────────────────────────
 

@@ -5,10 +5,14 @@
  */
 
 import type { ApiContext } from "../context.ts";
-import { HttpError, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
+/**
+ * Configures HTTP routes for managing embedded iframe entries.
+ *
+ * @returns A route map with handlers for iframe CRUD operations.
+ */
 export function iframesRoutes(ctx: ApiContext): RouteMap {
-  const id = (req: Bun.BunRequest) => (req.params as { id: string }).id;
 
   return {
     "/api/v1/iframes": {
@@ -26,18 +30,22 @@ export function iframesRoutes(ctx: ApiContext): RouteMap {
     },
     "/api/v1/iframes/:id": {
       GET: route(async (req) => {
-        const iframe = await ctx.iframes.get(id(req));
+        const iframe = await ctx.iframes.get(paramId(req));
         if (!iframe) throw new HttpError(404, "NOT_FOUND", "iframe not found");
         return json(iframe);
       }),
       PUT: route(async (req) => {
         const body = await readJson(req);
-        const updated = await ctx.iframes.update(id(req), body);
+        const updated = await ctx.iframes.update(paramId(req), {
+          name: body.name as string | undefined,
+          url: body.url as string | undefined,
+          displayOrder: body.displayOrder as number | undefined,
+        });
         if (!updated) throw new HttpError(404, "NOT_FOUND", "iframe not found");
         return json(updated);
       }),
       DELETE: route(async (req) => {
-        const removed = await ctx.iframes.remove(id(req));
+        const removed = await ctx.iframes.remove(paramId(req));
         if (!removed) throw new HttpError(404, "NOT_FOUND", "iframe not found");
         return noContent();
       }),

@@ -9,6 +9,7 @@
  */
 
 import type { DeviceDTO as DeviceRecord, DeviceState, RoomDTO } from '@gallery/types'
+import { matchesAllTerms, normalize, searchTerms } from './text'
 
 // Re-exported under the UI's historical names so widgets keep importing from
 // `@/lib/devices`. `DeviceDTO` is the JSON-wire shape of a `devices` row.
@@ -143,15 +144,11 @@ export function filterByRooms(devices: DeviceRecord[], roomKeys: string[]): Devi
   return devices.filter((d) => allow.has(roomKeyOf(d)))
 }
 
-/** Lowercase + strip diacritics, so "Sál" matches "sal". */
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-}
-
-/** All human-readable text a device can be matched on, normalized. */
+/**
+ * Builds a normalized search string from all human-readable device properties.
+ *
+ * @returns A normalized concatenation of device name, description, room name, type label, and subtype.
+ */
 function deviceHaystack(device: DeviceRecord, roomName: string | undefined): string {
   return normalize(
     [
@@ -166,23 +163,28 @@ function deviceHaystack(device: DeviceRecord, roomName: string | undefined): str
 }
 
 /**
- * Loose, multi-field search across name, description, room, type and subtype.
- * Case- and accent-insensitive; every whitespace-separated term must appear
- * somewhere (AND), so "hall light" matches a light in the Hall. An empty query
- * returns the input unchanged.
+ * Filters devices based on a search query.
+ *
+ * Search is performed across device name, description, room name, type, and
+ * subtype. Matching is case- and accent-insensitive. All whitespace-separated
+ * search terms must match somewhere on the device (AND logic). For example,
+ * "hall light" matches any light fixture assigned to a room named "Hall".
+ * An empty query returns all devices unchanged.
+ *
+ * @param rooms - Available rooms, used to enrich the search with room names.
+ * @returns The devices matching all search terms.
  */
 export function searchDevices(
   devices: DeviceRecord[],
   query: string,
   rooms: RoomDTO[],
 ): DeviceRecord[] {
-  const terms = normalize(query).split(/\s+/).filter(Boolean)
+  const terms = searchTerms(query)
   if (!terms.length) return devices
   const roomName = new Map(rooms.map((r) => [r.id, r.name]))
-  return devices.filter((d) => {
-    const haystack = deviceHaystack(d, d.roomId ? roomName.get(d.roomId) : undefined)
-    return terms.every((t) => haystack.includes(t))
-  })
+  return devices.filter((d) =>
+    matchesAllTerms(deviceHaystack(d, d.roomId ? roomName.get(d.roomId) : undefined), terms),
+  )
 }
 
 /** A room available to filter on, with its device count. */

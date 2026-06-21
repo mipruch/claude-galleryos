@@ -7,7 +7,7 @@
  * (404 / 409 / 400).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
 import { scenesRoutes } from "../../src/api/routes/scenes.ts";
 import type { ApiContext } from "../../src/api/context.ts";
@@ -49,11 +49,15 @@ const fakeExecutions = {
   },
 };
 
-// Configurable SceneEngine fake.
-const engineBehavior = {
+// Configurable SceneEngine fake. Reset before each test so cases that override
+// `start`/`dry` (to throw) don't leak into the next test — the suite is no longer
+// order-dependent.
+const engineDefaults = {
   start: async (sceneId: string) => ({ executionId: "e1", sceneId, status: "running" as const }),
   dry: async (sceneId: string) => ({ sceneId, dryRun: true as const, groups: 1, actions: [] }),
 };
+const engineBehavior = { ...engineDefaults };
+beforeEach(() => Object.assign(engineBehavior, engineDefaults));
 const fakeEngine = {
   startScene: (sceneId: string) => engineBehavior.start(sceneId),
   dryRun: (sceneId: string) => engineBehavior.dry(sceneId),

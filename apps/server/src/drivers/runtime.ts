@@ -26,6 +26,7 @@ import type {
   IDeviceDriver,
   StateChangeEvent,
 } from "@gallery/driver-core";
+import { errMsg } from "@gallery/driver-core";
 import { getDriverRegistration } from "./registry.ts";
 
 // `process.send` exists because we were spawned with IPC enabled.
@@ -89,17 +90,27 @@ async function handleInit(config: ConnectionConfig, dryRun: boolean): Promise<vo
   await driver.init(config, buildContext(dryRun));
 }
 
-/** Run a request handler and reply with its result or error. */
+/**
+ * Executes a handler function and sends an IPC reply with its result or error.
+ *
+ * @param requestId - The request identifier to include in the reply message
+ * @param fn - The handler function to execute
+ */
 async function reply(requestId: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     const result = await fn();
     send({ kind: "reply", requestId, result });
   } catch (err) {
-    send({ kind: "reply", requestId, error: err instanceof Error ? err.message : String(err) });
+    send({ kind: "reply", requestId, error: errMsg(err) });
   }
 }
 
-/** Handle one inbound message. Driver must be initialised for non-init kinds. */
+/**
+ * Dispatches a single inbound IPC message to its appropriate handler.
+ *
+ * Routes initialization and storage replies without requiring the driver. For all other message kinds,
+ * the driver must be initialized; requests with a `requestId` receive error replies if the driver is unavailable.
+ */
 async function handleMessage(msg: CoreToDriverMessage): Promise<void> {
   if (msg.kind === "init") {
     await handleInit(msg.config, msg.dryRun);
@@ -163,10 +174,6 @@ async function handleMessage(msg: CoreToDriverMessage): Promise<void> {
       await d.unsubscribeFromEndpoint?.(msg.endpoint);
       return;
   }
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 // ── serial message pump ──────────────────────────────────────

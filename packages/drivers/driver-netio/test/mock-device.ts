@@ -16,7 +16,6 @@
  * immediately in state (the timer is not simulated) so assertions stay simple.
  */
 
-import type { Server } from "bun";
 
 interface MockOutput {
   ID: number;
@@ -49,6 +48,12 @@ export interface NetioMockServer {
   writes: Array<{ ID: number; Action: number; Delay?: number }[]>;
 }
 
+/**
+ * Creates and starts an in-process HTTP mock server that simulates a NETIO device's JSON M2M API.
+ *
+ * @param opts - Optional configuration for the mock server (number of outputs, authentication credentials, and write callback)
+ * @returns A mock server instance with methods to control and monitor output state
+ */
 export function startNetioMock(opts: NetioMockOptions = {}): NetioMockServer {
   const numOutputs = opts.numOutputs ?? 4;
   const writes: Array<{ ID: number; Action: number; Delay?: number }[]> = [];
@@ -118,7 +123,7 @@ export function startNetioMock(opts: NetioMockOptions = {}): NetioMockServer {
     return u === opts.username && p === opts.password;
   }
 
-  const server: Server = Bun.serve({
+  const server = Bun.serve({
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
@@ -177,7 +182,9 @@ export function startNetioMock(opts: NetioMockOptions = {}): NetioMockServer {
   });
 
   return {
-    port: server.port,
+    // Bun types `Server.port` as `number | undefined` (unix sockets have none);
+    // this is a TCP HTTP server bound to port 0, so it's always assigned.
+    port: server.port ?? 0,
     stop: () => server.stop(true),
     state: (id) => {
       const o = outputs.get(id);

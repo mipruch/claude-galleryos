@@ -106,21 +106,16 @@ export const manifest: DriverManifest = {
         {
           command: "on",
           description: "Power the device on.",
-          reversible: true, // can a scene rollback undo it? (off is the inverse)
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "off",
           description: "Power the device off.",
-          reversible: true,
-          estimatedDurationMs: 0,
           paramsSchema: { type: "object", properties: {} },
         },
         {
           command: "setLevel",
           description: "Set the level (0..1).",
-          reversible: true,
           paramsSchema: {
             type: "object",
             required: ["level"],

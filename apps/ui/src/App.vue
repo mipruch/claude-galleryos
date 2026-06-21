@@ -10,23 +10,17 @@ import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import CommandPalette from '@/components/command/CommandPalette.vue'
 import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
+import { useRealtimeStore } from '@/stores/realtime'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
+const realtime = useRealtimeStore()
 const route = useRoute()
 const { openPalette } = useCommandPalette()
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
-
-// The URL is the source of truth for the device scope: `/` → all devices,
-// `/rooms/:roomId` → that room. Runs immediately so a refresh restores scope.
-watch(
-  () => route.params.roomId,
-  (id) => store.setRoomScope(typeof id === 'string' && id ? id : null),
-  { immediate: true },
-)
 
 // The URL is the source of truth for the device scope: `/` → all devices,
 // `/rooms/:roomId` → that room. Runs immediately so a refresh restores scope.
@@ -43,10 +37,11 @@ const pageSubtitle = computed(() => {
 })
 
 onMounted(() => {
+  realtime.open()
   store.init()
   scenes.fetchAll()
 })
-onBeforeUnmount(() => store.dispose())
+onBeforeUnmount(() => realtime.close())
 </script>
 
 <template>

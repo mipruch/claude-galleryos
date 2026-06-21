@@ -9,6 +9,7 @@
  */
 
 import { appConfig } from "./config.ts";
+import { errMsg } from "@gallery/driver-core";
 import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
@@ -30,6 +31,7 @@ import { DeviceManager } from "./core/DeviceManager.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { startApiServer } from "./api/server.ts";
+import { assertValidCommandParams } from "./api/validation.ts";
 
 const log = logger.child("bootstrap");
 
@@ -42,6 +44,13 @@ function wireAuditLog(): void {
   });
 }
 
+/**
+ * Initializes and starts the GalleryOS server.
+ *
+ * Sets up core components (DeviceManager, Watchdog, SceneEngine, API server),
+ * establishes infrastructure connections (Redis, database logging), and
+ * registers graceful shutdown handlers for SIGINT and SIGTERM.
+ */
 async function main(): Promise<void> {
   log.info("GalleryOS server starting", {
     env: appConfig.env,
@@ -69,6 +78,7 @@ async function main(): Promise<void> {
     driverKVStore: redisDriverStore,
     supportsSubscriptions: (driverId) =>
       driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
+    validateParams: assertValidCommandParams,
     restart: {
       maxAttempts: appConfig.driver.restartMaxAttempts,
       baseDelayMs: appConfig.driver.restartBaseDelayMs,
@@ -144,6 +154,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("Fatal startup error", { error: err instanceof Error ? err.message : String(err) });
+  log.error("Fatal startup error", { error: errMsg(err) });
   process.exit(1);
 });

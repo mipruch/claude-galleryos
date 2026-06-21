@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DbLogTransport } from "../../src/db/log-transport.ts";
-import type { LogRow } from "../../src/db/schema.ts";
+import type { LogRow } from "@gallery/types";
 
 /** Builds a transport with a capturing fake insert. */
 function makeTransport(opts: { flushIntervalMs?: number; batchSize?: number } = {}) {

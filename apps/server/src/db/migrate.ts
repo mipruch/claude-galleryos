@@ -11,6 +11,7 @@
  */
 
 import { migrate } from "drizzle-orm/bun-sql/migrator";
+import { errMsg } from "@gallery/driver-core";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db, sqlClient } from "./client.ts";
@@ -18,6 +19,12 @@ import { closeDb, db, sqlClient } from "./client.ts";
 const log = logger.child("migrate");
 const migrationsFolder = new URL("./migrations", import.meta.url).pathname;
 
+/**
+ * Configures TimescaleDB hypertable settings for the logs table.
+ *
+ * This operation is idempotent and gracefully skips if the TimescaleDB extension
+ * is unavailable (e.g., in plain PostgreSQL environments).
+ */
 async function setupTimescale(): Promise<void> {
   try {
     await sqlClient`CREATE EXTENSION IF NOT EXISTS timescaledb`;
@@ -33,7 +40,7 @@ async function setupTimescale(): Promise<void> {
     log.info("TimescaleDB hypertable configured for 'logs'");
   } catch (err) {
     log.warn("TimescaleDB setup skipped (extension unavailable?)", {
-      error: err instanceof Error ? err.message : String(err),
+      error: errMsg(err),
     });
   }
 }

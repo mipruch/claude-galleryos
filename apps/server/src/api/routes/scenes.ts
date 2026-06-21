@@ -19,9 +19,16 @@ import {
   SceneValidationError,
 } from "../../core/SceneEngine.ts";
 import type { ApiContext } from "../context.ts";
-import { HttpError, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import { HttpError, paramId, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
 
-/** Map a thrown SceneEngine error to the right HTTP status. */
+/**
+ * Converts SceneEngine errors to HTTP errors with appropriate status codes.
+ *
+ * - `SceneNotFoundError` → 404
+ * - `SceneConflictError` → 409
+ * - `SceneValidationError` → 400
+ * - Other errors are rethrown unchanged
+ */
 function toHttp(err: unknown): never {
   if (err instanceof SceneNotFoundError) throw new HttpError(404, "NOT_FOUND", err.message);
   if (err instanceof SceneConflictError) throw new HttpError(409, "CONFLICT", err.message);
@@ -29,7 +36,15 @@ function toHttp(err: unknown): never {
   throw err;
 }
 
-/** Coerce a request body's `actions` field into validated SceneActionInput[]. */
+/**
+ * Validates and normalizes action items from a request body into scene action inputs.
+ *
+ * Each action targets either a child scene via `childSceneId`, or a device via `deviceId` and `command`, but not both. Optional numeric fields (`stepOrder`, `parallelGroup`, `delayMs`) are converted to numbers. The `onFailure` field is accepted only as `"abort"` or `"continue"`.
+ *
+ * @param raw - The `actions` field from the request body
+ * @returns The normalized action list, or `undefined` if the input is `undefined`
+ * @throws When the input is not an array, when any action is not an object, or when field constraints are violated
+ */
 function parseActions(raw: unknown): SceneActionInput[] | undefined {
   if (raw === undefined) return undefined;
   if (!Array.isArray(raw)) throw new HttpError(400, "BAD_REQUEST", "`actions` must be an array");
@@ -52,6 +67,11 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
     } else if (!a.deviceId || !a.command) {
       throw new HttpError(400, "BAD_REQUEST", `actions[${i}] requires deviceId and command, or childSceneId`);
     }
+    // Reject unknown onFailure values instead of silently dropping them — a typo
+    // would otherwise change execution behaviour (fall back to the default).
+    if (a.onFailure !== undefined && a.onFailure !== "abort" && a.onFailure !== "continue") {
+      throw new HttpError(400, "BAD_REQUEST", `actions[${i}].onFailure must be "abort" or "continue"`);
+    }
     return {
       deviceId: isSubScene ? undefined : String(a.deviceId),
       command: isSubScene ? undefined : String(a.command),
@@ -60,13 +80,18 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
       stepOrder: a.stepOrder !== undefined ? Number(a.stepOrder) : undefined,
       parallelGroup: a.parallelGroup !== undefined ? Number(a.parallelGroup) : undefined,
       delayMs: a.delayMs !== undefined ? Number(a.delayMs) : undefined,
-      onFailure: a.onFailure !== undefined ? String(a.onFailure) : undefined,
+      onFailure: a.onFailure as "abort" | "continue" | undefined,
     };
   });
 }
 
+/**
+ * Creates HTTP routes for scene management including CRUD operations and execution features.
+ *
+ * @param ctx - The API context providing access to scene services and the scene engine
+ * @returns Route definitions mapped to endpoint paths under `/api/v1/scenes`
+ */
 export function scenesRoutes(ctx: ApiContext): RouteMap {
-  const id = (req: Bun.BunRequest) => (req.params as { id: string }).id;
 
   return {
     "/api/v1/scenes": {
@@ -100,13 +125,13 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
 
     "/api/v1/scenes/:id": {
       GET: route(async (req) => {
-        const scene = await ctx.scenes.get(id(req));
+        const scene = await ctx.scenes.get(paramId(req));
         if (!scene) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(scene);
       }),
       PUT: route(async (req) => {
         const body = await readJson(req);
-        const updated = await ctx.scenes.update(id(req), {
+        const updated = await ctx.scenes.update(paramId(req), {
           name: body.name as string | undefined,
           roomId: (body.roomId as string | undefined) ?? undefined,
           description: body.description as string | undefined,
@@ -120,7 +145,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
         return json(updated);
       }),
       DELETE: route(async (req) => {
-        const removed = await ctx.scenes.remove(id(req));
+        const removed = await ctx.scenes.remove(paramId(req));
         if (!removed) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return noContent();
       }),
@@ -131,7 +156,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
         const body = await readJson(req).catch(() => ({}) as Record<string, unknown>);
         const source = body.source ? String(body.source) : "api";
         try {
-          const result = await ctx.sceneEngine.startScene(id(req), source);
+          const result = await ctx.sceneEngine.startScene(paramId(req), source);
           return json(result, 202);
         } catch (err) {
           toHttp(err);
@@ -142,7 +167,7 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
     "/api/v1/scenes/:id/execute/dry-run": {
       POST: route(async (req) => {
         try {
-          return json(await ctx.sceneEngine.dryRun(id(req)));
+          return json(await ctx.sceneEngine.dryRun(paramId(req)));
         } catch (err) {
           toHttp(err);
         }
@@ -150,14 +175,19 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
     },
 
     "/api/v1/scenes/:id/executions": {
-      GET: route(async (req) => json(await ctx.sceneExecutions.listByScene(id(req)))),
+      GET: route(async (req) => json(await ctx.sceneExecutions.listByScene(paramId(req)))),
     },
 
     "/api/v1/scenes/:id/favorite": {
       PATCH: route(async (req) => {
         const body = await readJson(req);
-        const isFavorite = Boolean(body.is_favorite ?? body.isFavorite);
-        const updated = await ctx.scenes.setFavorite(id(req), isFavorite);
+        // Require an actual boolean — `Boolean("false")` is `true`, so coercion
+        // would silently flip the flag for string payloads.
+        const isFavorite = body.is_favorite ?? body.isFavorite;
+        if (typeof isFavorite !== "boolean") {
+          throw new HttpError(400, "BAD_REQUEST", "`is_favorite` must be a boolean");
+        }
+        const updated = await ctx.scenes.setFavorite(paramId(req), isFavorite);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(updated);
       }),

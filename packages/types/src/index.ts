@@ -10,6 +10,8 @@
  */
 
 export * from "./schema.ts";
+export * from "./enums.ts";
+export * from "./events.ts";
 export * from "./records.ts";
 export * from "./live.ts";
 export * from "./messages.ts";

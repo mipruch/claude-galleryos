@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import { EventBus } from "../../src/core/EventBus.ts";
 import { db } from "../../src/db/client.ts";
-import { connections, devices } from "../../src/db/schema.ts";
+import { connections, devices } from "@gallery/types/schema";
 import { dbRepo } from "../../src/db/repositories.ts";
 import { redisDriverStore, redisStateStore } from "../../src/redis/state.ts";
 import { logger } from "../../src/logger.ts";
