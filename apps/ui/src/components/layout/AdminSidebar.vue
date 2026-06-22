@@ -34,7 +34,7 @@ const items: NavItem[] = [
   { to: '/admin/mappings', label: 'Mappings', icon: WaypointsIcon, enabled: false },
   { to: '/admin/layouts', label: 'Layouts', icon: LayoutTemplateIcon, enabled: false },
   { to: '/admin/logs', label: 'Logs', icon: ScrollTextIcon, enabled: true },
-  { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, enabled: false },
+  { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, enabled: true },
 ]
 
 function linkClass(isActive: boolean): string {

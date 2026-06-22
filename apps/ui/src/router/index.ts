@@ -73,6 +73,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/LogsView.vue'),
         meta: { title: 'Logs', subtitle: 'Structured server logs' },
       },
+      {
+        path: 'settings',
+        name: 'admin-settings',
+        component: () => import('@/views/admin/SettingsView.vue'),
+        meta: { title: 'Settings', subtitle: 'Appearance, system and drivers' },
+      },
     ],
   },
   // Unknown paths fall back to the user home page.

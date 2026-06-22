@@ -1449,7 +1449,27 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   parser. `useSchedulesStore` má nově CRUD + `toggle`; `lib/api.ts` doplněno o
   schedule create/update/remove/toggle.
 
-Zbývající admin stránky (rooms, mappings, layouts, settings) přidají další řezy
+#### Implementováno (čtvrtý řez — Settings)
+
+- **`/admin/settings`** (`views/admin/SettingsView.vue`) — tři sekce, všechny nad
+  reálným stavem:
+  - **Appearance** — jediná klientská předvolba: téma `light / dark / system`
+    (`useThemeStore`). Volba se ukládá do `localStorage` a přepíná třídu `dark`
+    na `<html>` (stylesheet má `@custom-variant dark`); `system` živě sleduje OS
+    přes `matchMedia`. `init()` se volá v `main.ts` před mountem, takže téma platí
+    v celé aplikaci (bez bliknutí).
+  - **System** — status, uptime, počet driverů a connections (`GET /system/*`
+    přes `useSystemStore`) + Refresh.
+  - **Installed drivers** — katalog z manifestů (`GET /drivers`): název, vendor,
+    verze, capabilities, počet endpoint typů a příkazů, spojený s runtime stavem
+    per-connection (`GET /system/drivers`).
+- Editace serverové konfigurace (porty, watchdog, retence), reload driverů a
+  backup/restore jsou záměrně vynechané, dokud je backend nevystaví.
+- Nové: `lib/system.ts` (`formatUptime`, `capabilityLabels`, unit-testované) —
+  do něj se sloučil i lokální `formatUptime` z dashboardu; vendorovaná
+  `CardDescription`.
+
+Zbývající admin stránky (rooms, mappings, layouts) přidají další řezy
 — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce

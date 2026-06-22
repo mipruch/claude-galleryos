@@ -387,7 +387,16 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           `ScheduleFormDialog` (vee-validate + Zod, client-side `isValidCron`
           check). `useSchedulesStore` gained CRUD + `toggle`; `lib/api.ts` gained
           schedule create/update/remove/toggle.
-    - [ ] rooms, mappings, layouts, settings (later passes)
+    - [x] **`/admin/settings`** (`views/admin/SettingsView.vue`) — Appearance
+          (persisted `light/dark/system` theme via `useThemeStore`, applied
+          app-wide from `main.ts`), System (status/uptime/counts from
+          `GET /system/*`), and an Installed-drivers catalogue (manifests joined
+          with per-connection runtime). Server-config editing / driver reload /
+          backup are deferred until the backend exposes them. New `lib/system.ts`
+          helpers (`formatUptime`, `capabilityLabels`, unit-tested); Dashboard's
+          local `formatUptime` folded into it. New vendored `card` →
+          `CardDescription`.
+    - [ ] rooms, mappings, layouts (later passes)
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.

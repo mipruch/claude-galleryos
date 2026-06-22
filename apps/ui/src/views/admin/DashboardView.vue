@@ -20,6 +20,7 @@ import { useLogsStore } from '@/stores/logs'
 import { STATE_COLOR, STATE_DOT, STATE_LABEL } from '@/lib/connections'
 import { sceneIcon } from '@/lib/scenes'
 import { formatLogTime, levelVariant } from '@/lib/logs'
+import { formatUptime } from '@/lib/system'
 
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
@@ -31,19 +32,6 @@ const deviceTotal = computed(() => devices.devices.length)
 const deviceOnline = computed(() => devices.devices.filter((d) => devices.statusOf(d.id).online).length)
 const runningScenes = computed(() => Object.values(scenes.running).filter(Boolean).length)
 const favourites = computed(() => scenes.records.filter((s) => s.isFavorite && s.enabled))
-
-/** "3d 4h" / "5h 12m" / "42s" — compact server uptime. */
-function formatUptime(ms?: number): string {
-  if (!ms || ms < 0) return '—'
-  const s = Math.floor(ms / 1000)
-  const d = Math.floor(s / 86_400)
-  const h = Math.floor((s % 86_400) / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  if (d) return `${d}d ${h}h`
-  if (h) return `${h}h ${m}m`
-  if (m) return `${m}m ${s % 60}s`
-  return `${s}s`
-}
 
 const REFRESH_MS = 10_000
 let timer: ReturnType<typeof setInterval> | undefined
