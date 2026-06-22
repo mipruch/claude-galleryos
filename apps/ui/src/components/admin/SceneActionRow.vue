@@ -70,10 +70,11 @@ watch(
       </Select>
 
       <div class="ml-auto flex items-center gap-1">
-        <Button variant="ghost" size="icon-sm" aria-label="Move up" :disabled="index === 0" @click="emit('moveUp')">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Move up" :disabled="index === 0" @click="emit('moveUp')">
           <ArrowUpIcon class="size-4" />
         </Button>
         <Button
+          type="button"
           variant="ghost"
           size="icon-sm"
           aria-label="Move down"
@@ -82,7 +83,7 @@ watch(
         >
           <ArrowDownIcon class="size-4" />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Remove step" @click="emit('remove')">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove step" @click="emit('remove')">
           <XIcon class="size-4" />
         </Button>
       </div>
