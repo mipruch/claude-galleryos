@@ -58,7 +58,9 @@ const rows = computed(() =>
 const formOpen = ref(false)
 const editing = ref<DeviceRecord | null>(null)
 const toDelete = ref<DeviceRecord | null>(null)
-const deleteOpen = computed({ get: () => !!toDelete.value, set: (v) => !v && (toDelete.value = null) })
+// Independent open flag — see ConnectionsView: AlertDialogAction auto-closes on
+// click, which would null `toDelete` before confirmDelete reads it.
+const deleteOpen = ref(false)
 
 function openCreate(): void {
   editing.value = null
@@ -68,8 +70,15 @@ function openEdit(d: DeviceRecord): void {
   editing.value = d
   formOpen.value = true
 }
+function askDelete(d: DeviceRecord): void {
+  toDelete.value = d
+  deleteOpen.value = true
+}
 async function confirmDelete(): Promise<void> {
-  if (toDelete.value && (await devices.removeDevice(toDelete.value.id))) toDelete.value = null
+  const d = toDelete.value
+  deleteOpen.value = false
+  if (d) await devices.removeDevice(d.id)
+  toDelete.value = null
 }
 </script>
 
@@ -141,7 +150,7 @@ async function confirmDelete(): Promise<void> {
                 <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(d)">
                   <PencilIcon class="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="toDelete = d">
+                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(d)">
                   <Trash2Icon class="size-4" />
                 </Button>
               </div>

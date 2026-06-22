@@ -4,7 +4,7 @@
  * create/edit/delete. Reuses `useConnectionsStore` (already hydrated + live via
  * the shared socket) so the table reflects realtime status without re-fetching.
  */
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { CableIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
 import type { ConnectionView } from '@/stores/connections'
 import { useConnectionsStore } from '@/stores/connections'
@@ -54,7 +54,10 @@ const stateClass = (s: string): string =>
 const formOpen = ref(false)
 const editing = ref<ConnectionView | null>(null)
 const toDelete = ref<ConnectionView | null>(null)
-const deleteOpen = computed({ get: () => !!toDelete.value, set: (v) => !v && (toDelete.value = null) })
+// Independent open flag: reka-ui's AlertDialogAction auto-closes on click, so if
+// the open state derived from `toDelete` we'd null the target before
+// confirmDelete could read it (delete would no-op while the modal closed).
+const deleteOpen = ref(false)
 
 function openCreate(): void {
   editing.value = null
@@ -64,8 +67,15 @@ function openEdit(c: ConnectionView): void {
   editing.value = c
   formOpen.value = true
 }
+function askDelete(c: ConnectionView): void {
+  toDelete.value = c
+  deleteOpen.value = true
+}
 async function confirmDelete(): Promise<void> {
-  if (toDelete.value && (await store.remove(toDelete.value.id))) toDelete.value = null
+  const c = toDelete.value
+  deleteOpen.value = false
+  if (c) await store.remove(c.id)
+  toDelete.value = null
 }
 </script>
 
@@ -118,7 +128,7 @@ async function confirmDelete(): Promise<void> {
                 <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(c)">
                   <PencilIcon class="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="toDelete = c">
+                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(c)">
                   <Trash2Icon class="size-4" />
                 </Button>
               </div>

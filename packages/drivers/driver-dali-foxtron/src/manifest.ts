@@ -35,7 +35,7 @@ export const manifest: DriverManifest = {
         type: "string",
         title: "Host / IP",
         description: "Foxtron gateway IP address (default: 192.168.1.241).",
-        format: "hostname",
+        format: "host",
       },
       port: {
         type: "integer",

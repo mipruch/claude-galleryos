@@ -15,6 +15,7 @@
  */
 import type { JsonSchema } from '@gallery/driver-core'
 import { z } from 'zod'
+import { isHost } from './host'
 
 export type FieldKind = 'string' | 'number' | 'boolean' | 'enum'
 
@@ -106,7 +107,14 @@ function zodForField(prop: JsonSchema, field: SchemaField): z.ZodTypeAny {
       if (typeof prop.minLength === 'number') str = str.min(prop.minLength)
       if (typeof prop.maxLength === 'number') str = str.max(prop.maxLength)
       if (typeof prop.pattern === 'string') str = str.regex(new RegExp(prop.pattern), 'Invalid format')
-      return field.required ? str.min(1, 'Required') : str.optional()
+      if (field.required) str = str.min(1, 'Required')
+      // Mirror the server's Ajv `host` format (hostname or IP). Blank is left to
+      // the required/optional rules above so optional hosts can stay empty.
+      const withFormat: z.ZodTypeAny =
+        prop.format === 'host'
+          ? str.refine((v) => !v || isHost(v), { message: 'Enter a valid hostname or IP address' })
+          : str
+      return field.required ? withFormat : withFormat.optional()
     }
   }
 }

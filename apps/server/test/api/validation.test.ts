@@ -58,6 +58,18 @@ describe("assertValidConnectionConfig", () => {
     const err = expectHttpError(() => assertValidConnectionConfig("nope", { host: "h" }));
     expect(err.code).toBe("BAD_REQUEST");
   });
+
+  test("rejects a malformed IP host (octets > 255)", () => {
+    const err = expectHttpError(() =>
+      assertValidConnectionConfig("pjlink", { host: "290.290.920.89", port: 4352 }),
+    );
+    expect(err.code).toBe("VALIDATION");
+  });
+
+  test("accepts a hostname and a well-formed IPv4 host", () => {
+    expect(() => assertValidConnectionConfig("pjlink", { host: "projector.local", port: 4352 })).not.toThrow();
+    expect(() => assertValidConnectionConfig("pjlink", { host: "192.168.1.50", port: 4352 })).not.toThrow();
+  });
 });
 
 describe("assertValidDeviceAddress", () => {

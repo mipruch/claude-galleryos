@@ -1414,6 +1414,12 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   - **Device**: výběr connection → (driver) → typ endpointu → pole z
     `addressSchema` daného endpointu. `capabilities` se odvodí z příkazů endpointu,
     takže je operátor neudržuje ručně.
+  - **`host` formát** — pole „Host / IP“ v manifestech mají `format: "host"`
+    (hostname *nebo* IP). Server jej vynucuje vlastním Ajv formátem v
+    `api/validation.ts`, klient zrcadlí stejné pravidlo v `lib/host.ts`: cokoli
+    vypadá jako dotted-decimal musí být platná IPv4 (oktety 0–255), takže
+    `290.290.920.89` je odmítnuto, zatímco `192.168.1.10`, `projector.local` i
+    `::1` projdou. (Stock `hostname` formát by vadnou IPv4 propustil.)
 - **Nové stores / API**: `useDriversStore` (cache manifestů z `GET /drivers`);
   `useConnectionsStore` a `useDevicesStore` mají nově `create`/`update`/`remove`.
   UI nově **type-only** závisí na `@gallery/driver-core` (typy manifestu, smazané

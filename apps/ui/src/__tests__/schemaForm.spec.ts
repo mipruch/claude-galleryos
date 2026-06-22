@@ -8,7 +8,7 @@ const schema: JsonSchema = {
   type: 'object',
   required: ['host'],
   properties: {
-    host: { type: 'string', title: 'Host / IP', format: 'hostname' },
+    host: { type: 'string', title: 'Host / IP', format: 'host' },
     port: { type: 'integer', title: 'Port', minimum: 1, maximum: 65535 },
     encoding: { type: 'string', title: 'Encoding', default: 'utf-8', enum: ['utf-8', 'latin1', 'ascii'] },
     persistent: { type: 'boolean', title: 'Keep open', default: false },
@@ -78,6 +78,14 @@ describe('zodFromSchema', () => {
   it('rejects an enum value outside the allowed set', () => {
     const result = zodFromSchema(schema).safeParse({ host: 'x', encoding: 'utf-16', persistent: false })
     expect(result.success).toBe(false)
+  })
+
+  it('rejects a malformed IP in a host-format field', () => {
+    const bad = zodFromSchema(schema).safeParse({ host: '290.290.920.89', encoding: 'utf-8', persistent: false })
+    expect(bad.success).toBe(false)
+
+    const good = zodFromSchema(schema).safeParse({ host: '192.168.1.10', encoding: 'utf-8', persistent: false })
+    expect(good.success).toBe(true)
   })
 })
 
