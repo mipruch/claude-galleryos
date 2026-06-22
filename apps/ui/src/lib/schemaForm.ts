@@ -155,7 +155,18 @@ export function coerceBySchema(
   for (const field of schemaToFields(schema)) {
     const v = raw[field.key]
     if (v === '' || v === undefined || v === null) continue
-    out[field.key] = field.kind === 'number' ? Number(v) : field.kind === 'boolean' ? Boolean(v) : v
+    if (field.kind === 'number') {
+      // Drop non-numeric input rather than persist NaN (which serializes to null).
+      const n = typeof v === 'number' ? v : Number(v)
+      if (Number.isFinite(n)) out[field.key] = n
+      continue
+    }
+    if (field.kind === 'boolean') {
+      // Parse by value so the string "false" doesn't become `true`.
+      out[field.key] = typeof v === 'boolean' ? v : v === 'true'
+      continue
+    }
+    out[field.key] = v
   }
   return out
 }

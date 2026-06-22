@@ -32,8 +32,12 @@ function isIpv4(value: string): boolean {
 function isIpv6(value: string): boolean {
   if (!value.includes(':')) return false
   if (/:::/.test(value)) return false // never 3+ consecutive colons
-  // Accept compressed (`::`) and full forms; not exhaustive but rejects garbage.
-  return /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/.test(value) && (value.match(/::/g)?.length ?? 0) <= 1
+  const groups = value.split(':')
+  if (!groups.every((g) => g === '' || /^[0-9a-fA-F]{1,4}$/.test(g))) return false
+  // Either one `::` compression, or a full eight-hextet form (no empty groups).
+  return value.includes('::')
+    ? (value.match(/::/g)?.length ?? 0) === 1
+    : groups.length === 8 && groups.every((g) => g !== '')
 }
 
 /** True if `value` is a valid hostname or IP literal (see module docs). */

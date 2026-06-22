@@ -67,6 +67,13 @@ export function isActionComplete(a: EditAction): boolean {
  * index); command params are coerced to their schema types so they satisfy the
  * server's strict param validation.
  */
+/** Parse a string-backed input to a non-negative integer, or `undefined`. */
+function optNonNegInt(raw: string): number | undefined {
+  if (raw === '') return undefined
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined
+}
+
 export function toActionInput(
   a: EditAction,
   stepOrder: number,
@@ -74,8 +81,8 @@ export function toActionInput(
 ): SceneActionInput {
   const common = {
     stepOrder,
-    parallelGroup: a.parallelGroup === '' ? undefined : Number(a.parallelGroup),
-    delayMs: a.delayMs === '' ? undefined : Number(a.delayMs),
+    parallelGroup: optNonNegInt(a.parallelGroup),
+    delayMs: optNonNegInt(a.delayMs),
     onFailure: a.onFailure,
   }
   return a.target === 'scene'

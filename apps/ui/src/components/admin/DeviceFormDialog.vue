@@ -122,7 +122,9 @@ watch(
 )
 
 const submit = handleSubmit(async (values) => {
-  if (!connectionId.value || !subtype.value) return
+  // Wait for the manifest to resolve the endpoint type — otherwise capabilities
+  // (derived from its commands) would persist as an empty list.
+  if (!connectionId.value || !subtype.value || !endpointType.value) return
   const address = pruneEmpty(
     Object.fromEntries(addressFields.value.map((f) => [f.key, (values as Record<string, unknown>)[f.key]])),
   )
@@ -256,7 +258,7 @@ const submit = handleSubmit(async (values) => {
 
         <DialogFooter>
           <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>
-          <Button type="submit" :disabled="!connectionId || !subtype || isSubmitting">
+          <Button type="submit" :disabled="!connectionId || !subtype || !endpointType || isSubmitting">
             {{ isEdit ? 'Save changes' : 'Create' }}
           </Button>
         </DialogFooter>

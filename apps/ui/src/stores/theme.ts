@@ -38,8 +38,12 @@ export const useThemeStore = defineStore('theme', () => {
 
   /** Hydrate from storage and start following OS changes (call once at startup). */
   function init(): void {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved === 'light' || saved === 'dark' || saved === 'system') theme.value = saved
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved === 'light' || saved === 'dark' || saved === 'system') theme.value = saved
+    } catch {
+      // ignore storage failures (private mode, disabled cookies) — fall back to 'system'
+    }
     apply()
     window
       .matchMedia?.('(prefers-color-scheme: dark)')

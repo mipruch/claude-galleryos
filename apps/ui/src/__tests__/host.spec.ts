@@ -20,7 +20,10 @@ describe('isHost', () => {
   it('accepts IPv6 literals and rejects garbage colons', () => {
     expect(isHost('::1')).toBe(true)
     expect(isHost('fe80::1')).toBe(true)
+    expect(isHost('2001:db8:0:0:0:0:0:1')).toBe(true)
     expect(isHost(':::')).toBe(false)
+    expect(isHost('1:2:3:4:5:6:7:')).toBe(false) // trailing single colon, no compression
+    expect(isHost('1:2:3:4:5:6:7')).toBe(false) // too few hextets, no compression
   })
 
   it('rejects empty and obviously invalid hostnames', () => {
