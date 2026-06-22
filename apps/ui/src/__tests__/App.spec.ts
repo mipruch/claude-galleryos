@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '../App.vue'
+import UserLayout from '../layouts/UserLayout.vue'
 import DevicesView from '../views/DevicesView.vue'
 
 beforeAll(() => {
@@ -25,8 +26,14 @@ function makeRouter() {
   return createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: DevicesView },
-      { path: '/rooms/:roomId', component: DevicesView },
+      {
+        path: '/',
+        component: UserLayout,
+        children: [
+          { path: '', component: DevicesView },
+          { path: 'rooms/:roomId', component: DevicesView },
+        ],
+      },
     ],
   })
 }

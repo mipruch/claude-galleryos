@@ -353,9 +353,24 @@ Shared logic, used by TcpInputServer (and future OSC server):
 Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project, separated by route-based layouts. Shared Pinia stores, shared components, single WebSocket connection.
 
 - [~] `apps/ui` — Vue 3 + Vite + Pinia + TailwindCSS v4 + shadcn-vue
-  - [ ] `AdminLayout` — full-nav shell for `/admin/**` routes
-  - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
-  - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
+  - [x] **Route-based layouts (resolves [DECIDE] G7):** one app, not two. `App.vue`
+        is a thin global shell (single `/ws`, store hydration); `UserLayout` wraps
+        the root user routes (`/`, `/rooms/:id`, `/schedules`, `/iframes/:id`) and
+        `AdminLayout` + `AdminSidebar` wrap `/admin/**`. Admin parent carries
+        `meta.admin` with a router-level auth-guard placeholder (auth deferred —
+        P6; structural separation only for now). Not-yet-built admin sections show
+        as disabled in the nav.
+  - [~] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
+    - [x] **`/admin/logs`** (`views/admin/LogsView.vue`) — Logs/Executions tabs,
+          filters (level/source/entity/time), pagination, Refresh + auto-poll,
+          per-row metadata detail, CSV export. Fetch/refresh based (no `log` WS
+          event yet — backend follow-up). New `useLogsStore` + pure `lib/logs.ts`
+          helpers (unit-tested). New `GET /logs` filter fields wired in `lib/api.ts`.
+    - [x] **`/admin/dashboard`** (`views/admin/DashboardView.vue`) — device/
+          connection/scene/system stat cards, per-connection status, favourite-
+          scene quick actions, recent-logs panel. New `useSystemStore`.
+    - [ ] rooms, connections, devices, scenes, schedules, mappings, layouts, settings (later passes)
+  - [x] **Vendored UI primitives added:** `table`, `tabs`, `badge`, `input`, `label`.
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
         mute, on/off switch. Each in a shared `DeviceCard` (title + description
         tooltip + online dot). Widget chosen by driver `subtype`.
@@ -423,7 +438,7 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         event exists for schedules, so the view re-fetches on an interval and ticks
         a `now` clock so relative labels stay fresh. Sidebar entry +
         route-`meta` header title.
-  - [ ] Remaining shared stores: system, layout, logs, drivers
+  - [~] Remaining shared stores: [x] system, [x] logs · [ ] layout, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

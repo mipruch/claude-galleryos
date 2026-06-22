@@ -1356,6 +1356,46 @@ Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue. Komunikuje s backe
 
 Komponenty ze `shadcn-vue` se používají pro veškeré UI primitivy (formuláře, dialogy, tabulky, toasty, tabs, slidery). Drag & drop v scene editoru a layout builderu zajišťuje `vue-draggable-plus`. WebSocket stav (připojeno/odpojeno) se řeší přímo v Pinia store jako reaktivní ref — bez wrapper composables.
 
+### Architektura — jedna Vue aplikace, route-based layouty (rozhodnutí G7)
+
+Admin portál **není** samostatná aplikace — žije ve **stejné** `apps/ui` jako User
+UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.md):
+
+- **`App.vue`** je tenký globální shell — drží jen app-wide lifecycle (jedno
+  sdílené `/ws` přes `useRealtimeStore`, hydrataci stores) a `<RouterView/>`.
+  Tím obě sekce sdílí jediné WS spojení (respektuje [DECIDE] **E4**).
+- **`layouts/UserLayout.vue`** — dosavadní user shell (sidebar, header, command
+  palette) pro `/`, `/rooms/:id`, `/schedules`, `/iframes/:id`.
+- **`layouts/AdminLayout.vue`** + **`components/layout/AdminSidebar.vue`** — admin
+  shell s plnou navigací pro `/admin/**`. Sekce, které ještě nejsou hotové, jsou
+  v navigaci vidět jako *disabled* ("soon"), takže je vidět celá informační
+  architektura.
+- **Routy** jsou vnořené pod layout-rodiči; admin parent nese `meta.admin` a v
+  routeru je připravené místo pro auth guard (autentizace je odložená — PLAN P6,
+  zatím čistě strukturální oddělení, bez loginu).
+
+#### Implementováno (první řez — Logs + Dashboard)
+
+- **`/admin/logs`** (`views/admin/LogsView.vue`) — strukturovaný prohlížeč logů:
+  taby **Logs** / **Executions**, filtry (level, source, entity, časový rozsah),
+  stránkování, manuální Refresh + volitelný auto-poll, rozbalitelný detail řádku
+  s `metadata` JSON a export aktuální stránky do CSV. Záložka Executions ukazuje
+  historii spuštění scén (status, source, doba běhu). Stojí na existujícím
+  `GET /logs` a `GET /logs/executions`. **Pozn.:** WS kontrakt zatím nemá `log`
+  event, takže prohlížeč je fetch/refresh-based; živý stream logů přes WebSocket
+  je samostatný backendový follow-up.
+- **`/admin/dashboard`** (`views/admin/DashboardView.vue`) — přehled: zařízení
+  online/offline, stav connections, běžící scény, uptime + počet driverů
+  (`useSystemStore` nad `GET /system/*`), per-connection status, quick-action
+  tlačítka pro oblíbené scény a panel posledních logů.
+- **Nové sdílené primitivy** (`components/ui/`): `table`, `tabs`, `badge`,
+  `input`, `label` (vendorované stejně jako stávající `button`/`card`/…).
+- **Nové stores**: `useSystemStore`, `useLogsStore`; čisté helpery v `lib/logs.ts`
+  (unit-testované v `__tests__/logs.spec.ts`).
+
+Zbývající admin stránky (connections, devices, scenes, schedules, mappings,
+layouts, settings) přidají další řezy — viz PLAN §"Priority 5 — UI".
+
 ### Stránky a funkce
 
 #### `/dashboard` — Dashboard

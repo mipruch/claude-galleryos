@@ -198,8 +198,26 @@ export const api = {
   },
 
   logs: {
-    list: (filter?: { level?: string; source?: string; limit?: number; offset?: number }) =>
-      get<{ logs: LogDTO[]; limit: number; offset: number; count: number }>(`/logs${qs(filter)}`),
+    list: (filter?: {
+      level?: string
+      source?: string
+      entityId?: string
+      from?: string
+      to?: string
+      limit?: number
+      offset?: number
+    }) =>
+      get<{ logs: LogDTO[]; limit: number; offset: number; count: number }>(
+        `/logs${qs({
+          level: filter?.level,
+          source: filter?.source,
+          entity_id: filter?.entityId,
+          from: filter?.from,
+          to: filter?.to,
+          limit: filter?.limit,
+          offset: filter?.offset,
+        })}`,
+      ),
     stats: () =>
       get<{
         last24h: { since: string; byLevel: LevelCount[] }

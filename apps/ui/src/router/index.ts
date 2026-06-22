@@ -1,24 +1,57 @@
 /**
- * App routes. Both pages render the same `DevicesView`; the route's `roomId`
- * param (absent on the home page) drives the device scope in the store, so the
- * URL is the source of truth and a refresh stays on the same page.
+ * App routes, split by layout:
+ *   - User panel (`UserLayout`) at the root — device control, schedules monitor.
+ *     The room pages render `DevicesView`; the route's `roomId` param drives the
+ *     device scope so the URL is the source of truth and a refresh stays put.
+ *   - Admin portal (`AdminLayout`) under `/admin/**` — only the built pages are
+ *     registered; later passes add connections/devices/scenes/etc. Access is
+ *     structural for now (no auth — PLAN P6); the `meta.admin` flag and the
+ *     guard placeholder below are where a real auth check will slot in.
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import UserLayout from '@/layouts/UserLayout.vue'
+import AdminLayout from '@/layouts/AdminLayout.vue'
 import DevicesView from '@/views/DevicesView.vue'
 import IframeView from '@/views/IframeView.vue'
 import SchedulesView from '@/views/SchedulesView.vue'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'home', component: DevicesView },
-  { path: '/rooms/:roomId', name: 'room', component: DevicesView },
   {
-    path: '/schedules',
-    name: 'schedules',
-    component: SchedulesView,
-    meta: { title: 'Schedules', subtitle: 'Upcoming scheduled scenes' },
+    path: '/',
+    component: UserLayout,
+    children: [
+      { path: '', name: 'home', component: DevicesView },
+      { path: 'rooms/:roomId', name: 'room', component: DevicesView },
+      {
+        path: 'schedules',
+        name: 'schedules',
+        component: SchedulesView,
+        meta: { title: 'Schedules', subtitle: 'Upcoming scheduled scenes' },
+      },
+      { path: 'iframes/:iframeId', name: 'iframe', component: IframeView },
+    ],
   },
-  { path: '/iframes/:iframeId', name: 'iframe', component: IframeView },
-  // Unknown paths fall back to the home page.
+  {
+    path: '/admin',
+    component: AdminLayout,
+    meta: { admin: true },
+    children: [
+      { path: '', redirect: { name: 'admin-dashboard' } },
+      {
+        path: 'dashboard',
+        name: 'admin-dashboard',
+        component: () => import('@/views/admin/DashboardView.vue'),
+        meta: { title: 'Dashboard', subtitle: 'System overview' },
+      },
+      {
+        path: 'logs',
+        name: 'admin-logs',
+        component: () => import('@/views/admin/LogsView.vue'),
+        meta: { title: 'Logs', subtitle: 'Structured server logs' },
+      },
+    ],
+  },
+  // Unknown paths fall back to the user home page.
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
@@ -26,3 +59,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes,
 })
+
+// Auth guard placeholder — when P6 (authentication) lands, gate `meta.admin`
+// routes here:
+//   router.beforeEach((to) => to.meta.admin && !isAuthed() ? '/login' : true)
