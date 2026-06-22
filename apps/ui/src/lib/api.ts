@@ -11,6 +11,7 @@
  * (rooms, iframes, drivers, logs, system) round out the surface for the admin UI.
  */
 
+import type { DriverManifest } from '@gallery/driver-core'
 import type {
   ConnectionDTO,
   ConnectionStatus,
@@ -26,6 +27,10 @@ import type {
   SceneCreateInput,
   SceneDTO,
   SceneExecution,
+  ScheduledJobDTO,
+  ScheduleCreateInput,
+  ScheduleNextRuns,
+  ScheduleUpdateInput,
   SceneUpdateInput,
   SceneWithActionsDTO,
 } from '@gallery/types'
@@ -67,17 +72,6 @@ interface SystemStatus {
   uptimeMs: number
   installedDrivers: number
   connections: { running: number; connected: number }
-}
-
-/** List-view of an installed driver manifest (`GET /drivers`). */
-interface DriverManifestView {
-  id: string
-  name: string
-  version: string
-  vendor: string
-  description?: string
-  capabilities: { discovery: boolean; subscriptions: boolean; bidirectional: boolean }
-  endpointTypes: Array<{ type: string; name: string }>
 }
 
 type SceneExecutionDTO = Jsonify<SceneExecution>
@@ -183,14 +177,46 @@ export const api = {
       patch<SceneDTO>(`/scenes/${id}/favorite`, { is_favorite: isFavorite }),
   },
 
+  schedules: {
+    list: () => get<ScheduledJobDTO[]>('/schedules'),
+    get: (id: string) => get<ScheduledJobDTO>(`/schedules/${id}`),
+    create: (input: ScheduleCreateInput) => post<ScheduledJobDTO>('/schedules', input),
+    update: (id: string, input: ScheduleUpdateInput) => put<ScheduledJobDTO>(`/schedules/${id}`, input),
+    remove: (id: string) => del(`/schedules/${id}`),
+    toggle: (id: string, enabled: boolean) =>
+      patch<ScheduledJobDTO>(`/schedules/${id}/toggle`, { enabled }),
+    /** Preview the next `count` (default 5) UTC fire times of a schedule. */
+    next: (id: string, count?: number) => get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
+  },
+
   drivers: {
-    list: () => get<DriverManifestView[]>('/drivers'),
-    manifest: (id: string) => get<DriverManifestView>(`/drivers/${id}/manifest`),
+    // The server returns full manifests (schemas + endpoint types + commands),
+    // which the admin connection/device forms need to render dynamic fields.
+    list: () => get<DriverManifest[]>('/drivers'),
+    manifest: (id: string) => get<DriverManifest>(`/drivers/${id}/manifest`),
   },
 
   logs: {
-    list: (filter?: { level?: string; source?: string; limit?: number; offset?: number }) =>
-      get<{ logs: LogDTO[]; limit: number; offset: number; count: number }>(`/logs${qs(filter)}`),
+    list: (filter?: {
+      level?: string
+      source?: string
+      entityId?: string
+      from?: string
+      to?: string
+      limit?: number
+      offset?: number
+    }) =>
+      get<{ logs: LogDTO[]; limit: number; offset: number; count: number }>(
+        `/logs${qs({
+          level: filter?.level,
+          source: filter?.source,
+          entity_id: filter?.entityId,
+          from: filter?.from,
+          to: filter?.to,
+          limit: filter?.limit,
+          offset: filter?.offset,
+        })}`,
+      ),
     stats: () =>
       get<{
         last24h: { since: string; byLevel: LevelCount[] }

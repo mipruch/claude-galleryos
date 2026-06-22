@@ -15,7 +15,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import type { SceneDTO } from '@gallery/types'
+import type { SceneCreateInput, SceneDTO, SceneUpdateInput, SceneWithActionsDTO } from '@gallery/types'
 import { filterScenesByRooms, searchScenes } from '@/lib/scenes'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
@@ -101,6 +101,88 @@ export const useScenesStore = defineStore('scenes', () => {
     if (errorMessage) toast.error(`${sceneName(id)}: failed`, { description: errorMessage })
   }
 
+  // ── admin CRUD ──────────────────────────────────────────────────────────────
+
+  /** Insert or replace a scene row (the list carries the `SceneDTO` subset). */
+  function replaceRecord(record: SceneDTO): void {
+    const i = records.value.findIndex((s) => s.id === record.id)
+    if (i >= 0) records.value[i] = record
+    else records.value.push(record)
+  }
+
+  /** Fetch one scene *with* its ordered actions (for the editor). */
+  async function getOne(id: string): Promise<SceneWithActionsDTO | null> {
+    try {
+      return (await api.scenes.get(id)) ?? null
+    } catch (err) {
+      toast.error('Could not load scene', { description: errMsg(err) })
+      return null
+    }
+  }
+
+  /**
+   * Creates a scene with its actions.
+   *
+   * @returns The created scene, or `null` on failure (an error toast is shown).
+   */
+  async function create(input: SceneCreateInput): Promise<SceneWithActionsDTO | null> {
+    try {
+      const created = await api.scenes.create(input)
+      if (created) replaceRecord(created)
+      toast.success('Scene created')
+      return created ?? null
+    } catch (err) {
+      toast.error('Could not create scene', { description: errMsg(err) })
+      return null
+    }
+  }
+
+  /**
+   * Updates a scene and/or its actions.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function update(id: string, input: SceneUpdateInput): Promise<boolean> {
+    try {
+      const updated = await api.scenes.update(id, input)
+      if (updated) replaceRecord(updated)
+      toast.success('Scene updated')
+      return true
+    } catch (err) {
+      toast.error('Could not update scene', { description: errMsg(err) })
+      return false
+    }
+  }
+
+  /**
+   * Deletes a scene.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function remove(id: string): Promise<boolean> {
+    try {
+      await api.scenes.remove(id)
+      records.value = records.value.filter((s) => s.id !== id)
+      toast.success('Scene deleted')
+      return true
+    } catch (err) {
+      toast.error('Could not delete scene', { description: errMsg(err) })
+      return false
+    }
+  }
+
+  /** Toggle a scene's favourite flag (optimistic, reverts on failure). */
+  async function setFavorite(id: string, isFavorite: boolean): Promise<void> {
+    const scene = records.value.find((s) => s.id === id)
+    if (scene) scene.isFavorite = isFavorite
+    try {
+      await api.scenes.setFavorite(id, isFavorite)
+    } catch (err) {
+      if (scene) scene.isFavorite = !isFavorite
+      toast.error('Could not update favourite', { description: errMsg(err) })
+    }
+  }
+
   return {
     records,
     loading,
@@ -112,5 +194,10 @@ export const useScenesStore = defineStore('scenes', () => {
     execute,
     markRunning,
     markFinished,
+    getOne,
+    create,
+    update,
+    remove,
+    setFavorite,
   }
 })

@@ -16,6 +16,7 @@ import {
   sceneActions,
   sceneExecutions,
   scenes,
+  scheduledJobs,
 } from "@gallery/types/schema";
 import type {
   Connection,
@@ -24,6 +25,7 @@ import type {
   NewConnection,
   NewDevice,
   NewIframe,
+  NewScheduledJob,
   SceneActionInput,
   SceneCreateInput,
   SceneUpdateInput,
@@ -350,6 +352,53 @@ export const sceneExecutionsRepo = {
         .where(and(eq(sceneExecutions.sceneId, sceneId), eq(sceneExecutions.status, "running")))
         .limit(1),
     ),
+};
+
+// ── scheduled jobs (CRON) ────────────────────────────────────
+
+export const scheduledJobsRepo = {
+  /** All jobs, newest first. */
+  list: () => db.select().from(scheduledJobs).orderBy(desc(scheduledJobs.createdAt)),
+
+  /** Only enabled jobs — what the Scheduler arms on startup. */
+  listEnabled: () =>
+    db.select().from(scheduledJobs).where(eq(scheduledJobs.enabled, true)),
+
+  get: (id: string) =>
+    first(db.select().from(scheduledJobs).where(eq(scheduledJobs.id, id)).limit(1)),
+
+  create: (values: NewScheduledJob) =>
+    first(db.insert(scheduledJobs).values(values).returning()),
+
+  update: (id: string, values: Partial<NewScheduledJob>) =>
+    first(
+      db
+        .update(scheduledJobs)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(scheduledJobs.id, id))
+        .returning(),
+    ),
+
+  remove: (id: string) =>
+    first(db.delete(scheduledJobs).where(eq(scheduledJobs.id, id)).returning()),
+
+  /** Toggle enabled without touching the rest of the row. */
+  setEnabled: (id: string, enabled: boolean) =>
+    first(
+      db
+        .update(scheduledJobs)
+        .set({ enabled, updatedAt: new Date() })
+        .where(eq(scheduledJobs.id, id))
+        .returning(),
+    ),
+
+  // ── Scheduler write-backs (do NOT bump updatedAt — these are runtime
+  //    bookkeeping, not user edits) ──
+  setNextRunAt: (id: string, nextRunAt: Date | null) =>
+    db.update(scheduledJobs).set({ nextRunAt }).where(eq(scheduledJobs.id, id)),
+
+  setLastRunAt: (id: string, lastRunAt: Date) =>
+    db.update(scheduledJobs).set({ lastRunAt }).where(eq(scheduledJobs.id, id)),
 };
 
 // ── DeviceManager adapter (read-only) ────────────────────────

@@ -1044,17 +1044,47 @@ ji používají — žádná duplikace akcí.
 
 `apps/server/src/core/Scheduler.ts`
 
-Načte všechny aktivní `ScheduledJob` záznamy z DB při startu a naplánuje je.
+Načte všechny aktivní `scheduled_jobs` záznamy z DB při startu a naplánuje je.
 
-**Timezone handling:** `Bun.cron` je UTC-only. Scheduler proto počítá přesný UTC čas příštího spuštění pomocí `Temporal.ZonedDateTime` (vestavěné v Bun) a používá `setTimeout`. Po každém spuštění se čas přepočítá znovu — tím je správně ošetřen přechod letního/zimního času.
+**Timezone handling:** cron výraz každého jobu se interpretuje v jeho vlastní IANA
+timezone; Scheduler spočítá **absolutní UTC** čas příštího spuštění a naplánuje ho
+přes `setTimeout`. Po každém spuštění se příští výskyt přepočítá znovu — tím je
+správně ošetřen přechod letního/zimního času (offset se vzorkuje pokaždé čerstvě,
+ne jako konstanta). Úložiště i výpočty jsou v UTC; převod do lokálního času je
+záležitost zobrazovací logiky.
 
-Klíčové vlastnosti:
+> ⚠️ **Oprava návrhu:** PLAN §3 předpokládal `Temporal.ZonedDateTime` „vestavěné
+> v Bun", to ale v runtime **není** (Bun 1.3.x, žádný Temporal global). Převody
+> wall-clock ↔ UTC jsou proto implementovány přes `Intl.DateTimeFormat` (vždy
+> dostupné, plně DST-aware). Výsledek je stejný: job `0 9 * * *` v `Europe/Prague`
+> spustí v zimě v 08:00 UTC a v létě v 07:00 UTC.
 
-- Dynamický reload — Admin může přidat/editovat/smazat job přes API a Scheduler ho za běhu přidá/restartuje/zruší bez restartu serveru.
-- Timezone-aware — každý job má vlastní timezone; DST je ošetřeno přepočtem po každém spuštění.
-- Po každém spuštění: aktualizuje `last_run_at` a `next_run_at` v DB.
-- Job spouští scénu přes `SceneEngine.executeScene(sceneId, 'scheduler')`.
-- Při výpadku a restartu serveru: při startu ověří, zda neproběhl missed job (job měl proběhnout a neproběhl), a pokud ano, loguje varování. Automatické doplnění vynechaných jobů se **nespouští** — je to galerie, ne kritická infrastruktura.
+**Implementováno (Priorita 3):**
+
+- **`src/core/cron.ts`** — čistý, samostatně testovaný modul. `parseCron` /
+  `isValidCron` validují celou 5-položkovou gramatiku (`*`, seznamy, rozsahy,
+  kroky `*/15`, Vixie OR-sémantika pro day-of-month + day-of-week).
+  `computeNextRuns(cronExpr, timezone, count, from?)` vrací příštích N UTC instantů
+  (a `computeNextRun` jeden). Dvouprůchodový převod wall-clock → UTC zvládá DST
+  mezery i překryvy.
+- **`Scheduler`** — jeden `setTimeout` na job mířící na příští UTC čas. Po
+  spuštění: zapíše `last_run_at`, spustí scénu přes
+  `SceneEngine.executeScene(sceneId, 'scheduler', { sourceDetail: 'scheduler:{id}' })`
+  (neблокuje rescheduling — pomalý/konfliktní běh nezdrží přeplánování) a přepočítá
+  + ozbrojí příští výskyt (zapíše `next_run_at`).
+- **Dlouhé čekání:** prodlevy přes ~24,8 dne (limit `setTimeout`) se štěpí a
+  přehodnocují, takže i vzdálené cron joby (např. roční 29. 2.) spolehlivě spustí.
+- **Dynamický reload** — `addJob` / `removeJob` / `reloadJob(id)`; schedules REST
+  controller je volá po create/update/toggle/delete, takže změny cronu platí za
+  běhu bez restartu serveru.
+- **Missed-run při startu:** porovná `next_run_at` s aktuálním časem — vynechaný
+  běh **zaloguje varování** (nikdy ho automaticky nedohání — je to galerie, ne
+  kritická infrastruktura) a job přeplánuje dál.
+- **Testovatelnost:** hodiny (`now`) i časovače (`setTimer`/`clearTimer`) jsou
+  injektovatelné, takže `Scheduler` se testuje s virtuálním časem bez reálných
+  timerů, DB i SceneEngine.
+- **`stop()`** zruší všechny čekající timery (zapojeno do graceful shutdownu).
+- Zapojeno do `src/api/context.ts` a `src/index.ts`; REST viz §8 `/schedules`.
 
 ### 7.5 Watchdog
 
@@ -1325,6 +1355,122 @@ socket.on('system:alert', (data: { level: 'info' | 'warn' | 'error'; message: st
 Vue 3 + Vite + Pinia + Vue Router + TailwindCSS + shadcn-vue. Komunikuje s backendem přes REST API (axios) a Socket.io. Je součástí jediné Vue aplikace (`apps/ui`) sdílené s User UI — admin sekce je dostupná pod cestami `/admin/**`. Běží na portu 4000 (nginx proxy v produkci).
 
 Komponenty ze `shadcn-vue` se používají pro veškeré UI primitivy (formuláře, dialogy, tabulky, toasty, tabs, slidery). Drag & drop v scene editoru a layout builderu zajišťuje `vue-draggable-plus`. WebSocket stav (připojeno/odpojeno) se řeší přímo v Pinia store jako reaktivní ref — bez wrapper composables.
+
+### Architektura — jedna Vue aplikace, route-based layouty (rozhodnutí G7)
+
+Admin portál **není** samostatná aplikace — žije ve **stejné** `apps/ui` jako User
+UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.md):
+
+- **`App.vue`** je tenký globální shell — drží jen app-wide lifecycle (jedno
+  sdílené `/ws` přes `useRealtimeStore`, hydrataci stores) a `<RouterView/>`.
+  Tím obě sekce sdílí jediné WS spojení (respektuje [DECIDE] **E4**).
+- **`layouts/UserLayout.vue`** — dosavadní user shell (sidebar, header, command
+  palette) pro `/`, `/rooms/:id`, `/schedules`, `/iframes/:id`.
+- **`layouts/AdminLayout.vue`** + **`components/layout/AdminSidebar.vue`** — admin
+  shell s plnou navigací pro `/admin/**`. Sekce, které ještě nejsou hotové, jsou
+  v navigaci vidět jako *disabled* ("soon"), takže je vidět celá informační
+  architektura.
+- **Routy** jsou vnořené pod layout-rodiči; admin parent nese `meta.admin` a v
+  routeru je připravené místo pro auth guard (autentizace je odložená — PLAN P6,
+  zatím čistě strukturální oddělení, bez loginu).
+
+#### Implementováno (první řez — Logs + Dashboard)
+
+- **`/admin/logs`** (`views/admin/LogsView.vue`) — strukturovaný prohlížeč logů:
+  taby **Logs** / **Executions**, filtry (level, source, entity, časový rozsah),
+  stránkování, manuální Refresh + volitelný auto-poll, rozbalitelný detail řádku
+  s `metadata` JSON a export aktuální stránky do CSV. Záložka Executions ukazuje
+  historii spuštění scén (status, source, doba běhu). Stojí na existujícím
+  `GET /logs` a `GET /logs/executions`. **Pozn.:** WS kontrakt zatím nemá `log`
+  event, takže prohlížeč je fetch/refresh-based; živý stream logů přes WebSocket
+  je samostatný backendový follow-up.
+- **`/admin/dashboard`** (`views/admin/DashboardView.vue`) — přehled: zařízení
+  online/offline, stav connections, běžící scény, uptime + počet driverů
+  (`useSystemStore` nad `GET /system/*`), per-connection status, quick-action
+  tlačítka pro oblíbené scény a panel posledních logů.
+- **Nové sdílené primitivy** (`components/ui/`): `table`, `tabs`, `badge`,
+  `input`, `label` (vendorované stejně jako stávající `button`/`card`/…).
+- **Nové stores**: `useSystemStore`, `useLogsStore`; čisté helpery v `lib/logs.ts`
+  (unit-testované v `__tests__/logs.spec.ts`).
+
+#### Implementováno (druhý řez — Connections & Devices CRUD)
+
+- **`/admin/connections`** (`views/admin/ConnectionsView.vue`) — tabulka všech
+  connections s live stavem (tečka connected/reconnecting/disconnected/disabled),
+  přepínačem enable/disable, editací a mazáním (mazání blokuje server 409, dokud
+  na connection visí zařízení). Tlačítko *New connection* otevře dialog.
+- **`/admin/devices`** (`views/admin/DevicesView.vue`) — tabulka endpointů s
+  filtry dle místnosti a typu, online tečkou, enable/disable, editací a mazáním.
+- **Dynamické formuláře z manifestu (vee-validate + Zod)** — viz
+  https://www.shadcn-vue.com/docs/forms/vee-validate. `ConnectionFormDialog` a
+  `DeviceFormDialog` generují pole přímo z driver manifestu:
+  - `lib/schemaForm.ts` (unit-testované) převede JSON Schema z manifestu na
+    (a) render descriptory, (b) **Zod** schéma zrcadlící serverová Ajv pravidla a
+    (c) výchozí hodnoty; `components/admin/SchemaFields.vue` je vykreslí uvnitř
+    shadcn-vue `form` (vee-validate) wrapperů.
+  - **Connection**: výběr driveru → pole z `connectionSchema`. Při uložení se
+    `host`/`port` oddělí do sloupců a zbytek jde do `config` blobu (server je při
+    validaci zase spojí). Driver po vytvoření nelze měnit.
+  - **Device**: výběr connection → (driver) → typ endpointu → pole z
+    `addressSchema` daného endpointu. `capabilities` se odvodí z příkazů endpointu,
+    takže je operátor neudržuje ručně.
+  - **`host` formát** — pole „Host / IP“ v manifestech mají `format: "host"`
+    (hostname *nebo* IP). Server jej vynucuje vlastním Ajv formátem v
+    `api/validation.ts`, klient zrcadlí stejné pravidlo v `lib/host.ts`: cokoli
+    vypadá jako dotted-decimal musí být platná IPv4 (oktety 0–255), takže
+    `290.290.920.89` je odmítnuto, zatímco `192.168.1.10`, `projector.local` i
+    `::1` projdou. (Stock `hostname` formát by vadnou IPv4 propustil.)
+- **Nové stores / API**: `useDriversStore` (cache manifestů z `GET /drivers`);
+  `useConnectionsStore` a `useDevicesStore` mají nově `create`/`update`/`remove`.
+  UI nově **type-only** závisí na `@gallery/driver-core` (typy manifestu, smazané
+  z bundlu); `api.drivers.*` vrací plný `DriverManifest` (se schématy).
+- **Další vendorované primitivy**: `form` (vee-validate), `select`, `dialog`,
+  `alert-dialog`, `separator`, `skeleton`, `textarea`, `alert`.
+
+#### Implementováno (třetí řez — Scenes & Schedules CRUD)
+
+- **`/admin/scenes`** (`views/admin/ScenesView.vue`) — tabulka scén (přepínač
+  oblíbenosti, *Run*, edit, mazání; filtr dle místnosti) + `SceneFormDialog`:
+  - **Metadata** (name, room, description, icon, color, tags, favourite) jako
+    plochý vee-validate + Zod formulář.
+  - **Editor akcí** (`SceneActionRow`) — uspořádaný, přeřaditelný seznam kroků.
+    Každý krok cílí buď na **příkaz zařízení** (seznam příkazů i pole parametrů
+    se odvodí z driver manifestu přes `composables/useDeviceCommands` — stejný
+    `schemaToFields` jako u connection/device formulářů), nebo na **pod-scénu**
+    (kompozice scén). Plus `delayMs`, `parallelGroup`, `onFailure`.
+  - Nested přeřaditelné pole nesedí na plochý validační schema, takže akce jsou
+    spravované jako prostý reaktivní stav; čisté konvertory v
+    `lib/sceneActions.ts` (unit-testované) mapují na/z serverového tvaru a
+    parametry příkazů se na submitu převedou na typy dle `paramsSchema`.
+- **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — tabulka (scéna,
+  cron, timezone, náhled příštího běhu, enable/disable, edit, mazání) +
+  `ScheduleFormDialog` (vee-validate + Zod). Cron má klientský sanity-check
+  `isValidCron` (5 polí) pro okamžitou zpětnou vazbu; autoritativní je serverový
+  parser. `useSchedulesStore` má nově CRUD + `toggle`; `lib/api.ts` doplněno o
+  schedule create/update/remove/toggle.
+
+#### Implementováno (čtvrtý řez — Settings)
+
+- **`/admin/settings`** (`views/admin/SettingsView.vue`) — tři sekce, všechny nad
+  reálným stavem:
+  - **Appearance** — jediná klientská předvolba: téma `light / dark / system`
+    (`useThemeStore`). Volba se ukládá do `localStorage` a přepíná třídu `dark`
+    na `<html>` (stylesheet má `@custom-variant dark`); `system` živě sleduje OS
+    přes `matchMedia`. `init()` se volá v `main.ts` před mountem, takže téma platí
+    v celé aplikaci (bez bliknutí).
+  - **System** — status, uptime, počet driverů a connections (`GET /system/*`
+    přes `useSystemStore`) + Refresh.
+  - **Installed drivers** — katalog z manifestů (`GET /drivers`): název, vendor,
+    verze, capabilities, počet endpoint typů a příkazů, spojený s runtime stavem
+    per-connection (`GET /system/drivers`).
+- Editace serverové konfigurace (porty, watchdog, retence), reload driverů a
+  backup/restore jsou záměrně vynechané, dokud je backend nevystaví.
+- Nové: `lib/system.ts` (`formatUptime`, `capabilityLabels`, unit-testované) —
+  do něj se sloučil i lokální `formatUptime` z dashboardu; vendorovaná
+  `CardDescription`.
+
+Zbývající admin stránky (rooms, mappings, layouts) přidají další řezy
+— viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce
 
@@ -1611,6 +1757,29 @@ minimalistickým **sidebarem** (`components/layout/AppSidebar.vue`):
   zařízení) bez ohledu na aktuální routu, takže ovládáš cokoli odkudkoli.
 - Testy: 3 store testy (scope, počty, reset filtrů) + aktualizovaný App mount
   s routerem (celkem 29).
+
+#### Implementováno (monitoring harmonogramů — `/schedules`, read-only)
+
+User UI má **read-only** stránku pro sledování naplánovaných spuštění
+(`views/SchedulesView.vue`, route `/schedules`, položka v sidebaru). Slouží
+**jen k monitoringu** — žádné vytváření/úpravy/zapínání (to patří do Admin UI).
+
+- **Data:** `useSchedulesStore` načte `GET /api/v1/schedules`, vyfiltruje
+  **enabled** joby a pro každý dotáhne náhled příštích spuštění přes
+  `GET /api/v1/schedules/:id/next`. Selhání jednoho náhledu degraduje na prázdný
+  seznam, nezhodí stránku.
+- **Řazení a zobrazení:** karty jsou řazené dle nejbližšího příštího běhu;
+  každá ukazuje cílovou scénu (jméno + Lucide ikona dle scény), nejbližší běh
+  (relativně „in 5 minutes" / „tomorrow" + absolutní lokální čas), další
+  plánované běhy, cron výraz (+timezone v tooltipu) a poslední běh.
+- **Čas:** server vrací vše v **UTC**; převod do lokálního času prohlížeče je
+  čistě zobrazovací logika v `lib/schedules.ts` (`formatDateTime`,
+  `formatRelative`, `nextRunOf`, `sortByNextRun` — čisté, unit-testované).
+- **Aktualizace:** harmonogramy nemají WS událost, takže view se obnovuje
+  intervalem (60 s) a tiká `now` (30 s), aby relativní popisky zůstaly svěží.
+  Hlavička stránky je řízena `route.meta.title`.
+- Testy: 13 unit testů pro helpery v `lib/schedules.ts` (prahové hodnoty
+  relativního času, převod timezone, řazení, imutabilita vstupu).
 
 ### Princip fungování
 

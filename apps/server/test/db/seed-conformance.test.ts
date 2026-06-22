@@ -8,15 +8,23 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { SEED_CONNECTIONS, SEED_DEVICES, SEED_SCENE_ACTIONS } from "../../src/db/seed.ts";
+import {
+  SEED_CONNECTIONS,
+  SEED_DEVICES,
+  SEED_SCENE_ACTIONS,
+  SEED_SCHEDULED_JOBS,
+} from "../../src/db/seed.ts";
 import {
   assertValidCommandParams,
   assertValidConnectionConfig,
   assertValidDeviceAddress,
 } from "../../src/api/validation.ts";
+import { computeNextRun, isValidCron } from "../../src/core/cron.ts";
 
 const connById = new Map(SEED_CONNECTIONS.map((c) => [c.id, c]));
 const devById = new Map(SEED_DEVICES.map((d) => [d.id, d]));
+// Scene IDs referenced by the seed (scene-action targets + schedule targets).
+const seededSceneIds = new Set(SEED_SCENE_ACTIONS.map((a) => a.sceneId));
 
 /** Endpoint type a device is addressed as (subtype, falling back to type). */
 const endpointTypeOf = (d: { subtype?: string; type: string }): string => d.subtype ?? d.type;
@@ -59,6 +67,26 @@ describe("seed data conforms to driver manifests", () => {
           (a.params ?? {}) as Record<string, unknown>,
         ),
       ).not.toThrow();
+    }
+  });
+
+  test("every scheduled job has a valid cron, timezone, and computable next run", () => {
+    for (const job of SEED_SCHEDULED_JOBS) {
+      expect(isValidCron(job.cron), `job ${job.name} has a valid cron`).toBe(true);
+      // computeNextRun validates the timezone and proves the schedule fires.
+      expect(
+        () => computeNextRun(job.cron, job.timezone),
+        `job ${job.name} timezone "${job.timezone}" resolves`,
+      ).not.toThrow();
+      expect(computeNextRun(job.cron, job.timezone), `job ${job.name} has an upcoming run`).toBeInstanceOf(
+        Date,
+      );
+    }
+  });
+
+  test("every scheduled job targets a seeded scene", () => {
+    for (const job of SEED_SCHEDULED_JOBS) {
+      expect(seededSceneIds.has(job.sceneId), `job ${job.name} references a seeded scene`).toBe(true);
     }
   });
 });
