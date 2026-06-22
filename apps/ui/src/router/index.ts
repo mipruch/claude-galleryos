@@ -6,10 +6,17 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import DevicesView from '@/views/DevicesView.vue'
 import IframeView from '@/views/IframeView.vue'
+import SchedulesView from '@/views/SchedulesView.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'home', component: DevicesView },
   { path: '/rooms/:roomId', name: 'room', component: DevicesView },
+  {
+    path: '/schedules',
+    name: 'schedules',
+    component: SchedulesView,
+    meta: { title: 'Schedules', subtitle: 'Upcoming scheduled scenes' },
+  },
   { path: '/iframes/:iframeId', name: 'iframe', component: IframeView },
   // Unknown paths fall back to the home page.
   { path: '/:pathMatch(.*)*', redirect: '/' },

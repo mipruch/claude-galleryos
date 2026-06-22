@@ -1642,6 +1642,29 @@ minimalistickým **sidebarem** (`components/layout/AppSidebar.vue`):
 - Testy: 3 store testy (scope, počty, reset filtrů) + aktualizovaný App mount
   s routerem (celkem 29).
 
+#### Implementováno (monitoring harmonogramů — `/schedules`, read-only)
+
+User UI má **read-only** stránku pro sledování naplánovaných spuštění
+(`views/SchedulesView.vue`, route `/schedules`, položka v sidebaru). Slouží
+**jen k monitoringu** — žádné vytváření/úpravy/zapínání (to patří do Admin UI).
+
+- **Data:** `useSchedulesStore` načte `GET /api/v1/schedules`, vyfiltruje
+  **enabled** joby a pro každý dotáhne náhled příštích spuštění přes
+  `GET /api/v1/schedules/:id/next`. Selhání jednoho náhledu degraduje na prázdný
+  seznam, nezhodí stránku.
+- **Řazení a zobrazení:** karty jsou řazené dle nejbližšího příštího běhu;
+  každá ukazuje cílovou scénu (jméno + Lucide ikona dle scény), nejbližší běh
+  (relativně „in 5 minutes" / „tomorrow" + absolutní lokální čas), další
+  plánované běhy, cron výraz (+timezone v tooltipu) a poslední běh.
+- **Čas:** server vrací vše v **UTC**; převod do lokálního času prohlížeče je
+  čistě zobrazovací logika v `lib/schedules.ts` (`formatDateTime`,
+  `formatRelative`, `nextRunOf`, `sortByNextRun` — čisté, unit-testované).
+- **Aktualizace:** harmonogramy nemají WS událost, takže view se obnovuje
+  intervalem (60 s) a tiká `now` (30 s), aby relativní popisky zůstaly svěží.
+  Hlavička stránky je řízena `route.meta.title`.
+- Testy: 13 unit testů pro helpery v `lib/schedules.ts` (prahové hodnoty
+  relativního času, převod timezone, řazení, imutabilita vstupu).
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.

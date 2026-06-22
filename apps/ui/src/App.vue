@@ -30,8 +30,14 @@ watch(
   { immediate: true },
 )
 
-const pageTitle = computed(() => store.currentRoom?.name ?? 'All devices')
+// A route may declare its own header text (e.g. the schedules monitor); otherwise
+// the header reflects the device scope (all devices / the current room).
+const pageTitle = computed(
+  () => (route.meta.title as string | undefined) ?? store.currentRoom?.name ?? 'All devices',
+)
 const pageSubtitle = computed(() => {
+  const metaSubtitle = route.meta.subtitle as string | undefined
+  if (metaSubtitle) return metaSubtitle
   const n = store.scopedDevices.length
   return `${n} ${n === 1 ? 'device' : 'devices'}`
 })

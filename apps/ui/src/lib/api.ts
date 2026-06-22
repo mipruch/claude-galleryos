@@ -26,6 +26,8 @@ import type {
   SceneCreateInput,
   SceneDTO,
   SceneExecution,
+  ScheduledJobDTO,
+  ScheduleNextRuns,
   SceneUpdateInput,
   SceneWithActionsDTO,
 } from '@gallery/types'
@@ -181,6 +183,13 @@ export const api = {
     executions: (id: string) => get<SceneExecutionDTO[]>(`/scenes/${id}/executions`),
     setFavorite: (id: string, isFavorite: boolean) =>
       patch<SceneDTO>(`/scenes/${id}/favorite`, { is_favorite: isFavorite }),
+  },
+
+  schedules: {
+    list: () => get<ScheduledJobDTO[]>('/schedules'),
+    get: (id: string) => get<ScheduledJobDTO>(`/schedules/${id}`),
+    /** Preview the next `count` (default 5) UTC fire times of a schedule. */
+    next: (id: string, count?: number) => get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
   },
 
   drivers: {

@@ -5,7 +5,7 @@
  * router links — refreshing keeps you on the same page.
  */
 import { computed } from 'vue'
-import { LayoutGridIcon, DoorOpenIcon } from '@lucide/vue'
+import { LayoutGridIcon, DoorOpenIcon, CalendarClockIcon } from '@lucide/vue'
 import { useDevicesStore } from '@/stores/devices'
 
 const store = useDevicesStore()
@@ -40,6 +40,13 @@ function linkClass(isActive: boolean): string {
           <LayoutGridIcon class="size-4 shrink-0" />
           <span class="flex-1 truncate">All devices</span>
           <span class="text-xs opacity-60">{{ store.devices.length }}</span>
+        </a>
+      </RouterLink>
+
+      <RouterLink to="/schedules" custom v-slot="{ href, navigate, isActive }">
+        <a :href="href" :class="linkClass(isActive)" @click="navigate">
+          <CalendarClockIcon class="size-4 shrink-0" />
+          <span class="flex-1 truncate">Schedules</span>
         </a>
       </RouterLink>
 

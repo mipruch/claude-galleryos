@@ -413,6 +413,16 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         it rolls back the optimistic patch (`snapshotState`/`applyRevert`) and
         shows an error toast; on success it adopts any authoritative `state`.
         Per-device FIFO; a dropped socket resolves outstanding commands as failed.
+  - [x] **Schedules monitor (read-only, `/schedules`):** a `useSchedulesStore` +
+        `SchedulesView` that lists every *enabled* schedule with its upcoming run
+        times, soonest first. Loads `GET /schedules` + a per-job `GET
+        /schedules/:id/next` preview; **monitoring only** — no create/edit/toggle
+        (that's admin). Times arrive in UTC and are rendered in the viewer's local
+        zone (display-side conversion) via pure, tested helpers in `lib/schedules.ts`
+        (`formatDateTime`, `formatRelative`, `nextRunOf`, `sortByNextRun`). No WS
+        event exists for schedules, so the view re-fetches on an interval and ticks
+        a `now` clock so relative labels stay fresh. Sidebar entry +
+        route-`meta` header title.
   - [ ] Remaining shared stores: system, layout, logs, drivers
 
 See README §10–11 for full spec; see §11 for the implemented slice.
