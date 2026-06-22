@@ -23,7 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -153,9 +154,9 @@ const submit = handleSubmit(async (values) => {
       </DialogHeader>
 
       <form class="flex flex-col gap-4" @submit="submit">
-        <!-- Connection picker (resolves the driver + endpoint types). -->
-        <FormItem>
-          <FormLabel>Connection</FormLabel>
+        <!-- Connection picker (resolves the driver + endpoint types; not a vee-validate field). -->
+        <div class="space-y-2">
+          <Label>Connection</Label>
           <Select v-model="connectionId" :disabled="isEdit">
             <SelectTrigger><SelectValue placeholder="Select a connection…" /></SelectTrigger>
             <SelectContent>
@@ -164,11 +165,11 @@ const submit = handleSubmit(async (values) => {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <FormDescription v-if="isEdit">The connection can't be changed after creation.</FormDescription>
-        </FormItem>
+          <p v-if="isEdit" class="text-muted-foreground text-sm">The connection can't be changed after creation.</p>
+        </div>
 
-        <FormItem v-if="connectionId">
-          <FormLabel>Endpoint type</FormLabel>
+        <div v-if="connectionId" class="space-y-2">
+          <Label>Endpoint type</Label>
           <Select v-model="subtype">
             <SelectTrigger><SelectValue placeholder="Select an endpoint type…" /></SelectTrigger>
             <SelectContent>
@@ -178,8 +179,8 @@ const submit = handleSubmit(async (values) => {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <FormDescription v-if="endpointType?.description">{{ endpointType.description }}</FormDescription>
-        </FormItem>
+          <p v-if="endpointType?.description" class="text-muted-foreground text-sm">{{ endpointType.description }}</p>
+        </div>
 
         <template v-if="connectionId && subtype">
           <FormField v-slot="{ componentField }" name="name">

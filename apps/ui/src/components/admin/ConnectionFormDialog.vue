@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -138,9 +139,9 @@ const submit = handleSubmit(async (values) => {
       </DialogHeader>
 
       <form class="flex flex-col gap-4" @submit="submit">
-        <!-- Driver picker (drives the dynamic fields). -->
-        <FormItem>
-          <FormLabel>Driver</FormLabel>
+        <!-- Driver picker (drives the dynamic fields; not a vee-validate field). -->
+        <div class="space-y-2">
+          <Label>Driver</Label>
           <Select v-model="driverId" :disabled="isEdit">
             <SelectTrigger>
               <SelectValue placeholder="Select a driver…" />
@@ -153,9 +154,9 @@ const submit = handleSubmit(async (values) => {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <FormDescription v-if="isEdit">The driver can't be changed after creation.</FormDescription>
+          <p v-if="isEdit" class="text-muted-foreground text-sm">The driver can't be changed after creation.</p>
           <p v-else-if="!driverId" class="text-muted-foreground text-sm">Pick a driver to see its settings.</p>
-        </FormItem>
+        </div>
 
         <template v-if="driverId">
           <FormField v-slot="{ componentField }" name="name">
