@@ -156,6 +156,17 @@ describe("schedules CRUD", () => {
     expect((await req("POST", "/api/v1/schedules", { name: "x" })).status).toBe(400);
   });
 
+  test("POST rejects a non-boolean enabled with 400", async () => {
+    const { status } = await req("POST", "/api/v1/schedules", {
+      name: "x",
+      sceneId: "s1",
+      cron: "0 8 * * *",
+      enabled: "yes",
+    });
+    expect(status).toBe(400);
+    expect(schedulerCalls).toHaveLength(0);
+  });
+
   test("GET /:id returns 404 for unknown, 200 for known", async () => {
     expect((await req("GET", "/api/v1/schedules/nope")).status).toBe(404);
     expect((await req("GET", "/api/v1/schedules/j1")).status).toBe(200);
@@ -176,6 +187,12 @@ describe("schedules CRUD", () => {
 
   test("PUT on unknown id → 404", async () => {
     expect((await req("PUT", "/api/v1/schedules/nope", { name: "x" })).status).toBe(404);
+  });
+
+  test("PUT rejects a non-boolean enabled with 400", async () => {
+    const { status } = await req("PUT", "/api/v1/schedules/j1", { enabled: "yes" });
+    expect(status).toBe(400);
+    expect(schedulerCalls).toHaveLength(0);
   });
 
   test("DELETE removes the job and unregisters the timer", async () => {
@@ -207,6 +224,20 @@ describe("schedules toggle", () => {
 
   test("toggle on unknown id → 404", async () => {
     expect((await req("PATCH", "/api/v1/schedules/nope/toggle", { enabled: true })).status).toBe(404);
+  });
+
+  test("toggle rejects malformed JSON with 400 (no silent flip)", async () => {
+    const res = await fetch(`${base}/api/v1/schedules/j1/toggle`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: "{not valid json",
+    });
+    expect(res.status).toBe(400);
+    expect(store.j1?.enabled).toBe(true); // unchanged
+  });
+
+  test("toggle rejects a non-boolean enabled with 400", async () => {
+    expect((await req("PATCH", "/api/v1/schedules/j1/toggle", { enabled: 1 })).status).toBe(400);
   });
 });
 

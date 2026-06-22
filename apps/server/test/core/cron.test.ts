@@ -41,6 +41,12 @@ describe("parseCron — validation", () => {
     expect(() => parseCron("0 9 * * x")).toThrow(CronParseError);
   });
 
+  test("rejects malformed range tokens", () => {
+    expect(() => parseCron("-5 9 * * *")).toThrow(CronParseError); // leading-dash, not 0-5
+    expect(() => parseCron("1-2-3 9 * * *")).toThrow(CronParseError); // too many bounds
+    expect(() => parseCron("5- 9 * * *")).toThrow(CronParseError); // missing upper bound
+  });
+
   test("normalises day-of-week 7 to Sunday (0)", () => {
     const c = parseCron("0 0 * * 7");
     expect(c.dayOfWeek.values.has(0)).toBe(true);

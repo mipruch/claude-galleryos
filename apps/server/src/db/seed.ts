@@ -632,9 +632,10 @@ export const SEED_SCHEDULED_JOBS = [
     enabled: false, // off by default; enable per exhibition programme
   },
   {
-    // Every night at 22:00 UTC — example of a UTC-scheduled job.
+    // Every night at 22:00 UTC — example of a UTC-scheduled job. (Runs the
+    // projector-on scene; there is no dedicated power-off scene in the seed.)
     id: JOB_NIGHT_OFF,
-    name: "Noční vypnutí projektoru (22:00 UTC)",
+    name: "Projektor — noční úloha (22:00 UTC)",
     sceneId: SCENE_PROJECTOR_ON,
     cron: "0 22 * * *",
     timezone: "UTC",

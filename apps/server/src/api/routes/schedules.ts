@@ -77,12 +77,16 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
         const scene = await ctx.scenes.get(String(body.sceneId));
         if (!scene) throw new HttpError(400, "BAD_REQUEST", `scene not found: ${body.sceneId}`);
 
+        if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+          throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
+        }
+
         const created = await ctx.schedules.create({
           name: String(body.name),
           sceneId: String(body.sceneId),
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
-          enabled: body.enabled === undefined ? undefined : Boolean(body.enabled),
+          enabled: body.enabled as boolean | undefined,
         });
         if (!created) throw new HttpError(500, "INTERNAL_ERROR", "failed to create schedule");
 
@@ -118,7 +122,12 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
           assertValidTimezone(String(body.timezone));
           patch.timezone = String(body.timezone);
         }
-        if (body.enabled !== undefined) patch.enabled = Boolean(body.enabled);
+        if (body.enabled !== undefined) {
+          if (typeof body.enabled !== "boolean") {
+            throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
+          }
+          patch.enabled = body.enabled;
+        }
 
         const updated = await ctx.schedules.update(id, patch);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "schedule not found");
@@ -140,7 +149,20 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
     "/api/v1/schedules/:id/toggle": {
       PATCH: route(async (req) => {
         const id = paramId(req);
-        const body = await readJson(req).catch(() => ({}) as Record<string, unknown>);
+        // Only a truly empty body means "flip"; malformed JSON is a 400, not a
+        // silent toggle.
+        const raw = (await req.text()).trim();
+        let body: Record<string, unknown> = {};
+        if (raw !== "") {
+          try {
+            body = JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            throw new HttpError(400, "BAD_REQUEST", "invalid JSON body");
+          }
+        }
+        if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+          throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
+        }
 
         const current = await ctx.schedules.get(id);
         if (!current) throw new HttpError(404, "NOT_FOUND", "schedule not found");

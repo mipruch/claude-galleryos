@@ -69,8 +69,10 @@ interface CronTerm {
 function parseRange(rangePart: string, noStep: boolean, spec: FieldSpec): Omit<CronTerm, "step"> {
   if (rangePart === "*") return { lo: spec.min, hi: spec.max, wildcard: noStep };
   if (rangePart.includes("-")) {
-    const [a, b] = rangePart.split("-");
-    return { lo: Number(a), hi: Number(b), wildcard: false };
+    // Exactly `lo-hi`; reject malformed forms like "-5" or "1-2-3".
+    const m = /^(\d+)-(\d+)$/.exec(rangePart);
+    if (!m) throw new CronParseError(`invalid range in ${spec.name} field: "${rangePart}"`);
+    return { lo: Number(m[1]), hi: Number(m[2]), wildcard: false };
   }
   const v = Number(rangePart);
   // A bare number with a step (e.g. "5/10") means "from 5 to max, every step".
