@@ -37,17 +37,20 @@ onMounted(() => {
   drivers.load()
 })
 
-const roomFilter = ref('')
-const typeFilter = ref('')
-
 const roomName = (id: string | null) => (id ? (devices.rooms.find((r) => r.id === id)?.name ?? '—') : '—')
 const connName = (id: string) => connections.connections.find((c) => c.id === id)?.name ?? id
 const types = computed(() => [...new Set(devices.records.map((d) => d.type))].sort())
 
+// reka-ui forbids an empty-string <SelectItem value> (it's reserved for clearing),
+// so "all" uses a sentinel the filters treat as "no filter".
+const ALL = '__all__'
+const roomFilter = ref(ALL)
+const typeFilter = ref(ALL)
+
 const rows = computed(() =>
   [...devices.records]
-    .filter((d) => (roomFilter.value ? d.roomId === roomFilter.value : true))
-    .filter((d) => (typeFilter.value ? d.type === typeFilter.value : true))
+    .filter((d) => (roomFilter.value !== ALL ? d.roomId === roomFilter.value : true))
+    .filter((d) => (typeFilter.value !== ALL ? d.type === typeFilter.value : true))
     .sort((a, b) => a.name.localeCompare(b.name)),
 )
 
@@ -78,7 +81,7 @@ async function confirmDelete(): Promise<void> {
           <SelectTrigger class="w-44"><SelectValue placeholder="All rooms" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="">All rooms</SelectItem>
+              <SelectItem :value="ALL">All rooms</SelectItem>
               <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{ r.name }}</SelectItem>
             </SelectGroup>
           </SelectContent>
@@ -87,7 +90,7 @@ async function confirmDelete(): Promise<void> {
           <SelectTrigger class="w-44"><SelectValue placeholder="All types" /></SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="">All types</SelectItem>
+              <SelectItem :value="ALL">All types</SelectItem>
               <SelectItem v-for="t in types" :key="t" :value="t">{{ t }}</SelectItem>
             </SelectGroup>
           </SelectContent>

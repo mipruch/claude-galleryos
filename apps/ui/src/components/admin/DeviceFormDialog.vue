@@ -43,6 +43,9 @@ const DEVICE_TYPES = [
   'lighting', 'audio', 'microphone', 'video', 'display', 'matrix', 'blind', 'power', 'custom',
 ] as const
 
+// Sentinel for the "no room" option (reka-ui forbids an empty <SelectItem value>).
+const NONE = '__none__'
+
 const isEdit = computed(() => !!props.device)
 
 // Connection + endpoint type live outside the validated form: they *select*
@@ -208,16 +211,20 @@ const submit = handleSubmit(async (values) => {
             </FormItem>
           </FormField>
 
-          <FormField v-slot="{ componentField }" name="roomId">
+          <!-- reka-ui forbids an empty <SelectItem value>; map the NONE sentinel to ''. -->
+          <FormField v-slot="{ value, handleChange }" name="roomId">
             <FormItem>
               <FormLabel>Room</FormLabel>
-              <Select v-bind="componentField">
+              <Select
+                :model-value="(value as string) || NONE"
+                @update:model-value="handleChange($event === NONE ? '' : $event)"
+              >
                 <FormControl>
                   <SelectTrigger><SelectValue placeholder="No room" /></SelectTrigger>
                 </FormControl>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="">No room</SelectItem>
+                    <SelectItem :value="NONE">No room</SelectItem>
                     <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{ r.name }}</SelectItem>
                   </SelectGroup>
                 </SelectContent>
