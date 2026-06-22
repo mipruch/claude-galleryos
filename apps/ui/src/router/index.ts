@@ -56,6 +56,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Devices', subtitle: 'Addressable endpoints' },
       },
       {
+        path: 'scenes',
+        name: 'admin-scenes',
+        component: () => import('@/views/admin/ScenesView.vue'),
+        meta: { title: 'Scenes', subtitle: 'Orchestrated device actions' },
+      },
+      {
+        path: 'schedules',
+        name: 'admin-schedules',
+        component: () => import('@/views/admin/SchedulesView.vue'),
+        meta: { title: 'Schedules', subtitle: 'CRON jobs that run scenes' },
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),

@@ -1,9 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { formatDateTime, formatRelative, nextRunOf, sortByNextRun } from '@/lib/schedules'
+import { formatDateTime, formatRelative, isValidCron, nextRunOf, sortByNextRun } from '@/lib/schedules'
 import { makeSchedule } from './fixtures'
 
 // A fixed "now" so relative labels are deterministic.
 const NOW = Date.parse('2026-06-22T08:00:00.000Z') // Monday
+
+describe('isValidCron', () => {
+  it('accepts common 5-field expressions', () => {
+    for (const c of ['0 8 * * *', '*/15 * * * *', '0 8 * * 1-5', '0 0,12 1 */2 *', '* * * * *'])
+      expect(isValidCron(c)).toBe(true)
+  })
+
+  it('rejects the wrong field count or junk', () => {
+    for (const c of ['0 8 * *', '0 8 * * * *', '', 'not a cron', '0 8 * * x'])
+      expect(isValidCron(c)).toBe(false)
+  })
+})
 
 describe('nextRunOf', () => {
   it('prefers the first previewed run', () => {

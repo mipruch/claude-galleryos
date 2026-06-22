@@ -1427,8 +1427,30 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
 - **Další vendorované primitivy**: `form` (vee-validate), `select`, `dialog`,
   `alert-dialog`, `separator`, `skeleton`, `textarea`, `alert`.
 
-Zbývající admin stránky (rooms, scenes, schedules, mappings, layouts, settings)
-přidají další řezy — viz PLAN §"Priority 5 — UI".
+#### Implementováno (třetí řez — Scenes & Schedules CRUD)
+
+- **`/admin/scenes`** (`views/admin/ScenesView.vue`) — tabulka scén (přepínač
+  oblíbenosti, *Run*, edit, mazání; filtr dle místnosti) + `SceneFormDialog`:
+  - **Metadata** (name, room, description, icon, color, tags, favourite) jako
+    plochý vee-validate + Zod formulář.
+  - **Editor akcí** (`SceneActionRow`) — uspořádaný, přeřaditelný seznam kroků.
+    Každý krok cílí buď na **příkaz zařízení** (seznam příkazů i pole parametrů
+    se odvodí z driver manifestu přes `composables/useDeviceCommands` — stejný
+    `schemaToFields` jako u connection/device formulářů), nebo na **pod-scénu**
+    (kompozice scén). Plus `delayMs`, `parallelGroup`, `onFailure`.
+  - Nested přeřaditelné pole nesedí na plochý validační schema, takže akce jsou
+    spravované jako prostý reaktivní stav; čisté konvertory v
+    `lib/sceneActions.ts` (unit-testované) mapují na/z serverového tvaru a
+    parametry příkazů se na submitu převedou na typy dle `paramsSchema`.
+- **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — tabulka (scéna,
+  cron, timezone, náhled příštího běhu, enable/disable, edit, mazání) +
+  `ScheduleFormDialog` (vee-validate + Zod). Cron má klientský sanity-check
+  `isValidCron` (5 polí) pro okamžitou zpětnou vazbu; autoritativní je serverový
+  parser. `useSchedulesStore` má nově CRUD + `toggle`; `lib/api.ts` doplněno o
+  schedule create/update/remove/toggle.
+
+Zbývající admin stránky (rooms, mappings, layouts, settings) přidají další řezy
+— viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce
 

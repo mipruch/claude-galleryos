@@ -62,6 +62,20 @@ export function formatRelative(iso: string | null | undefined, nowMs: number, lo
   return rtf.format(Math.round(diff / WEEK), 'week')
 }
 
+/** One cron field: `*`, a number/range, optional `/step`, comma-listed. */
+const CRON_FIELD = /^(\*|\d+(-\d+)?)(\/\d+)?(,(\*|\d+(-\d+)?)(\/\d+)?)*$/
+
+/**
+ * Lightweight client-side check for a 5-field cron expression (minute hour
+ * day-of-month month day-of-week). Catches the common mistakes (wrong field
+ * count, stray characters) for instant form feedback; the server's cron parser
+ * remains the authority on submit.
+ */
+export function isValidCron(expr: string): boolean {
+  const parts = expr.trim().split(/\s+/)
+  return parts.length === 5 && parts.every((p) => CRON_FIELD.test(p))
+}
+
 /**
  * Order schedules by their soonest upcoming run (ascending). Schedules with no
  * known next run sink to the bottom; ties fall back to the schedule name.

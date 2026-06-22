@@ -374,7 +374,20 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
     - [x] **`/admin/devices`** (`views/admin/DevicesView.vue`) — table with room/
           type filters, online dot, enable/disable, edit, delete +
           `DeviceFormDialog`.
-    - [ ] rooms, scenes, schedules, mappings, layouts, settings (later passes)
+    - [x] **`/admin/scenes`** (`views/admin/ScenesView.vue`) — table (favourite
+          toggle, run, edit, delete; room filter) + `SceneFormDialog`: flat
+          metadata (vee-validate + Zod) plus an ordered, reorderable **actions
+          editor** (`SceneActionRow`). Each action targets a device command —
+          command list + param fields resolved from the driver manifest via
+          `composables/useDeviceCommands` — or a sub-scene. Pure converters in
+          `lib/sceneActions.ts` (unit-tested); params coerced to the command's
+          schema on submit.
+    - [x] **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — table (scene,
+          cron, timezone, next-run preview, enable/disable, edit, delete) +
+          `ScheduleFormDialog` (vee-validate + Zod, client-side `isValidCron`
+          check). `useSchedulesStore` gained CRUD + `toggle`; `lib/api.ts` gained
+          schedule create/update/remove/toggle.
+    - [ ] rooms, mappings, layouts, settings (later passes)
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.

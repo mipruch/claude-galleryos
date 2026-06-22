@@ -141,3 +141,21 @@ export function pruneEmpty(values: Record<string, unknown>): Record<string, unkn
   }
   return out
 }
+
+/**
+ * Coerce a raw form object (string-y inputs) to the types its schema declares,
+ * dropping blanks. Used where values are edited outside vee-validate — notably
+ * scene-action command params — so they match the server's strict param schema.
+ */
+export function coerceBySchema(
+  schema: JsonSchema | undefined,
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const field of schemaToFields(schema)) {
+    const v = raw[field.key]
+    if (v === '' || v === undefined || v === null) continue
+    out[field.key] = field.kind === 'number' ? Number(v) : field.kind === 'boolean' ? Boolean(v) : v
+  }
+  return out
+}

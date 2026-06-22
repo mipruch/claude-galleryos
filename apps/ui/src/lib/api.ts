@@ -28,7 +28,9 @@ import type {
   SceneDTO,
   SceneExecution,
   ScheduledJobDTO,
+  ScheduleCreateInput,
   ScheduleNextRuns,
+  ScheduleUpdateInput,
   SceneUpdateInput,
   SceneWithActionsDTO,
 } from '@gallery/types'
@@ -178,6 +180,11 @@ export const api = {
   schedules: {
     list: () => get<ScheduledJobDTO[]>('/schedules'),
     get: (id: string) => get<ScheduledJobDTO>(`/schedules/${id}`),
+    create: (input: ScheduleCreateInput) => post<ScheduledJobDTO>('/schedules', input),
+    update: (id: string, input: ScheduleUpdateInput) => put<ScheduledJobDTO>(`/schedules/${id}`, input),
+    remove: (id: string) => del(`/schedules/${id}`),
+    toggle: (id: string, enabled: boolean) =>
+      patch<ScheduledJobDTO>(`/schedules/${id}/toggle`, { enabled }),
     /** Preview the next `count` (default 5) UTC fire times of a schedule. */
     next: (id: string, count?: number) => get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
   },
