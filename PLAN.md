@@ -369,8 +369,26 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
     - [x] **`/admin/dashboard`** (`views/admin/DashboardView.vue`) — device/
           connection/scene/system stat cards, per-connection status, favourite-
           scene quick actions, recent-logs panel. New `useSystemStore`.
-    - [ ] rooms, connections, devices, scenes, schedules, mappings, layouts, settings (later passes)
-  - [x] **Vendored UI primitives added:** `table`, `tabs`, `badge`, `input`, `label`.
+    - [x] **`/admin/connections`** (`views/admin/ConnectionsView.vue`) — live table
+          (status dot, enable/disable, edit, delete) + `ConnectionFormDialog`.
+    - [x] **`/admin/devices`** (`views/admin/DevicesView.vue`) — table with room/
+          type filters, online dot, enable/disable, edit, delete +
+          `DeviceFormDialog`.
+    - [ ] rooms, scenes, schedules, mappings, layouts, settings (later passes)
+  - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
+        dialogs render dynamic fields from the driver manifest — `connectionSchema`
+        for connections, the selected endpoint type's `addressSchema` for devices.
+        `lib/schemaForm.ts` (unit-tested) turns a manifest JSON Schema into render
+        descriptors + a Zod schema (mirroring the server's Ajv rules) + defaults;
+        `SchemaFields.vue` renders them inside the shadcn-vue `form` (vee-validate)
+        wrappers. Connection submit splits `host`/`port` (columns) from the
+        `config` blob; device capabilities are derived from the endpoint type's
+        commands. New `useDriversStore` (manifest cache); `useConnectionsStore` /
+        `useDevicesStore` gained `create`/`update`/`remove`. The UI now type-only
+        depends on `@gallery/driver-core` for manifest types (erased from bundle).
+  - [x] **Vendored UI primitives added:** `table`, `tabs`, `badge`, `input`,
+        `label`, `form` (vee-validate), `select`, `dialog`, `alert-dialog`,
+        `separator`, `skeleton`, `textarea`, `alert`.
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
         mute, on/off switch. Each in a shared `DeviceCard` (title + description
         tooltip + online dot). Widget chosen by driver `subtype`.
@@ -438,7 +456,7 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         event exists for schedules, so the view re-fetches on an interval and ticks
         a `now` clock so relative labels stay fresh. Sidebar entry +
         route-`meta` header title.
-  - [~] Remaining shared stores: [x] system, [x] logs · [ ] layout, drivers
+  - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

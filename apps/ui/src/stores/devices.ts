@@ -265,6 +265,65 @@ export const useDevicesStore = defineStore('devices', () => {
     }
   }
 
+  /** Insert or replace a device row (used by the admin CRUD flows). */
+  function replaceRecord(record: DeviceRecord): void {
+    const i = records.value.findIndex((d) => d.id === record.id)
+    if (i >= 0) records.value[i] = record
+    else records.value.push(record)
+  }
+
+  /**
+   * Creates a device (endpoint). The server validates its address against the
+   * driver manifest and refreshes the connection's live endpoints.
+   *
+   * @returns The created row, or `null` on failure (an error toast is shown).
+   */
+  async function createDevice(input: Partial<DeviceRecord>): Promise<DeviceRecord | null> {
+    try {
+      const created = await api.devices.create(input)
+      if (created) replaceRecord(created)
+      toast.success('Device created')
+      return created ?? null
+    } catch (err) {
+      toast.error('Could not create device', { description: errMsg(err) })
+      return null
+    }
+  }
+
+  /**
+   * Updates a device's metadata / addressing.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function updateDevice(id: string, input: Partial<DeviceRecord>): Promise<boolean> {
+    try {
+      const updated = await api.devices.update(id, input)
+      if (updated) replaceRecord(updated)
+      toast.success('Device updated')
+      return true
+    } catch (err) {
+      toast.error('Could not update device', { description: errMsg(err) })
+      return false
+    }
+  }
+
+  /**
+   * Deletes a device.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function removeDevice(id: string): Promise<boolean> {
+    try {
+      await api.devices.remove(id)
+      records.value = records.value.filter((d) => d.id !== id)
+      toast.success('Device deleted')
+      return true
+    } catch (err) {
+      toast.error('Could not delete device', { description: errMsg(err) })
+      return false
+    }
+  }
+
   /**
    * Sends a device control command over the WebSocket.
    *
@@ -332,5 +391,8 @@ export const useDevicesStore = defineStore('devices', () => {
     sendCommand,
     patchState,
     patchDeviceState,
+    createDevice,
+    updateDevice,
+    removeDevice,
   }
 })

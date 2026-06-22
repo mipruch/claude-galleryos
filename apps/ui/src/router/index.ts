@@ -44,6 +44,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Dashboard', subtitle: 'System overview' },
       },
       {
+        path: 'connections',
+        name: 'admin-connections',
+        component: () => import('@/views/admin/ConnectionsView.vue'),
+        meta: { title: 'Connections', subtitle: 'Gateways and device links' },
+      },
+      {
+        path: 'devices',
+        name: 'admin-devices',
+        component: () => import('@/views/admin/DevicesView.vue'),
+        meta: { title: 'Devices', subtitle: 'Addressable endpoints' },
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),

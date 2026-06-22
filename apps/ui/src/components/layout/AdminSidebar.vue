@@ -27,8 +27,8 @@ interface NavItem {
 
 const items: NavItem[] = [
   { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon, enabled: true },
-  { to: '/admin/connections', label: 'Connections', icon: CableIcon, enabled: false },
-  { to: '/admin/devices', label: 'Devices', icon: MonitorSpeakerIcon, enabled: false },
+  { to: '/admin/connections', label: 'Connections', icon: CableIcon, enabled: true },
+  { to: '/admin/devices', label: 'Devices', icon: MonitorSpeakerIcon, enabled: true },
   { to: '/admin/scenes', label: 'Scenes', icon: SparklesIcon, enabled: false },
   { to: '/admin/schedules', label: 'Schedules', icon: CalendarClockIcon, enabled: false },
   { to: '/admin/mappings', label: 'Mappings', icon: WaypointsIcon, enabled: false },

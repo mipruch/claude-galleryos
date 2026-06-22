@@ -1393,8 +1393,36 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
 - **Nové stores**: `useSystemStore`, `useLogsStore`; čisté helpery v `lib/logs.ts`
   (unit-testované v `__tests__/logs.spec.ts`).
 
-Zbývající admin stránky (connections, devices, scenes, schedules, mappings,
-layouts, settings) přidají další řezy — viz PLAN §"Priority 5 — UI".
+#### Implementováno (druhý řez — Connections & Devices CRUD)
+
+- **`/admin/connections`** (`views/admin/ConnectionsView.vue`) — tabulka všech
+  connections s live stavem (tečka connected/reconnecting/disconnected/disabled),
+  přepínačem enable/disable, editací a mazáním (mazání blokuje server 409, dokud
+  na connection visí zařízení). Tlačítko *New connection* otevře dialog.
+- **`/admin/devices`** (`views/admin/DevicesView.vue`) — tabulka endpointů s
+  filtry dle místnosti a typu, online tečkou, enable/disable, editací a mazáním.
+- **Dynamické formuláře z manifestu (vee-validate + Zod)** — viz
+  https://www.shadcn-vue.com/docs/forms/vee-validate. `ConnectionFormDialog` a
+  `DeviceFormDialog` generují pole přímo z driver manifestu:
+  - `lib/schemaForm.ts` (unit-testované) převede JSON Schema z manifestu na
+    (a) render descriptory, (b) **Zod** schéma zrcadlící serverová Ajv pravidla a
+    (c) výchozí hodnoty; `components/admin/SchemaFields.vue` je vykreslí uvnitř
+    shadcn-vue `form` (vee-validate) wrapperů.
+  - **Connection**: výběr driveru → pole z `connectionSchema`. Při uložení se
+    `host`/`port` oddělí do sloupců a zbytek jde do `config` blobu (server je při
+    validaci zase spojí). Driver po vytvoření nelze měnit.
+  - **Device**: výběr connection → (driver) → typ endpointu → pole z
+    `addressSchema` daného endpointu. `capabilities` se odvodí z příkazů endpointu,
+    takže je operátor neudržuje ručně.
+- **Nové stores / API**: `useDriversStore` (cache manifestů z `GET /drivers`);
+  `useConnectionsStore` a `useDevicesStore` mají nově `create`/`update`/`remove`.
+  UI nově **type-only** závisí na `@gallery/driver-core` (typy manifestu, smazané
+  z bundlu); `api.drivers.*` vrací plný `DriverManifest` (se schématy).
+- **Další vendorované primitivy**: `form` (vee-validate), `select`, `dialog`,
+  `alert-dialog`, `separator`, `skeleton`, `textarea`, `alert`.
+
+Zbývající admin stránky (rooms, scenes, schedules, mappings, layouts, settings)
+přidají další řezy — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce
 

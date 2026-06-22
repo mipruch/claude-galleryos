@@ -11,6 +11,7 @@
  * (rooms, iframes, drivers, logs, system) round out the surface for the admin UI.
  */
 
+import type { DriverManifest } from '@gallery/driver-core'
 import type {
   ConnectionDTO,
   ConnectionStatus,
@@ -69,17 +70,6 @@ interface SystemStatus {
   uptimeMs: number
   installedDrivers: number
   connections: { running: number; connected: number }
-}
-
-/** List-view of an installed driver manifest (`GET /drivers`). */
-interface DriverManifestView {
-  id: string
-  name: string
-  version: string
-  vendor: string
-  description?: string
-  capabilities: { discovery: boolean; subscriptions: boolean; bidirectional: boolean }
-  endpointTypes: Array<{ type: string; name: string }>
 }
 
 type SceneExecutionDTO = Jsonify<SceneExecution>
@@ -193,8 +183,10 @@ export const api = {
   },
 
   drivers: {
-    list: () => get<DriverManifestView[]>('/drivers'),
-    manifest: (id: string) => get<DriverManifestView>(`/drivers/${id}/manifest`),
+    // The server returns full manifests (schemas + endpoint types + commands),
+    // which the admin connection/device forms need to render dynamic fields.
+    list: () => get<DriverManifest[]>('/drivers'),
+    manifest: (id: string) => get<DriverManifest>(`/drivers/${id}/manifest`),
   },
 
   logs: {
