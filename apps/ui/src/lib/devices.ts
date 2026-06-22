@@ -19,7 +19,13 @@ export type { DeviceDTO as DeviceRecord, DeviceState, DeviceStatus } from '@gall
  * Which control widget a device maps to. Derived from the driver endpoint
  * type (`subtype`). Adding a new driver = one line here.
  */
-export type DeviceKind = 'lightFader' | 'bssFader' | 'bssMatrix' | 'switch' | 'unsupported'
+export type DeviceKind =
+  | 'lightFader'
+  | 'bssFader'
+  | 'bssMatrix'
+  | 'switch'
+  | 'matrixOutput'
+  | 'unsupported'
 
 export function deviceKind(device: DeviceRecord): DeviceKind {
   switch (device.subtype) {
@@ -37,6 +43,8 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
     case 'netio.socket':
     case 'pjlink.projector':
       return 'switch'
+    case 'extron-matrix.output':
+      return 'matrixOutput'
     default:
       return 'unsupported'
   }
@@ -62,6 +70,43 @@ export function readOn(state: DeviceState | undefined, ...keys: string[]): boole
     // boolean false: keep looking — a later key may carry an authoritative "on"
   }
   return false
+}
+
+/** Read an integer value (e.g. a matrix input number), defaulting to 0. */
+export function readInt(state: DeviceState | undefined, ...keys: string[]): number {
+  for (const key of keys) {
+    const v = state?.[key]
+    if (typeof v === 'number' && Number.isInteger(v)) return v
+  }
+  return 0
+}
+
+/** A selectable matrix input: its switch number and a human label. */
+export interface MatrixInput {
+  value: number
+  label: string
+}
+
+/**
+ * Build the list of inputs a matrix output can select. Reads human labels from
+ * the device's `metadata.inputs` (`string[]`, index 0 = input 1) when present,
+ * otherwise generates "Input N" up to `metadata.inputCount` (default 10). Always
+ * prepends a `None` (0 = untie) option.
+ */
+export function matrixInputs(device: DeviceRecord): MatrixInput[] {
+  const meta = (device.metadata ?? {}) as Record<string, unknown>
+  const labels = Array.isArray(meta.inputs) ? (meta.inputs as unknown[]) : []
+  const count = typeof meta.inputCount === 'number' && meta.inputCount > 0
+    ? meta.inputCount
+    : labels.length || 10
+  const inputs: MatrixInput[] = [{ value: 0, label: 'None' }]
+  for (let i = 1; i <= count; i++) {
+    const label = typeof labels[i - 1] === 'string' && labels[i - 1] !== ''
+      ? `${i}. ${labels[i - 1] as string}`
+      : `Input ${i}`
+    inputs.push({ value: i, label })
+  }
+  return inputs
 }
 
 // ── optimistic-update helpers (snapshot + revert for command rollback) ───────

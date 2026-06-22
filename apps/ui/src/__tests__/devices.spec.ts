@@ -2,10 +2,13 @@ import { describe, it, expect } from 'vitest'
 import type { RoomDTO } from '@gallery/types'
 import {
   applyRevert,
+  deviceKind,
   deviceTypesOf,
   filterByRooms,
   filterByTypes,
   groupDevices,
+  matrixInputs,
+  readInt,
   roomOptionsOf,
   searchDevices,
   snapshotState,
@@ -174,5 +177,42 @@ describe('groupDevices', () => {
     const groups = groupDevices(filtered, 'room', rooms)
     expect(groups.map((g) => g.title)).toEqual(['Hall'])
     expect(groups[0]!.subgroups.map((s) => s.title)).toEqual(['Video'])
+  })
+})
+
+describe('deviceKind — driver subtype → widget', () => {
+  it('maps the Extron matrix output to the matrixOutput widget', () => {
+    expect(deviceKind(makeDevice({ subtype: 'extron-matrix.output' }))).toBe('matrixOutput')
+  })
+
+  it('falls back to unsupported for unknown subtypes', () => {
+    expect(deviceKind(makeDevice({ subtype: 'something.else' }))).toBe('unsupported')
+  })
+})
+
+describe('readInt', () => {
+  it('reads the first integer-valued key, else 0', () => {
+    expect(readInt({ input: 5 }, 'input')).toBe(5)
+    expect(readInt({ input: 0 }, 'input')).toBe(0)
+    expect(readInt({}, 'input')).toBe(0)
+    expect(readInt({ input: 1.5 }, 'input')).toBe(0) // non-integer ignored
+  })
+})
+
+describe('matrixInputs', () => {
+  it('uses metadata labels (numbered) and prepends a None option', () => {
+    const device = makeDevice({ metadata: { inputCount: 2, inputs: ['Lectern', 'Laptop'] } })
+    expect(matrixInputs(device)).toEqual([
+      { value: 0, label: 'None' },
+      { value: 1, label: '1. Lectern' },
+      { value: 2, label: '2. Laptop' },
+    ])
+  })
+
+  it('generates "Input N" when labels are missing, defaulting to 10 inputs', () => {
+    const inputs = matrixInputs(makeDevice({ metadata: {} }))
+    expect(inputs).toHaveLength(11) // None + 10
+    expect(inputs[1]).toEqual({ value: 1, label: 'Input 1' })
+    expect(inputs[10]).toEqual({ value: 10, label: 'Input 10' })
   })
 })

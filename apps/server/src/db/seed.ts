@@ -32,6 +32,7 @@ const CONN_BSS    = "22222222-2222-2222-2222-222222222244"; // BSS BLU-100 proce
 const CONN_DALI   = "22222222-2222-2222-2222-222222222255"; // Lunatone DALI-2 IoT gateway
 const CONN_NETIO  = "22222222-2222-2222-2222-222222222266"; // NETIO PowerBOX 4Kx
 const CONN_DALI_FOX   = "22222222-2222-2222-2222-222222222277"; // Foxtron DALI gateway
+const CONN_EXTRON     = "22222222-2222-2222-2222-222222222288"; // Extron DTP CrossPoint 108 4K
 
 // Devices
 const DEV_PROJECTOR   = "44444444-4444-4444-4444-444444444444";
@@ -56,6 +57,8 @@ const DEV_NETIO_SOCK1   = "55555555-5555-5555-5555-555555555801"; // Socket 1
 const DEV_NETIO_SOCK2   = "55555555-5555-5555-5555-555555555802"; // Socket 2
 const DEV_NETIO_SOCK3   = "55555555-5555-5555-5555-555555555803"; // Socket 3
 const DEV_NETIO_SOCK4   = "55555555-5555-5555-5555-555555555804"; // Socket 4
+// Extron matrix outputs (one device per output; address = { output })
+const DEV_EXTRON_OUT = (n: number): string => `55555555-5555-5555-5555-5555555559${String(n).padStart(2, "0")}`;
 
 // Scenes
 const SCENE_LIGHTS_ON    = "77777777-7777-7777-7777-777777777701";
@@ -155,6 +158,23 @@ export const SEED_CONNECTIONS = [
     },
   },
   {
+    id: CONN_EXTRON,
+    name: "Extron DTP CrossPoint 108 (sál)",
+    driverId: "extron-matrix",
+    // ↓ Change to your switcher's IP. SIS control over Telnet, port 23.
+    host: "192.168.1.103",
+    port: 23,
+    protocol: "tcp",
+    config: {
+      // DTP CrossPoint 108 4K: 10 inputs × 8 outputs. Add `password` if the
+      // switcher has a control password set.
+      inputCount: 10,
+      outputCount: 8,
+      responseTimeoutMs: 2000,
+      reconnectMs: 2000,
+    },
+  },
+  {
     id: CONN_NETIO,
     name: "NETIO PowerBOX 4Kx (sál)",
     driverId: "netio",
@@ -170,6 +190,40 @@ export const SEED_CONNECTIONS = [
     },
   },
 ];
+
+// 8 outputs of the Extron DTP CrossPoint 108 4K, generated so the input labels
+// live in one place. Each output is a device feeding a destination in the venue.
+const EXTRON_INPUT_LABELS = [
+  "Lectern PC", "Laptop HDMI", "Doc Camera", "Blu-ray", "Media Server",
+  "Camera 1", "Camera 2", "Wireless AirMedia", "Aux HDMI", "Test Pattern",
+];
+const EXTRON_OUTPUT_NAMES: { name: string; roomId: string; icon: string }[] = [
+  { name: "Projektor sál",      roomId: ROOM_HALL,  icon: "projector" },
+  { name: "LED stěna sál",      roomId: ROOM_HALL,  icon: "monitor" },
+  { name: "Náhled sál",         roomId: ROOM_HALL,  icon: "monitor" },
+  { name: "Lobby displej",      roomId: ROOM_FOYER, icon: "monitor" },
+  { name: "Foyer displej 2",    roomId: ROOM_FOYER, icon: "monitor" },
+  { name: "Stream enkodér",     roomId: ROOM_HALL,  icon: "radio" },
+  { name: "Záznam",             roomId: ROOM_HALL,  icon: "circle" },
+  { name: "Confidence monitor", roomId: ROOM_HALL,  icon: "monitor" },
+];
+const EXTRON_OUTPUTS = EXTRON_OUTPUT_NAMES.map((o, i) => {
+  const output = i + 1;
+  return {
+    id: DEV_EXTRON_OUT(output),
+    connectionId: CONN_EXTRON,
+    roomId: o.roomId,
+    name: o.name,
+    description: `Extron output ${output} — selects one of the 10 matrix inputs`,
+    type: "video",
+    subtype: "extron-matrix.output",
+    address: { output },
+    capabilities: ["setInput", "setVideoInput", "setAudioInput"],
+    metadata: { inputCount: EXTRON_INPUT_LABELS.length, inputs: EXTRON_INPUT_LABELS },
+    icon: o.icon,
+    displayOrder: 60 + i,
+  };
+});
 
 export const SEED_DEVICES = [
   // ── PJLink + TCP ────────────────────────────────────────────
@@ -474,6 +528,12 @@ export const SEED_DEVICES = [
     icon: "monitor",
     displayOrder: 53,
   },
+
+  // ── Extron matrix outputs ───────────────────────────────────
+  // One device per output of the DTP CrossPoint 108 4K. Each picks one of the
+  // 10 inputs. `metadata.inputs` gives the User UI human input labels (index 0 =
+  // input 1); the widget falls back to "Input N" up to metadata.inputCount.
+  ...EXTRON_OUTPUTS,
 ];
 
 const SEED_SCENES = [

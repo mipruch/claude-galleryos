@@ -160,20 +160,39 @@ the raw DALI short address; the short address is kept as read-only metadata.
 - [x] Mock DALI-2 IoT HTTP server for tests (`test/mocks/mock-dali-iot.ts`)
 - [x] Register in registry (id `dali-lunatone`)
 
-### 1.4 `driver-extron-matrix` — Extron video matrix (SIS / TCP 23)
+### 1.4 `driver-extron-matrix` — Extron matrix switcher (SIS / TCP 23) ✓
 
-**Protocol** (ASCII, CR-terminated):
-- `{in}*{out}!` — tie input to output (video)
-- `{in}*{out}%` — tie input to output (audio)
-- `I{out}` — query current video input for output
-- State: poll on connect and after each tie command
+Target: **Extron DTP CrossPoint 108 4K** (10 inputs × 8 outputs). ⚠️ **Protocol
+correction:** the original sketch guessed `%`=audio and an `I{out}` query. The
+actual Extron **SIS** grammar (implemented in the pure, unit-tested `src/sis.ts`):
+
+**Protocol** (ASCII, CR-terminated commands; CR/LF-framed responses):
+- `{in}*{out}!` — tie input→output, **AV/All** (audio + video together)
+- `{in}*{out}%` — tie input→output, **video** only
+- `{in}*{out}$` — tie input→output, **audio** only (input `0` unties an output)
+- `{out}%` / `{out}$` — **query** the video / audio input on an output (no `{in}*` prefix)
+- Tie echo: `Out02 In05 All`; query echo: `In05`; errors: `E##` (mapped to messages)
+- Optional `Password:` handshake on connect (config `password`)
+
+**Connection + endpoint model:** one persistent TCP socket per switcher, shared
+by every output. Each *output* is one `extron-matrix.output` endpoint (a Device
+in a room) exposing a single "which input?" choice — an 8-output unit = 8 devices.
+The 10×8 grid is never surfaced. Device I/O is serialised behind a mutex so the
+`Out.. In..` echo is matched to the in-flight request by output number;
+unsolicited front-panel ties refresh the cache and surface on the next poll.
 
 **Endpoint type:** `extron-matrix.output`  
-**Address:** `{ output: 1..n }`  
-**Commands:** `setInput { input: number }`, `setAudioInput { input: number }`, `readState`
+**Address:** `{ output: 1..outputCount }`  
+**Connection config:** `{ host, port?=23, password?, inputCount?=10, outputCount?=8, responseTimeoutMs?, reconnectMs? }`  
+**Commands:** `setInput { input }` (AV), `setVideoInput { input }`, `setAudioInput { input }`, `readState`  
+**Capabilities:** `subscriptions: false` (poll-based, but emits `state` on echo), `bidirectional: true`, `discovery: false`
 
-- [ ] `ExtronMatrixDriver.ts`
-- [ ] Register in registry
+- [x] `src/sis.ts` — pure SIS codec (builders + tolerant response parser), unit-tested
+- [x] `ExtronMatrixDriver.ts` — persistent socket, reconnect/backoff, password handshake, mutex-serialised request/response
+- [x] Mock SIS device for tests (`test/mock-device.ts`) — ties, queries, auth, `E##`, front-panel push
+- [x] Register in `apps/server/src/drivers/registry.ts` (id `extron-matrix`, pkg `@gallery/driver-extron-matrix`)
+- [x] Seed: one connection + 8 output devices (`metadata.inputs` labels for the UI)
+- [x] **User UI:** `matrixOutput` widget — one input `<select>` per output (`setInput`)
 
 ### 1.5 `driver-samsung-mdc` — Samsung MDC (TCP 1515)
 
@@ -332,8 +351,10 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
   - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
   - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
-        mute, on/off switch. Each in a shared `DeviceCard` (title + description
-        tooltip + online dot). Widget chosen by driver `subtype`.
+        mute, on/off switch, **Extron matrix output input-select**. Each in a
+        shared `DeviceCard` (title + description tooltip + online dot). Widget
+        chosen by driver `subtype` (`matrixOutput` → `MatrixOutputWidget`, a
+        single input `<select>` per output sending `setInput`).
   - [x] **Routing + room sidebar (`vue-router`, `AppSidebar`):** `/` = all
         devices, `/rooms/:roomId` = that room (URL is the source of truth; a
         refresh stays put, unknown paths → `/`). The store carries a `roomScope`

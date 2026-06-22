@@ -5,6 +5,7 @@ import { deviceKind, type DeviceRecord } from '@/lib/devices'
 import LightFaderWidget from './LightFaderWidget.vue'
 import BssFaderWidget from './BssFaderWidget.vue'
 import SwitchWidget from './SwitchWidget.vue'
+import MatrixOutputWidget from './MatrixOutputWidget.vue'
 
 const props = defineProps<{ device: DeviceRecord }>()
 
@@ -17,6 +18,8 @@ const widget = computed(() => {
       return BssFaderWidget
     case 'switch':
       return SwitchWidget
+    case 'matrixOutput':
+      return MatrixOutputWidget
     default:
       return null
   }
