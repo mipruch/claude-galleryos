@@ -13,6 +13,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import type { ConnectionDTO } from '@gallery/types'
 import {
   connState,
   type ConnectionRecord,
@@ -24,7 +25,7 @@ import { api } from '@/lib/api'
 import { useRealtimeStore } from './realtime'
 
 /** A connection paired with its derived live state — what the UI renders. */
-interface ConnectionView extends ConnectionRecord {
+export interface ConnectionView extends ConnectionRecord {
   status: ConnectionStatus
   state: ConnState
 }
@@ -142,6 +143,57 @@ export const useConnectionsStore = defineStore('connections', () => {
     else records.value.push(record)
   }
 
+  /**
+   * Creates a connection (the server starts its driver subprocess when enabled).
+   *
+   * @returns The created row, or `null` on failure (an error toast is shown).
+   */
+  async function create(input: Partial<ConnectionDTO>): Promise<ConnectionRecord | null> {
+    try {
+      const created = await api.connections.create(input)
+      if (created) replaceRecord(created)
+      toast.success('Connection created')
+      return created ?? null
+    } catch (err) {
+      toast.error('Could not create connection', { description: errMsg(err) })
+      return null
+    }
+  }
+
+  /**
+   * Updates a connection; the server restarts its driver so config changes apply.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function update(id: string, input: Partial<ConnectionDTO>): Promise<boolean> {
+    try {
+      const updated = await api.connections.update(id, input)
+      if (updated) replaceRecord(updated)
+      toast.success('Connection updated')
+      return true
+    } catch (err) {
+      toast.error('Could not update connection', { description: errMsg(err) })
+      return false
+    }
+  }
+
+  /**
+   * Deletes a connection. Blocked server-side (409) while devices still use it.
+   *
+   * @returns `true` on success, `false` on failure (an error toast is shown).
+   */
+  async function remove(id: string): Promise<boolean> {
+    try {
+      await api.connections.remove(id)
+      records.value = records.value.filter((c) => c.id !== id)
+      toast.success('Connection deleted')
+      return true
+    } catch (err) {
+      toast.error('Could not delete connection', { description: errMsg(err) })
+      return false
+    }
+  }
+
   return {
     records,
     statuses,
@@ -157,5 +209,8 @@ export const useConnectionsStore = defineStore('connections', () => {
     init,
     fetchAll,
     setEnabled,
+    create,
+    update,
+    remove,
   }
 })

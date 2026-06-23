@@ -14,7 +14,7 @@
  * `LiveStateStore`) so the manager can be tested without a real DB/Redis.
  */
 
-import type { DriverKVStore, EndpointDescriptor } from "@gallery/driver-core";
+import type { DriverKVStore, EndpointDescriptor, MeterUpdate } from "@gallery/driver-core";
 import { errMsg } from "@gallery/driver-core";
 import type { Connection, ConnectionStatus, Device, DeviceStatus } from "@gallery/types";
 import { DriverHost, type RestartPolicy } from "../drivers/DriverHost.ts";
@@ -105,6 +105,8 @@ export class DeviceManager {
   private readonly deviceCache = new Map<string, DeviceRecord>();
   /** Per-endpoint command serialisation (avoids races on one device). */
   private readonly locks = new Map<string, Promise<unknown>>();
+  /** Optional sink for live meter readings (the MeterService). */
+  private meterListener: ((connectionId: string, update: MeterUpdate) => void) | null = null;
   private readonly log: Logger;
 
   constructor(private readonly opts: DeviceManagerOptions) {
@@ -237,6 +239,10 @@ export class DeviceManager {
       });
     });
 
+    // Live meters bypass the EventBus/Redis: they are high-frequency and
+    // forwarded only to the clients currently watching them (the MeterService).
+    host.on("meter", (update) => this.meterListener?.(connectionId, update));
+
     host.on("error", (error) => {
       this.opts.eventBus.emit({ type: "connection.error", connectionId, error: error.message });
     });
@@ -288,6 +294,37 @@ export class DeviceManager {
       this.log.debug("subscribing endpoint", { connectionId, deviceId: device.id });
       host.subscribeToEndpoint(toEndpoint(device));
     }
+  }
+
+  // ── live meters (driven by the MeterService) ───────────────
+
+  /**
+   * Register the single sink for live meter readings. The MeterService installs
+   * itself here; readings then bypass the EventBus and go straight to the
+   * browsers currently watching each meter.
+   */
+  setMeterListener(listener: (connectionId: string, update: MeterUpdate) => void): void {
+    this.meterListener = listener;
+  }
+
+  /** Start streaming one meter parameter on a connection. No-op if not running. */
+  meterSubscribe(connectionId: string, address: Record<string, unknown>): void {
+    const host = this.hosts.get(connectionId);
+    if (!host) {
+      this.log.warn("meterSubscribe: no active driver", { connectionId });
+      return;
+    }
+    host.meterSubscribe(address);
+  }
+
+  /** Stop streaming one meter parameter on a connection. */
+  meterUnsubscribe(connectionId: string, address: Record<string, unknown>): void {
+    this.hosts.get(connectionId)?.meterUnsubscribe(address);
+  }
+
+  /** Resolve a device record (cache, then DB). Used by the MeterService. */
+  getDeviceRecord(deviceId: string): Promise<DeviceRecord> {
+    return this.resolveDevice(deviceId);
   }
 
   /**

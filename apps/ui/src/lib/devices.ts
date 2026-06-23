@@ -23,8 +23,9 @@ export type DeviceKind =
   | 'lightFader'
   | 'bssFader'
   | 'bssMatrix'
-  | 'switch'
+  | 'bssMeter'
   | 'matrixOutput'
+  | 'switch'
   | 'unsupported'
 
 export function deviceKind(device: DeviceRecord): DeviceKind {
@@ -37,6 +38,8 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
       return device.type === 'matrix' ? 'bssMatrix' : 'bssFader'
     case 'bss-soundweb.matrix':
       return 'bssMatrix'
+    case 'bss-soundweb.meter-widget':
+      return 'bssMeter'
     case 'dali.fixture':
     case 'dali-foxtron.fixture':
       return 'lightFader'

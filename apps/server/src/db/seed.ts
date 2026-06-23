@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, iframes, rooms, sceneActions, scenes } from "@gallery/types/schema";
+import { connections, devices, iframes, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -672,6 +672,44 @@ export const SEED_SCENE_ACTIONS = [
   },
 ];
 
+// ── scheduled jobs (CRON) ────────────────────────────────────
+// Times are expressed in each job's `timezone`; the Scheduler computes the
+// absolute UTC fire time (storage + computation are UTC, display converts back).
+const JOB_MORNING_LIGHTS = "99999999-9999-9999-9999-999999999901";
+const JOB_LECTURE_START  = "99999999-9999-9999-9999-999999999902";
+const JOB_NIGHT_OFF      = "99999999-9999-9999-9999-999999999903";
+
+export const SEED_SCHEDULED_JOBS = [
+  {
+    // Every weekday at 08:30 local — turn the hall lights on before opening.
+    id: JOB_MORNING_LIGHTS,
+    name: "Ranní světla (Po–Pá 8:30)",
+    sceneId: SCENE_LIGHTS_ON,
+    cron: "30 8 * * 1-5",
+    timezone: "Europe/Prague",
+    enabled: true,
+  },
+  {
+    // Daily at 10:00 local — auto-start the lecture preset.
+    id: JOB_LECTURE_START,
+    name: "Přednáška — denně 10:00",
+    sceneId: SCENE_LECTURE_START,
+    cron: "0 10 * * *",
+    timezone: "Europe/Prague",
+    enabled: false, // off by default; enable per exhibition programme
+  },
+  {
+    // Every night at 22:00 UTC — example of a UTC-scheduled job. (Runs the
+    // projector-on scene; there is no dedicated power-off scene in the seed.)
+    id: JOB_NIGHT_OFF,
+    name: "Projektor — noční úloha (22:00 UTC)",
+    sceneId: SCENE_PROJECTOR_ON,
+    cron: "0 22 * * *",
+    timezone: "UTC",
+    enabled: false,
+  },
+];
+
 const SEED_IFRAMES = [
   {
     id: "66666666-6666-6666-6666-666666666601",
@@ -695,6 +733,7 @@ async function main(): Promise<void> {
   await db.insert(devices).values(SEED_DEVICES).onConflictDoNothing();
   await db.insert(scenes).values(SEED_SCENES).onConflictDoNothing();
   await db.insert(sceneActions).values(SEED_SCENE_ACTIONS).onConflictDoNothing();
+  await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
 
   log.info("Seed complete", {
@@ -703,6 +742,7 @@ async function main(): Promise<void> {
     devices: SEED_DEVICES.length,
     scenes: SEED_SCENES.length,
     sceneActions: SEED_SCENE_ACTIONS.length,
+    scheduledJobs: SEED_SCHEDULED_JOBS.length,
     iframes: SEED_IFRAMES.length,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });

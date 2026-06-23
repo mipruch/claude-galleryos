@@ -42,7 +42,7 @@ export const manifest: DriverManifest = {
     type: "object",
     required: ["host"],
     properties: {
-      host: { type: "string", title: "Host / IP", format: "hostname" },
+      host: { type: "string", title: "Host / IP", format: "host" },
       // TODO: set the real default port for your protocol.
       port: { type: "integer", title: "Port", default: 1234, minimum: 1, maximum: 65535 },
       // TODO: add any driver-specific connection options (password, model, etc.).

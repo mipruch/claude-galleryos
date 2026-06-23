@@ -26,6 +26,23 @@ export default defineConfigWithVueTs(
     files: ['src/**/__tests__/*'],
   },
 
+  // Vendored shadcn-vue primitives are intentionally single-word (Button, Card,
+  // …) to match the upstream library; the multi-word rule doesn't apply to them.
+  {
+    name: 'app/shadcn-ui-primitives',
+    files: ['src/components/ui/**/*.vue'],
+    rules: { 'vue/multi-word-component-names': 'off' },
+  },
+
+  // SceneActionRow edits one action row that lives in the parent's reactive
+  // array, by design (see the component's docstring) — the in-place mutation is
+  // the intended contract, so the no-mutating-props rule is silenced here.
+  {
+    name: 'app/scene-action-row',
+    files: ['src/components/admin/SceneActionRow.vue'],
+    rules: { 'vue/no-mutating-props': 'off' },
+  },
+
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
   skipFormatting,

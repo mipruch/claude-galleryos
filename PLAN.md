@@ -132,6 +132,12 @@ needs *two* params (gain + mute), so the address carries both rather than the si
 - [x] Reconnect (internal backoff) resubscribes all active endpoints
 - [x] Mock TCP server for tests (`test/mock-device.ts`)
 - [x] Register in `apps/server/src/drivers/registry.ts` (id `bss-soundweb`, pkg `@gallery/driver-bss`)
+- [x] **Live meters** — endpoint `bss-soundweb.meter-widget` + `subscribeMeter`/`unsubscribeMeter`
+      (SUBSCRIBE/UNSUBSCRIBE raw on a single meter param), `meter` events ({@link MeterUpdate},
+      dB×10000 → 0..1 level). Server-side ref-counted fan-out in `MeterService` (one BSS
+      subscription per meter, forwarded only to watching WS clients via `meter:subscribe` /
+      `meter:unsubscribe` / `meter:update`); UI `BssMeterWidget` subscribes on mount / unsubscribes
+      on unmount.
 
 ### 1.3 `driver-dali-lunatone` — Lunatone DALI-2 IoT gateway ✓
 
@@ -287,36 +293,61 @@ Redis key additions to `src/redis/state.ts`:
 
 ---
 
-## Priority 3 — Scheduling
+## Priority 3 — Scheduling ✓
 
-**Timezone handling:** `Bun.cron` runs in UTC only. For per-job timezones, compute the next UTC fire time using `Temporal.ZonedDateTime` (built into Bun) and schedule via `setTimeout`. After each fire, recompute the *next* occurrence — this handles DST transitions correctly because the offset is recalculated fresh each time rather than assumed constant.
+**Timezone handling:** cron expressions run in each job's own IANA timezone; the
+Scheduler computes the absolute **UTC** fire time and schedules via `setTimeout`.
+After each fire it recomputes the *next* occurrence, so DST transitions are
+handled correctly — the offset is sampled fresh each time rather than assumed
+constant. (Storage + computation are UTC; conversion to local time is display
+logic only.)
 
-Example: a job set to `0 9 * * *` in `Europe/Prague` fires at 08:00 UTC in winter and 07:00 UTC in summer. Recomputing after each fire always gives the correct next UTC timestamp regardless of which side of a DST boundary we're on.
+⚠️ **PLAN correction:** §3 assumed `Temporal.ZonedDateTime` is built into Bun, but
+it is **not** available in the runtime (Bun 1.3.x, no Temporal global). The
+wall-clock ↔ UTC conversions are implemented with `Intl.DateTimeFormat` instead
+(always present, fully DST-aware). Same outcome — the example below holds: a job
+set to `0 9 * * *` in `Europe/Prague` fires at 08:00 UTC in winter and 07:00 UTC
+in summer.
 
-### 3.1 `Scheduler` `src/core/Scheduler.ts`
-- [ ] On `start()`: load all enabled `scheduled_jobs` from DB; schedule each
-- [ ] `scheduleJob(row)`:
-  - Parse cron expression (validate it's a valid 5-field expression)
-  - Compute next UTC fire time using `Temporal.ZonedDateTime.from({ ...parsed, timeZone })` + cron logic
-  - Schedule via `setTimeout` to that UTC timestamp
-  - After each fire: call `SceneEngine.executeScene(sceneId, 'scheduler')`, update `last_run_at` + `next_run_at` in DB, reschedule
-- [ ] On startup: compare `next_run_at` vs `NOW()` — if a job should have fired and didn't, log a warning (do not auto-run)
-- [ ] Dynamic API: `addJob(row)`, `removeJob(id)`, `reloadJob(id)` — used by schedules REST controller
-- [ ] `stop()` — cancel all pending timeouts gracefully
-- [ ] Wire into `src/api/context.ts` and `src/index.ts`
+### 3.1 `Scheduler` `src/core/Scheduler.ts` ✓
+- [x] On `start()`: load all enabled `scheduled_jobs`; arm one `setTimeout` per job
+- [x] `scheduleJob(row)`: validate + compute next UTC fire (`computeNextRun`),
+      persist `next_run_at`, arm the timer; after each fire call
+      `SceneEngine.executeScene(sceneId, 'scheduler', { sourceDetail })`, persist
+      `last_run_at`, and re-arm the next occurrence
+- [x] Long-delay safety: waits over `setTimeout`'s ~24.8-day clamp are chunked and
+      re-evaluated, so far-future crons (e.g. a yearly Feb-29 job) still fire
+- [x] On startup: compare `next_run_at` vs now — a missed run is **warned** (never
+      auto-run), then the job is re-armed going forward
+- [x] Dynamic API: `addJob(row)`, `removeJob(id)`, `reloadJob(id)` — used by the
+      schedules REST controller so cron changes apply without a server restart
+- [x] `stop()` — cancels all pending timers gracefully (wired into shutdown)
+- [x] Wired into `src/api/context.ts` and `src/index.ts`; clock + timer functions
+      are injectable so the engine is testable with virtual time (no real timers)
 
-### 3.2 Next-runs helper
-- [ ] `computeNextRuns(cronExpr, timezone, count)` — pure function returning next N UTC timestamps
-- [ ] Used by `GET /schedules/:id/next` and displayed in the Admin UI later
+### 3.2 Next-runs helper `src/core/cron.ts` ✓
+- [x] `computeNextRuns(cronExpr, timezone, count, from?)` — pure function returning
+      the next N UTC timestamps; `computeNextRun(...)` for the single next one
+- [x] Full 5-field cron grammar: `*`, lists, ranges, steps, and Vixie DOM/DOW
+      OR-semantics; `parseCron`/`isValidCron` for validation (→ HTTP 400)
+- [x] Used by `GET /schedules/:id/next`, the Scheduler, and the seed-conformance test
 
-### 3.3 Schedules REST API `src/api/routes/schedules.ts`
-- [ ] `GET    /api/v1/schedules`
-- [ ] `POST   /api/v1/schedules` — `{ name, sceneId, cron, timezone, enabled }`
-- [ ] `GET    /api/v1/schedules/:id`
-- [ ] `PUT    /api/v1/schedules/:id` → `Scheduler.reloadJob()`
-- [ ] `DELETE /api/v1/schedules/:id` → `Scheduler.removeJob()`
-- [ ] `PATCH  /api/v1/schedules/:id/toggle` — enable/disable without delete
-- [ ] `GET    /api/v1/schedules/:id/next` — next 5 fire times (preview, uses `computeNextRuns`)
+### 3.3 Schedules REST API `src/api/routes/schedules.ts` ✓
+- [x] `GET    /api/v1/schedules`
+- [x] `POST   /api/v1/schedules` — `{ name, sceneId, cron, timezone?, enabled? }`
+      (cron + timezone validated → 400; unknown `sceneId` → 400 not a raw FK 500;
+      arms the live Scheduler)
+- [x] `GET    /api/v1/schedules/:id`
+- [x] `PUT    /api/v1/schedules/:id` → `Scheduler.reloadJob()`
+- [x] `DELETE /api/v1/schedules/:id` → `Scheduler.removeJob()`
+- [x] `PATCH  /api/v1/schedules/:id/toggle` — explicit `{ enabled }` or flips current
+- [x] `GET    /api/v1/schedules/:id/next` — next N (default 5, `?count=`) UTC fire times
+
+**Types/repos/seed/tests:** `ScheduledJob`/`ScheduledJobDTO` + `ScheduleCreateInput`
+in `@gallery/types`; `scheduledJobsRepo` (CRUD + `setEnabled` + Scheduler
+write-backs); three sample jobs in the seed (validated by the seed-conformance
+test). 45 new tests: pure cron parser/next-runs (incl. winter/summer + spring-
+forward DST), the Scheduler with virtual time, and the REST routes.
 
 ---
 
@@ -351,12 +382,78 @@ Shared logic, used by TcpInputServer (and future OSC server):
 Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project, separated by route-based layouts. Shared Pinia stores, shared components, single WebSocket connection.
 
 - [~] `apps/ui` — Vue 3 + Vite + Pinia + TailwindCSS v4 + shadcn-vue
-  - [ ] `AdminLayout` — full-nav shell for `/admin/**` routes
-  - [ ] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
-  - [ ] `UserLayout` — minimal touch-optimised shell for `/app/**` routes, no config UI
+  - [x] **Route-based layouts (resolves [DECIDE] G7):** one app, not two. `App.vue`
+        is a thin global shell (single `/ws`, store hydration); `UserLayout` wraps
+        the root user routes (`/`, `/rooms/:id`, `/schedules`, `/iframes/:id`) and
+        `AdminLayout` + `AdminSidebar` wrap `/admin/**`. Admin parent carries
+        `meta.admin` with a router-level auth-guard placeholder (auth deferred —
+        P6; structural separation only for now). Not-yet-built admin sections show
+        as disabled in the nav.
+  - [~] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
+    - [x] **`/admin/logs`** (`views/admin/LogsView.vue`) — Logs/Executions tabs,
+          filters (level/source/entity/time), pagination, Refresh + auto-poll,
+          per-row metadata detail, CSV export. Fetch/refresh based (no `log` WS
+          event yet — backend follow-up). New `useLogsStore` + pure `lib/logs.ts`
+          helpers (unit-tested). New `GET /logs` filter fields wired in `lib/api.ts`.
+    - [x] **`/admin/dashboard`** (`views/admin/DashboardView.vue`) — device/
+          connection/scene/system stat cards, per-connection status, favourite-
+          scene quick actions, recent-logs panel. New `useSystemStore`.
+    - [x] **`/admin/connections`** (`views/admin/ConnectionsView.vue`) — live table
+          (status dot, enable/disable, edit, delete) + `ConnectionFormDialog`.
+    - [x] **`/admin/devices`** (`views/admin/DevicesView.vue`) — table with room/
+          type filters, online dot, enable/disable, edit, delete +
+          `DeviceFormDialog`.
+    - [x] **`/admin/scenes`** (`views/admin/ScenesView.vue`) — table (favourite
+          toggle, run, edit, delete; room filter) + `SceneFormDialog`: flat
+          metadata (vee-validate + Zod) plus an ordered, reorderable **actions
+          editor** (`SceneActionRow`). Each action targets a device command —
+          command list + param fields resolved from the driver manifest via
+          `composables/useDeviceCommands` — or a sub-scene. Pure converters in
+          `lib/sceneActions.ts` (unit-tested); params coerced to the command's
+          schema on submit.
+    - [x] **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — table (scene,
+          cron, timezone, next-run preview, enable/disable, edit, delete) +
+          `ScheduleFormDialog` (vee-validate + Zod, client-side `isValidCron`
+          check). `useSchedulesStore` gained CRUD + `toggle`; `lib/api.ts` gained
+          schedule create/update/remove/toggle.
+    - [x] **`/admin/settings`** (`views/admin/SettingsView.vue`) — Appearance
+          (persisted `light/dark/system` theme via `useThemeStore`, applied
+          app-wide from `main.ts`), System (status/uptime/counts from
+          `GET /system/*`), and an Installed-drivers catalogue (manifests joined
+          with per-connection runtime). Server-config editing / driver reload /
+          backup are deferred until the backend exposes them. New `lib/system.ts`
+          helpers (`formatUptime`, `capabilityLabels`, unit-tested); Dashboard's
+          local `formatUptime` folded into it. New vendored `card` →
+          `CardDescription`.
+    - [x] **`/admin/iframes`** (`views/admin/IframesView.vue`) — table (display
+          order, name, URL, edit, delete) + `IframeFormDialog` (vee-validate +
+          Zod, client-side `isEmbeddableUrl` http(s) check). New `useIframesStore`
+          (CRUD, list kept sorted by `displayOrder`) and `lib/iframes.ts`
+          (`isEmbeddableUrl`, `sortByDisplayOrder`, unit-tested). `lib/api.ts`
+          iframe create/update now typed via new `IframeCreateInput` /
+          `IframeUpdateInput`; `AdminSidebar` entry enabled.
+    - [ ] rooms, mappings, layouts (later passes)
+  - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
+        dialogs render dynamic fields from the driver manifest — `connectionSchema`
+        for connections, the selected endpoint type's `addressSchema` for devices.
+        `lib/schemaForm.ts` (unit-tested) turns a manifest JSON Schema into render
+        descriptors + a Zod schema (mirroring the server's Ajv rules) + defaults;
+        `SchemaFields.vue` renders them inside the shadcn-vue `form` (vee-validate)
+        wrappers. Connection submit splits `host`/`port` (columns) from the
+        `config` blob; device capabilities are derived from the endpoint type's
+        commands. New `useDriversStore` (manifest cache); `useConnectionsStore` /
+        `useDevicesStore` gained `create`/`update`/`remove`. The UI now type-only
+        depends on `@gallery/driver-core` for manifest types (erased from bundle).
+  - [x] **Vendored UI primitives added:** `table`, `tabs`, `badge`, `input`,
+        `label`, `form` (vee-validate), `select`, `dialog`, `alert-dialog`,
+        `separator`, `skeleton`, `textarea`, `alert`.
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
-        mute, on/off switch, **Extron matrix output input-select**. Each in a
-        shared `DeviceCard` (title + description tooltip + online dot). Widget
+        mute, on/off switch, **live BSS meters** (`BssMeterWidget` — bars that
+        grow/shrink, subscribe on mount / unsubscribe on unmount). Each in a shared
+        `DeviceCard` (title + description tooltip + online dot). Widget chosen by
+        driver `subtype`. Array-of-object address fields (the meter list) edited via
+        `ArrayObjectField`.
+        **Extron matrix output input-select**. Widget
         chosen by driver `subtype` (`matrixOutput` → `MatrixOutputWidget`, a
         single input `<select>` per output sending `setInput`; input labels come
         from the connection's `config.inputs`, named once per matrix).
@@ -414,7 +511,17 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         it rolls back the optimistic patch (`snapshotState`/`applyRevert`) and
         shows an error toast; on success it adopts any authoritative `state`.
         Per-device FIFO; a dropped socket resolves outstanding commands as failed.
-  - [ ] Remaining shared stores: system, layout, logs, drivers
+  - [x] **Schedules monitor (read-only, `/schedules`):** a `useSchedulesStore` +
+        `SchedulesView` that lists every *enabled* schedule with its upcoming run
+        times, soonest first. Loads `GET /schedules` + a per-job `GET
+        /schedules/:id/next` preview; **monitoring only** — no create/edit/toggle
+        (that's admin). Times arrive in UTC and are rendered in the viewer's local
+        zone (display-side conversion) via pure, tested helpers in `lib/schedules.ts`
+        (`formatDateTime`, `formatRelative`, `nextRunOf`, `sortByNextRun`). No WS
+        event exists for schedules, so the view re-fetches on an interval and ticks
+        a `now` clock so relative labels stay fresh. Sidebar entry +
+        route-`meta` header title.
+  - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

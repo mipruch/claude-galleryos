@@ -13,7 +13,7 @@ beforeAll(() => {
     addEventListener() {}
     removeEventListener() {}
   } as unknown as typeof WebSocket
-  globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] }) as unknown as typeof fetch
+  globalThis.fetch = vi.fn<() => Promise<unknown>>().mockResolvedValue({ ok: true, json: async () => [] }) as unknown as typeof fetch
 })
 
 beforeEach(() => setActivePinia(createPinia()))

@@ -5,6 +5,7 @@
  *  - `connected`    → ()                       physical link established
  *  - `disconnected` → (reason: string)         physical link lost
  *  - `state`        → (e: StateChangeEvent)     an endpoint's state changed
+ *  - `meter`        → (u: MeterUpdate)          a live meter reading (push-only)
  *  - `error`        → (e: DriverError)          a recoverable/fatal driver error
  *
  * Drivers run inside a dedicated subprocess (see the runtime harness), so these
@@ -62,6 +63,16 @@ export interface IDeviceDriver extends EventEmitter {
   // ── Optional: subscriptions (only if capabilities.subscriptions) ──
   subscribeToEndpoint?(endpoint: EndpointDescriptor): Promise<void>;
   unsubscribeFromEndpoint?(endpoint: EndpointDescriptor): Promise<void>;
+
+  // ── Optional: live meters (high-frequency, push-only) ──
+  /**
+   * Start streaming a meter parameter. The driver subscribes the device once and
+   * emits a `meter` ({@link MeterUpdate}) on every reading. Idempotent: a repeat
+   * call for the same address must not open a second device subscription.
+   */
+  subscribeMeter?(address: Record<string, unknown>): Promise<void>;
+  /** Stop streaming a meter parameter previously started with {@link subscribeMeter}. */
+  unsubscribeMeter?(address: Record<string, unknown>): Promise<void>;
 
   // ── Optional: discovery (only if capabilities.discovery) ──
   discoverEndpoints?(): Promise<EndpointDescriptor[]>;

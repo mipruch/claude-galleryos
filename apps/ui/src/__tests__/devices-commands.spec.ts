@@ -36,7 +36,7 @@ vi.mock('@/stores/realtime', async () => {
 
 // Toasts are side effects we don't want to render; spy so we can assert on them.
 vi.mock('vue-sonner', () => ({
-  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn<() => void>(), warning: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }))
 
 const g = globalThis as unknown as {

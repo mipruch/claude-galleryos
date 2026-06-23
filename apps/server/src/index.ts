@@ -22,14 +22,17 @@ import {
   roomsRepo,
   sceneExecutionsRepo,
   scenesRepo,
+  scheduledJobsRepo,
 } from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "./redis/state.ts";
 import { driverRegistry } from "./core/DriverRegistry.ts";
 import { eventBus, type GalleryEvent } from "./core/EventBus.ts";
 import { DeviceManager } from "./core/DeviceManager.ts";
+import { MeterService } from "./core/MeterService.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
+import { Scheduler } from "./core/Scheduler.ts";
 import { startApiServer } from "./api/server.ts";
 import { assertValidCommandParams } from "./api/validation.ts";
 
@@ -89,6 +92,11 @@ async function main(): Promise<void> {
 
   await deviceManager.start();
 
+  // Live BSS meters: ref-counted fan-out to the browsers watching each meter.
+  // One BSS subscription per meter; readings bypass the EventBus/Redis.
+  const meterService = new MeterService({ devices: deviceManager, eventBus, logger });
+  deviceManager.setMeterListener(meterService.handleMeterUpdate);
+
   const watchdog = new Watchdog({
     target: deviceManager,
     state: redisStateStore,
@@ -112,6 +120,16 @@ async function main(): Promise<void> {
   });
   sceneEngine.start();
 
+  // Scheduler: fires scenes on their cron schedules (timezone/DST-aware). Loads
+  // enabled jobs from the DB and arms a timer per job; the schedules API keeps it
+  // in sync at runtime.
+  const scheduler = new Scheduler({
+    jobs: scheduledJobsRepo,
+    sceneEngine,
+    logger,
+  });
+  await scheduler.start();
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -126,6 +144,9 @@ async function main(): Promise<void> {
     scenes: scenesRepo,
     sceneExecutions: sceneExecutionsRepo,
     sceneEngine,
+    meterService,
+    schedules: scheduledJobsRepo,
+    scheduler,
     startedAt: Date.now(),
   });
 
@@ -138,6 +159,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    scheduler.stop();
     sceneEngine.stop();
     watchdog.stop();
     await apiServer.stop(true);

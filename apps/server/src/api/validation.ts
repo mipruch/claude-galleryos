@@ -30,6 +30,29 @@ import { HttpError } from "./http.ts";
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
 
+// Manifests mark their "Host / IP" fields with `format: "host"` — a hostname OR
+// an IP literal. The subtlety: `290.290.920.89` is a syntactically valid
+// *hostname* (all-digit labels are legal), so the stock `hostname` format would
+// accept that broken IPv4. So: anything shaped like dotted-decimal is held to
+// strict IPv4 octet rules (0–255); otherwise we accept a hostname or IPv6 via
+// ajv-formats' own validators. Mirrored client-side in `apps/ui/src/lib/host.ts`.
+const checkHostname = ajv.compile({ type: "string", format: "hostname" });
+const checkIpv6 = ajv.compile({ type: "string", format: "ipv6" });
+const DOTTED_NUMERIC = /^\d+(\.\d+)+$/;
+function isIpv4(value: string): boolean {
+  const parts = value.split(".");
+  return (
+    parts.length === 4 &&
+    parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255 && (p === "0" || !p.startsWith("0")))
+  );
+}
+ajv.addFormat("host", (value: string): boolean => {
+  if (!value) return false;
+  if (value.includes(":")) return checkIpv6(value) as boolean;
+  if (DOTTED_NUMERIC.test(value)) return isIpv4(value);
+  return checkHostname(value) as boolean;
+});
+
 const validators = new Map<string, ValidateFunction>();
 
 /**

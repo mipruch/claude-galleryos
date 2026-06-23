@@ -39,7 +39,22 @@ export type ServerMessage =
       { deviceId: string; success: boolean; durationMs?: number; state?: DeviceState; error?: string }
     >
   | WsEnvelope<"scene:execute:ack", SceneExecuteAck>
+  | WsEnvelope<"meter:update", MeterReading>
   | WsEnvelope<"error", { message: string }>;
+
+/**
+ * One live meter reading pushed to a watching client. Addressed by the meter's
+ * BSS object so the widget can match it to the right bar; `level` is the 0..1 bar
+ * height and `db` the raw signal level (informational — the bar uses `level`).
+ */
+export interface MeterReading {
+  node: number;
+  virtualDevice: number;
+  object: number;
+  param: number;
+  level: number;
+  db: number;
+}
 
 /**
  * Reply to a `scene:execute` request: either the run was accepted (`status:
@@ -58,7 +73,10 @@ export type ClientMessage =
       { deviceId: string; command: string; params?: Record<string, unknown> }
     >
   | WsEnvelope<"device:state:patch", { deviceId: string; state: DeviceState }>
-  | WsEnvelope<"scene:execute", { sceneId: string; source?: string }>;
+  | WsEnvelope<"scene:execute", { sceneId: string; source?: string }>
+  // Meter widgets: subscribe while mounted, unsubscribe when dismounted.
+  | WsEnvelope<"meter:subscribe", { deviceId: string }>
+  | WsEnvelope<"meter:unsubscribe", { deviceId: string }>;
 
 /** Discriminant strings. */
 export type ServerEvent = ServerMessage["event"];

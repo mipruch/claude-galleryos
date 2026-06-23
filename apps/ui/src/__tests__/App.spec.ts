@@ -4,12 +4,13 @@ import { mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import App from '../App.vue'
+import UserLayout from '../layouts/UserLayout.vue'
 import DevicesView from '../views/DevicesView.vue'
 
 beforeAll(() => {
   // jsdom provides neither fetch nor WebSocket; stub just enough for App to
   // mount and run its onMounted hook without throwing.
-  globalThis.fetch = vi.fn().mockResolvedValue({
+  globalThis.fetch = vi.fn<() => Promise<unknown>>().mockResolvedValue({
     ok: true,
     json: async () => [],
   }) as unknown as typeof fetch
@@ -25,8 +26,14 @@ function makeRouter() {
   return createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: DevicesView },
-      { path: '/rooms/:roomId', component: DevicesView },
+      {
+        path: '/',
+        component: UserLayout,
+        children: [
+          { path: '', component: DevicesView },
+          { path: 'rooms/:roomId', component: DevicesView },
+        ],
+      },
     ],
   })
 }

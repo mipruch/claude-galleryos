@@ -16,7 +16,7 @@ import { EventBus } from "../../src/core/EventBus.ts";
 import type { ApiContext } from "../../src/api/context.ts";
 
 const bus = new EventBus();
-const ctx = { eventBus: bus } as unknown as ApiContext;
+const ctx = { eventBus: bus, meterService: { disconnect() {} } } as unknown as ApiContext;
 
 let server: Server<unknown>;
 let url: string;

@@ -22,6 +22,7 @@ import {
   sceneActions,
   sceneExecutions,
   scenes,
+  scheduledJobs,
 } from "./schema.ts";
 
 // ── in-memory rows (server side) ─────────────────────────────
@@ -36,6 +37,8 @@ export type SceneExecution = typeof sceneExecutions.$inferSelect;
 export type LogRow = typeof logs.$inferInsert;
 export type Iframe = typeof iframes.$inferSelect;
 export type NewIframe = typeof iframes.$inferInsert;
+export type ScheduledJob = typeof scheduledJobs.$inferSelect;
+export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 
 /** A scene plus its ordered actions — the shape `scenesRepo.get` returns. */
 export type SceneWithActions = Scene & { actions: SceneAction[] };
@@ -49,6 +52,7 @@ export type SceneActionDTO = Jsonify<SceneAction>;
 export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
 export type IframeDTO = Jsonify<Iframe>;
+export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 
 /**
  * A connection as `GET /connections` returns it: the serialized row plus the
@@ -95,6 +99,44 @@ export interface SceneCreateInput {
 }
 
 export type SceneUpdateInput = Partial<SceneCreateInput>;
+
+// ── schedules (CRON jobs) ────────────────────────────────────
+
+/** Body accepted by `POST /schedules`. */
+export interface ScheduleCreateInput {
+  name: string;
+  sceneId: string;
+  /** 5-field cron expression, interpreted in `timezone`. */
+  cron: string;
+  /** IANA timezone (e.g. "Europe/Prague"). Defaults server-side if omitted. */
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
+
+// ── iframes (embedded device UIs) ────────────────────────────
+
+/** Body accepted by `POST /iframes` — one embedded UI / sidebar entry. */
+export interface IframeCreateInput {
+  name: string;
+  url: string;
+  /** Sidebar sort position (ascending). Defaults to 0 server-side. */
+  displayOrder?: number;
+}
+
+export type IframeUpdateInput = Partial<IframeCreateInput>;
+
+/**
+ * `GET /schedules/:id/next` preview — upcoming UTC fire times for a job. Times
+ * are ISO UTC strings; display logic converts them to local time.
+ */
+export interface ScheduleNextRuns {
+  id: string;
+  cron: string;
+  timezone: string;
+  nextRuns: string[];
+}
 
 // ── API errors ───────────────────────────────────────────────
 
