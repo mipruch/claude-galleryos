@@ -396,7 +396,13 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           helpers (`formatUptime`, `capabilityLabels`, unit-tested); Dashboard's
           local `formatUptime` folded into it. New vendored `card` →
           `CardDescription`.
-    - [ ] rooms, mappings, layouts (later passes)
+    - [x] **`/admin/rooms`** (`views/admin/RoomsView.vue`) — table with per-room
+          device counts, up/down reordering, edit and delete (delete leaves
+          devices/scenes unassigned via `ON DELETE SET NULL`). `RoomFormDialog`
+          (name/description/icon/colour, vee-validate + Zod). New `useRoomsStore`
+          + pure `lib/rooms.ts` (`sortRooms`, `computeReorder` — renumbers
+          `displayOrder`, repairs ties; unit-tested).
+    - [ ] mappings, layouts (later passes)
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.

@@ -9,6 +9,7 @@ import {
   ArrowLeftIcon,
   CableIcon,
   CalendarClockIcon,
+  DoorOpenIcon,
   LayoutDashboardIcon,
   LayoutTemplateIcon,
   MonitorSpeakerIcon,
@@ -27,6 +28,7 @@ interface NavItem {
 
 const items: NavItem[] = [
   { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboardIcon, enabled: true },
+  { to: '/admin/rooms', label: 'Rooms', icon: DoorOpenIcon, enabled: true },
   { to: '/admin/connections', label: 'Connections', icon: CableIcon, enabled: true },
   { to: '/admin/devices', label: 'Devices', icon: MonitorSpeakerIcon, enabled: true },
   { to: '/admin/scenes', label: 'Scenes', icon: SparklesIcon, enabled: true },
