@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -125,7 +125,7 @@ const submit = handleSubmit(async (values) => {
           </FormField>
         </div>
 
-        <FormDescription>Display order is set by reordering in the rooms list.</FormDescription>
+        <p class="text-muted-foreground text-sm">Display order is set by reordering in the rooms list.</p>
 
         <DialogFooter>
           <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>
