@@ -58,6 +58,8 @@ export const manifest: DriverManifest = {
     subscriptions: true,
     // Current values can be read back (via SUBSCRIBE).
     bidirectional: true,
+    // Implements a per-endpoint liveness probe for watchdog layer 2.
+    endpointHealth: true,
   },
 
   endpointTypes: [

@@ -81,6 +81,8 @@ async function main(): Promise<void> {
     driverKVStore: redisDriverStore,
     supportsSubscriptions: (driverId) =>
       driverRegistry.get(driverId)?.capabilities.subscriptions ?? false,
+    supportsEndpointHealth: (driverId) =>
+      driverRegistry.get(driverId)?.capabilities.endpointHealth ?? false,
     validateParams: assertValidCommandParams,
     restart: {
       maxAttempts: appConfig.driver.restartMaxAttempts,

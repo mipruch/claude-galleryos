@@ -67,8 +67,15 @@ export const manifest: DriverManifest = {
   capabilities: {
     discovery: false,
     // Poll-emulated push: the driver runs its own status poll and emits `state`.
+    // `subscriptions: true` is also how the core hands the driver its endpoint id
+    // (via subscribeToEndpoint) so the poll loop can tag emitted state — it does
+    // NOT cause any extra network I/O.
     subscriptions: true,
     bidirectional: true,
+    // No per-endpoint probe: one connection == one projector, so the cached
+    // connection-level healthCheck already reflects the projector's reachability.
+    // Leaving endpointHealth false makes the watchdog skip layer-2 entirely.
+    endpointHealth: false,
   },
 
   endpointTypes: [

@@ -79,6 +79,14 @@ export interface DeviceManagerOptions {
    */
   supportsSubscriptions?: (driverId: string) => boolean;
   /**
+   * Whether a driver implements a per-endpoint health probe (its manifest's
+   * `capabilities.endpointHealth`). When false/omitted, the manager skips the
+   * watchdog's layer-2 endpoint check for that driver entirely — no IPC is sent
+   * — and relies on the connection-level health check alone. Correct for drivers
+   * where one connection is one endpoint (e.g. PJLink).
+   */
+  supportsEndpointHealth?: (driverId: string) => boolean;
+  /**
    * Validates a command's params against the driver manifest before it is sent.
    * Injected (built from the DriverRegistry) so the manager stays free of the
    * API/validation layer. Throws on invalid params; the throw surfaces as a
@@ -419,14 +427,21 @@ export class DeviceManager {
   }
 
   /**
-   * Per-endpoint health check. Returns null when the driver does not support it
-   * (endpointHealthCheck IPC call times out or errors). Used by Watchdog layer 2.
+   * Per-endpoint health check. Returns null when the driver does not declare
+   * `capabilities.endpointHealth` (so no IPC is sent) or the call times out /
+   * errors. Used by Watchdog layer 2.
    */
   async endpointHealthCheck(deviceId: string): Promise<import("@gallery/driver-core").HealthStatus | null> {
     const device = this.deviceCache.get(deviceId);
     if (!device) return null;
     const host = this.hosts.get(device.connectionId);
     if (!host) return null;
+    // Skip drivers without a per-endpoint probe (e.g. PJLink) — don't even send
+    // the IPC; the connection-level health check already covers them.
+    const driverId = this.driverIds.get(device.connectionId);
+    if (driverId && this.opts.supportsEndpointHealth && !this.opts.supportsEndpointHealth(driverId)) {
+      return null;
+    }
     try {
       return await host.endpointHealthCheck(toEndpoint(device));
     } catch {

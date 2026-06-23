@@ -90,6 +90,15 @@ export interface DriverCapabilities {
   subscriptions: boolean;
   /** Can current state be read back from the device? */
   bidirectional: boolean;
+  /**
+   * Does the driver implement a per-endpoint liveness probe
+   * (`endpointHealthCheck`) for watchdog layer 2? Omitted/false means the
+   * watchdog skips endpoint-level checks for this driver and relies on the
+   * connection-level `healthCheck` alone — correct for drivers where one
+   * connection maps to a single endpoint (e.g. PJLink: one projector per
+   * connection), so a separate endpoint probe would be redundant.
+   */
+  endpointHealth?: boolean;
 }
 
 /** The static, instance-free description of a driver. */

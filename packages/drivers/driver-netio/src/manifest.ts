@@ -66,6 +66,8 @@ export const manifest: DriverManifest = {
     // HTTP poll only; no push channel.
     subscriptions: false,
     bidirectional: true,
+    // Implements a per-endpoint liveness probe for watchdog layer 2.
+    endpointHealth: true,
   },
 
   endpointTypes: [

@@ -94,6 +94,8 @@ export const manifest: DriverManifest = {
     // on unsolicited front-panel tie changes, so the UI stays live for free.
     subscriptions: false,
     bidirectional: true,
+    // Implements a per-endpoint liveness probe for watchdog layer 2.
+    endpointHealth: true,
   },
 
   endpointTypes: [
