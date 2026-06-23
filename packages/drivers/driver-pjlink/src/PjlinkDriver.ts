@@ -99,6 +99,9 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   private lastLatencyMs: number | undefined;
   /** Device id of the single projector endpoint, learned via subscribe. */
   private endpointId: string | null = null;
+  /** Consecutive poll failures — go offline only once this hits OFFLINE_THRESHOLD. */
+  private consecutiveFailures = 0;
+  private static readonly OFFLINE_THRESHOLD = 2;
   /** Last known state, used to carry fields forward when a query errors. */
   private lastState: Record<string, unknown> = {};
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -165,13 +168,24 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
     return { online: this.online, latencyMs: this.lastLatencyMs, checkedAt: new Date() };
   }
 
-  /** Record the projector endpoint and push its state to the UI right away. */
+  /**
+   * Record the projector endpoint ID and replay the most recently cached state
+   * so the UI has data immediately. Intentionally does NO network I/O — calling
+   * pollOnce() here would open a second TCP connection right after the interval
+   * poll that just triggered the connected event, racing the projector's slot
+   * release and reliably causing a connect timeout.
+   */
   async subscribeToEndpoint(endpoint: EndpointDescriptor): Promise<void> {
     this.endpointId = endpoint.id;
-    // Reset the ERST clock so the first subscribe poll always fetches full state.
     this.lastErstPollMs = 0;
-    this.startPolling();
-    await this.pollOnce();
+    if (Object.keys(this.lastState).length > 0) {
+      this.emit("state", {
+        endpointId: endpoint.id,
+        state: { ...this.lastState },
+        source: "poll",
+        timestamp: new Date(),
+      });
+    }
   }
 
   async unsubscribeFromEndpoint(_endpoint: EndpointDescriptor): Promise<void> {
@@ -203,6 +217,7 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       const results = await this.serialize(() => this.runSession([line]));
       // The projector answered, so it is reachable → online. The command just
       // refreshed contact, so push the next poll out a full interval.
+      this.consecutiveFailures = 0;
       this.setOnline(true);
       this.resetPollTimer();
 
@@ -301,6 +316,7 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       const results = await this.serialize(() => this.runSession(commands));
       this.lastLatencyMs = Date.now() - start;
       if (includeErst) this.lastErstPollMs = Date.now();
+      this.consecutiveFailures = 0;
       this.setOnline(true);
       const state = buildState(results);
       this.lastState = { ...this.lastState, ...state };
@@ -313,7 +329,16 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
         });
       }
     } catch (err) {
-      this.setOnline(false, errMsg(err));
+      this.consecutiveFailures++;
+      if (this.consecutiveFailures >= PjlinkDriver.OFFLINE_THRESHOLD) {
+        this.setOnline(false, errMsg(err));
+      } else {
+        this.ctx.logger.debug("pjlink poll failed (not yet offline)", {
+          host: this.host,
+          consecutiveFailures: this.consecutiveFailures,
+          reason: errMsg(err),
+        });
+      }
     }
   }
 
