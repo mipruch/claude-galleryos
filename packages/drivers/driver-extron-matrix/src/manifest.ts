@@ -52,6 +52,17 @@ export const manifest: DriverManifest = {
         minimum: 1,
         maximum: 64,
       },
+      inputs: {
+        type: "array",
+        title: "Input labels",
+        description:
+          "Human names for the switcher's inputs, in order (index 0 = input 1). " +
+          "Named once here on the matrix, not per output — re-label an input once " +
+          "and every output's picker updates. Shorter than inputCount is fine; " +
+          "unnamed inputs fall back to \"Input N\".",
+        items: { type: "string" },
+        maxItems: 64,
+      },
       outputCount: {
         type: "integer",
         title: "Outputs",

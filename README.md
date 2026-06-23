@@ -889,7 +889,8 @@ zásuvky (PowerBOX, PowerPDU, PowerDIN) přes **JSON M2M API nad HTTP** (manuál
 
 Balíček `packages/drivers/driver-extron-matrix` (driver id `extron-matrix`). Ovládá
 Extron maticové přepínače (DTP CrossPoint 108 4K = 10 vstupů × 8 výstupů, dále
-CrossPoint, MAV Plus) přes **SIS protokol nad TCP 23** (Telnet).
+CrossPoint, MAV Plus) přes **SIS protokol nad TCP 23** (Telnet). Gramatika je
+ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
 
 - **`src/sis.ts`** — čistý, samostatně testovaný kodek. Builder příkazů a
   **tolerantní** parser odpovědí (firmware se v drobnostech liší — viz hlavička
@@ -908,13 +909,21 @@ CrossPoint, MAV Plus) přes **SIS protokol nad TCP 23** (Telnet).
   `extron-matrix.output` (Device v místnosti) s jediným výběrem „který vstup?“ —
   8výstupová matice = 8 zařízení pod jednou connection. Mřížka 10×8 se v UI nikdy
   nezobrazuje.
+- **Popisky vstupů patří matici (connection), ne jednotlivým výstupům.** Žijí
+  v `connection.config.inputs` (pole názvů, index 0 = vstup 1) a jsou pojmenované
+  **jednou** — přepojíš vstup 3 na jiné zařízení, přejmenuješ ho na jednom místě
+  a promítne se do pickeru všech výstupů. (Alternativy — celá matice jako jedno
+  zařízení, nebo samostatná DB tabulka mapování — by buď znemožnily rozdělení
+  výstupů do více místností, nebo přidaly tabulku navíc; config matice je
+  nejjednodušší správné místo.)
 - **Endpoint `extron-matrix.output`**, adresa `{ output: 1..outputCount }`.
   Connection config: `{ host, port=23, password?, inputCount=10, outputCount=8,
-  responseTimeoutMs, reconnectMs }`. Příkazy: `setInput` (AV), `setVideoInput`,
-  `setAudioInput`, `readState`. Capabilities: `subscriptions: false` (poll, ale
-  emituje `state` na echo), `bidirectional: true`, `discovery: false`.
+  inputs?: string[], responseTimeoutMs, reconnectMs }`. Příkazy: `setInput` (AV),
+  `setVideoInput`, `setAudioInput`, `readState`. Capabilities: `subscriptions: false`
+  (poll, ale emituje `state` na echo), `bidirectional: true`, `discovery: false`.
 - **User UI:** widget `MatrixOutputWidget` — jeden `<select>` vstupů na výstup
-  (`setInput`); popisky vstupů z `device.metadata.inputs`, fallback „Input N“.
+  (`setInput`); popisky vstupů čte z `connection.config.inputs` přes
+  `useConnectionsStore`, fallback „Input N“.
 
 -----
 

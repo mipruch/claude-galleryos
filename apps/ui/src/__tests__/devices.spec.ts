@@ -200,19 +200,34 @@ describe('readInt', () => {
 })
 
 describe('matrixInputs', () => {
-  it('uses metadata labels (numbered) and prepends a None option', () => {
-    const device = makeDevice({ metadata: { inputCount: 2, inputs: ['Lectern', 'Laptop'] } })
-    expect(matrixInputs(device)).toEqual([
+  it('uses connection-config labels (numbered) and prepends a None option', () => {
+    const config = { inputCount: 2, inputs: ['Lectern', 'Laptop'] }
+    expect(matrixInputs(config)).toEqual([
       { value: 0, label: 'None' },
       { value: 1, label: '1. Lectern' },
       { value: 2, label: '2. Laptop' },
     ])
   })
 
-  it('generates "Input N" when labels are missing, defaulting to 10 inputs', () => {
-    const inputs = matrixInputs(makeDevice({ metadata: {} }))
+  it('falls back to "Input N" for unnamed inputs up to inputCount', () => {
+    // 3 inputs declared, only the first two named.
+    const inputs = matrixInputs({ inputCount: 3, inputs: ['Lectern'] })
+    expect(inputs).toEqual([
+      { value: 0, label: 'None' },
+      { value: 1, label: '1. Lectern' },
+      { value: 2, label: 'Input 2' },
+      { value: 3, label: 'Input 3' },
+    ])
+  })
+
+  it('generates "Input N" when config is empty, defaulting to 10 inputs', () => {
+    const inputs = matrixInputs({})
     expect(inputs).toHaveLength(11) // None + 10
     expect(inputs[1]).toEqual({ value: 1, label: 'Input 1' })
     expect(inputs[10]).toEqual({ value: 10, label: 'Input 10' })
+  })
+
+  it('tolerates an undefined config', () => {
+    expect(matrixInputs(undefined)).toHaveLength(11)
   })
 })

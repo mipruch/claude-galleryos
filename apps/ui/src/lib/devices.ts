@@ -88,16 +88,18 @@ export interface MatrixInput {
 }
 
 /**
- * Build the list of inputs a matrix output can select. Reads human labels from
- * the device's `metadata.inputs` (`string[]`, index 0 = input 1) when present,
- * otherwise generates "Input N" up to `metadata.inputCount` (default 10). Always
- * prepends a `None` (0 = untie) option.
+ * Build the list of inputs a matrix output can select. Input labels are a
+ * property of the *matrix*, so they're read from the **connection** config —
+ * `config.inputs` (`string[]`, index 0 = input 1), named once and shared by
+ * every output — not from the per-output device. Falls back to "Input N" up to
+ * `config.inputCount` (default 10) for any unnamed input. Always prepends a
+ * `None` (0 = untie) option.
  */
-export function matrixInputs(device: DeviceRecord): MatrixInput[] {
-  const meta = (device.metadata ?? {}) as Record<string, unknown>
-  const labels = Array.isArray(meta.inputs) ? (meta.inputs as unknown[]) : []
-  const count = typeof meta.inputCount === 'number' && meta.inputCount > 0
-    ? meta.inputCount
+export function matrixInputs(connectionConfig: Record<string, unknown> | undefined): MatrixInput[] {
+  const config = connectionConfig ?? {}
+  const labels = Array.isArray(config.inputs) ? (config.inputs as unknown[]) : []
+  const count = typeof config.inputCount === 'number' && config.inputCount > 0
+    ? config.inputCount
     : labels.length || 10
   const inputs: MatrixInput[] = [{ value: 0, label: 'None' }]
   for (let i = 1; i <= count; i++) {

@@ -164,7 +164,9 @@ the raw DALI short address; the short address is kept as read-only metadata.
 
 Target: **Extron DTP CrossPoint 108 4K** (10 inputs × 8 outputs). ⚠️ **Protocol
 correction:** the original sketch guessed `%`=audio and an `I{out}` query. The
-actual Extron **SIS** grammar (implemented in the pure, unit-tested `src/sis.ts`):
+actual Extron **SIS** grammar (implemented in the pure, unit-tested `src/sis.ts`)
+is **verified against the bundled manual** (`manuals/Extron-108-manual.pdf`,
+Programming Guide pp. 63-64 + "Establishing a connection" / "Error Responses"):
 
 **Protocol** (ASCII, CR-terminated commands; CR/LF-framed responses):
 - `{in}*{out}!` — tie input→output, **AV/All** (audio + video together)
@@ -191,8 +193,10 @@ unsolicited front-panel ties refresh the cache and surface on the next poll.
 - [x] `ExtronMatrixDriver.ts` — persistent socket, reconnect/backoff, password handshake, mutex-serialised request/response
 - [x] Mock SIS device for tests (`test/mock-device.ts`) — ties, queries, auth, `E##`, front-panel push
 - [x] Register in `apps/server/src/drivers/registry.ts` (id `extron-matrix`, pkg `@gallery/driver-extron-matrix`)
-- [x] Seed: one connection + 8 output devices (`metadata.inputs` labels for the UI)
-- [x] **User UI:** `matrixOutput` widget — one input `<select>` per output (`setInput`)
+- [x] Seed: one connection + 8 output devices. **Input labels live on the connection**
+      (`config.inputs`, named once per matrix), not duplicated per output device
+- [x] **User UI:** `matrixOutput` widget — one input `<select>` per output (`setInput`);
+      labels read from the connection's `config.inputs` via `useConnectionsStore`
 
 ### 1.5 `driver-samsung-mdc` — Samsung MDC (TCP 1515)
 
@@ -354,7 +358,8 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         mute, on/off switch, **Extron matrix output input-select**. Each in a
         shared `DeviceCard` (title + description tooltip + online dot). Widget
         chosen by driver `subtype` (`matrixOutput` → `MatrixOutputWidget`, a
-        single input `<select>` per output sending `setInput`).
+        single input `<select>` per output sending `setInput`; input labels come
+        from the connection's `config.inputs`, named once per matrix).
   - [x] **Routing + room sidebar (`vue-router`, `AppSidebar`):** `/` = all
         devices, `/rooms/:roomId` = that room (URL is the source of truth; a
         refresh stays put, unknown paths → `/`). The store carries a `roomScope`

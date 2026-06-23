@@ -45,20 +45,23 @@ const RESPONSE_TIE_TYPE: Record<string, TieType> = {
   aud: "audio",
 };
 
-/** Human-readable messages for the documented SIS error codes (`E##`). */
+/**
+ * Human-readable messages for the SIS error codes, per the DTP CrossPoint 4K
+ * Series Programming Guide ("Switcher Error Responses").
+ */
 const SIS_ERRORS: Record<string, string> = {
-  E01: "invalid input number",
-  E10: "unrecognized command",
-  E11: "invalid preset number",
-  E12: "invalid port/output number",
+  E01: "invalid input number (out of range)",
+  E10: "invalid command",
+  E11: "invalid preset number (out of range)",
+  E12: "invalid output number (out of range)",
   E13: "invalid value (out of range)",
-  E14: "command not valid for this configuration",
-  E17: "invalid command for this signal type",
+  E14: "invalid command for this configuration",
   E22: "busy",
   E24: "privilege violation",
   E25: "device not present",
   E26: "maximum number of connections exceeded",
   E28: "bad filename or file not found",
+  E33: "bad file type or size",
 };
 
 /**

@@ -98,6 +98,13 @@ const SEED_ROOMS = [
   },
 ];
 
+// Extron matrix input labels — named once on the connection (config.inputs),
+// shared by every output's picker. Index 0 = input 1.
+const EXTRON_INPUT_LABELS = [
+  "Lectern PC", "Laptop HDMI", "Doc Camera", "Blu-ray", "Media Server",
+  "Camera 1", "Camera 2", "Wireless AirMedia", "Aux HDMI", "Test Pattern",
+];
+
 export const SEED_CONNECTIONS = [
   {
     id: CONN_PJLINK,
@@ -170,6 +177,10 @@ export const SEED_CONNECTIONS = [
       // switcher has a control password set.
       inputCount: 10,
       outputCount: 8,
+      // Input labels live here on the matrix (the connection), named once — not
+      // duplicated per output. Re-cable input 3 → rename it once and every
+      // output's picker updates. Index 0 = input 1.
+      inputs: EXTRON_INPUT_LABELS,
       responseTimeoutMs: 2000,
       reconnectMs: 2000,
     },
@@ -191,12 +202,9 @@ export const SEED_CONNECTIONS = [
   },
 ];
 
-// 8 outputs of the Extron DTP CrossPoint 108 4K, generated so the input labels
-// live in one place. Each output is a device feeding a destination in the venue.
-const EXTRON_INPUT_LABELS = [
-  "Lectern PC", "Laptop HDMI", "Doc Camera", "Blu-ray", "Media Server",
-  "Camera 1", "Camera 2", "Wireless AirMedia", "Aux HDMI", "Test Pattern",
-];
+// 8 outputs of the Extron DTP CrossPoint 108 4K. Each output is a device feeding
+// a destination in the venue; input *labels* live on the connection (see
+// EXTRON_INPUT_LABELS above), so the output devices carry no input metadata.
 const EXTRON_OUTPUT_NAMES: { name: string; roomId: string; icon: string }[] = [
   { name: "Projektor sál",      roomId: ROOM_HALL,  icon: "projector" },
   { name: "LED stěna sál",      roomId: ROOM_HALL,  icon: "monitor" },
@@ -219,7 +227,6 @@ const EXTRON_OUTPUTS = EXTRON_OUTPUT_NAMES.map((o, i) => {
     subtype: "extron-matrix.output",
     address: { output },
     capabilities: ["setInput", "setVideoInput", "setAudioInput"],
-    metadata: { inputCount: EXTRON_INPUT_LABELS.length, inputs: EXTRON_INPUT_LABELS },
     icon: o.icon,
     displayOrder: 60 + i,
   };
@@ -531,8 +538,8 @@ export const SEED_DEVICES = [
 
   // ── Extron matrix outputs ───────────────────────────────────
   // One device per output of the DTP CrossPoint 108 4K. Each picks one of the
-  // 10 inputs. `metadata.inputs` gives the User UI human input labels (index 0 =
-  // input 1); the widget falls back to "Input N" up to metadata.inputCount.
+  // 10 inputs; the input *labels* live on the connection (`config.inputs`),
+  // named once for the whole matrix, so outputs carry no input metadata.
   ...EXTRON_OUTPUTS,
 ];
 

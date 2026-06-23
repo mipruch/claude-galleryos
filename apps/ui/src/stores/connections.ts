@@ -46,6 +46,10 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (d.connectionId) patchStatus(d.connectionId, { lastError: d.message })
   })
 
+  /** The driver-specific config blob for a connection (empty if unknown). */
+  const configOf = (id: string): Record<string, unknown> =>
+    (records.value.find((c) => c.id === id)?.config ?? {}) as Record<string, unknown>
+
   /**
    * Merges a partial status update into the live status for a connection, defaulting to offline if no existing status is present.
    */
@@ -149,6 +153,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     enabledCount,
     label,
     allConnected,
+    configOf,
     init,
     fetchAll,
     setEnabled,

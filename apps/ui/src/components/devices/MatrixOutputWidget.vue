@@ -11,11 +11,15 @@ import { ArrowRightLeftIcon } from '@lucide/vue'
 import DeviceCard from './DeviceCard.vue'
 import { matrixInputs, readInt, type DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
+import { useConnectionsStore } from '@/stores/connections'
 
 const props = defineProps<{ device: DeviceRecord }>()
 const store = useDevicesStore()
+const connections = useConnectionsStore()
 
-const inputs = computed(() => matrixInputs(props.device))
+// Input labels belong to the matrix (the connection), so they're read once from
+// the connection's config and shared by every output of this switcher.
+const inputs = computed(() => matrixInputs(connections.configOf(props.device.connectionId)))
 const current = computed(() => readInt(store.stateOf(props.device.id), 'input'))
 
 function onSelect(event: Event): void {
