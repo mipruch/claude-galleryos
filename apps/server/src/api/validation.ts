@@ -126,6 +126,32 @@ function endpointOf(manifest: DriverManifest, endpointType: string): EndpointTyp
 }
 
 /**
+ * Normalise incoming config before schema validation: any property declared
+ * `type:"array"` in the driver's connectionSchema whose incoming value is a
+ * plain string is split on newlines then commas and trimmed. This lets admin
+ * forms send array fields as textarea (one entry per line) without breaking
+ * Ajv's strict type check.
+ */
+export function coerceConnectionConfig(
+  driverId: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const manifest = driverRegistry.get(driverId);
+  if (!manifest?.connectionSchema.properties) return config;
+  const props = manifest.connectionSchema.properties as Record<string, { type?: unknown }>;
+  const result: Record<string, unknown> = { ...config };
+  for (const [key, fieldSchema] of Object.entries(props)) {
+    if (fieldSchema.type === "array" && typeof result[key] === "string") {
+      result[key] = (result[key] as string)
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return result;
+}
+
+/**
  * Validates a connection configuration against the driver's schema.
  *
  * @throws Throws an error if the connection configuration does not match the schema.

@@ -11,6 +11,7 @@ import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 import type { ConnectionDTO } from '@gallery/types'
+import type { JsonSchema } from '@gallery/driver-core'
 import type { ConnectionView } from '@/stores/connections'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDriversStore } from '@/stores/drivers'
@@ -30,6 +31,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import SchemaFields from './SchemaFields.vue'
+import ArrayStringField from './ArrayStringField.vue'
 
 const props = defineProps<{ open: boolean; connection?: ConnectionView | null }>()
 const emit = defineEmits<{ 'update:open': [boolean] }>()
@@ -46,6 +48,28 @@ const driverId = ref('')
 const manifest = computed(() => drivers.get(driverId.value))
 const configSchema = computed(() => manifest.value?.connectionSchema)
 const configFields = computed(() => schemaToFields(configSchema.value))
+
+// Array-of-string config properties (e.g. Extron input labels) are edited
+// outside vee-validate by ArrayStringField; the scalar schema form skips them.
+interface StringArrayProperty {
+  key: string
+  label: string
+  description?: string
+  schema: JsonSchema
+}
+const stringArrayProperties = computed<StringArrayProperty[]>(() => {
+  const props = (configSchema.value?.properties ?? {}) as Record<string, JsonSchema>
+  return Object.entries(props)
+    .filter(([, prop]) => prop.type === 'array' && (prop.items as JsonSchema | undefined)?.type === 'string')
+    .map(([key, prop]) => ({
+      key,
+      label: (prop.title as string | undefined) ?? key,
+      description: prop.description as string | undefined,
+      schema: prop,
+    }))
+})
+/** Live values for each string-array property, keyed by property name. */
+const stringArrays = ref<Record<string, string[]>>({})
 
 const validationSchema = computed(() =>
   toTypedSchema(
@@ -66,6 +90,13 @@ function hydrate(): void {
   const c = props.connection
   driverId.value = c?.driverId ?? ''
   const config = (c?.config as Record<string, unknown> | undefined) ?? {}
+  // Seed string-array fields from the saved config (or empty).
+  stringArrays.value = Object.fromEntries(
+    stringArrayProperties.value.map((p) => [
+      p.key,
+      Array.isArray(config[p.key]) ? (config[p.key] as string[]) : [],
+    ]),
+  )
   resetForm({
     values: {
       name: c?.name ?? '',
@@ -87,6 +118,7 @@ watch(driverId, (next, prev) => {
   for (const [key, value] of Object.entries(defaultsFromSchema(configSchema.value))) {
     setFieldValue(key, value)
   }
+  stringArrays.value = Object.fromEntries(stringArrayProperties.value.map((p) => [p.key, []]))
 })
 
 watch(
@@ -107,6 +139,13 @@ const submit = handleSubmit(async (values) => {
   for (const key of schemaKeys) {
     if (key === 'host' || key === 'port') continue
     config[key] = (values as Record<string, unknown>)[key]
+  }
+  // Merge string-array fields (e.g. input labels), which live outside vee-validate.
+  for (const p of stringArrayProperties.value) {
+    const arr = stringArrays.value[p.key] ?? []
+    // Drop trailing empty strings; omit entirely if nothing was entered.
+    const trimmed = arr.map((s) => s.trim()).filter(Boolean)
+    if (trimmed.length) config[p.key] = trimmed
   }
   const payload: Partial<ConnectionDTO> = {
     name: values.name,
@@ -169,6 +208,16 @@ const submit = handleSubmit(async (values) => {
 
           <!-- Driver-specific config (host, port, and any extras). -->
           <SchemaFields :fields="configFields" />
+
+          <!-- Array-of-string fields (e.g. Extron input labels), one input per entry. -->
+          <ArrayStringField
+            v-for="p in stringArrayProperties"
+            :key="p.key"
+            :label="p.label"
+            :description="p.description"
+            :model-value="stringArrays[p.key] ?? []"
+            @update:model-value="stringArrays[p.key] = $event"
+          />
 
           <FormField v-slot="{ componentField }" name="protocol">
             <FormItem>

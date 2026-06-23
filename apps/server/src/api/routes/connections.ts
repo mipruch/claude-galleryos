@@ -17,7 +17,7 @@ import type { Connection } from "@gallery/types";
 import { toConnectionRecord } from "../../db/repositories.ts";
 import type { ApiContext } from "../context.ts";
 import { HttpError, paramId, json, noContent, readJson, requireFields, route, type RouteMap } from "../http.ts";
-import { assertValidConnectionConfig } from "../validation.ts";
+import { assertValidConnectionConfig, coerceConnectionConfig } from "../validation.ts";
 
 /** Effective value of a PUT field: `undefined` keeps the current value. */
 const effective = <T>(patch: T | null | undefined, current: T | null): T | null =>
@@ -52,7 +52,9 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
         if (!ctx.driverRegistry.has(driverId)) {
           throw new HttpError(400, "BAD_REQUEST", `unknown driver: ${driverId}`);
         }
-        const config = (body.config as Record<string, unknown> | undefined) ?? {};
+        const rawConfig = (body.config as Record<string, unknown> | undefined) ?? {};
+        // Coerce string values to arrays for array-typed fields (e.g. textarea inputs).
+        const config = coerceConnectionConfig(driverId, rawConfig);
         // host/port are dedicated columns — they must win over any same-named
         // keys in the freeform config blob, so spread config first.
         assertValidConnectionConfig(driverId, {
@@ -66,7 +68,7 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
           host: (body.host as string | undefined) ?? null,
           port: (body.port as number | undefined) ?? null,
           protocol: (body.protocol as string | undefined) ?? "tcp",
-          config: (body.config as Record<string, unknown> | undefined) ?? {},
+          config,
           enabled: (body.enabled as boolean | undefined) ?? true,
         });
         if (created?.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(created));
@@ -97,8 +99,10 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
         // Validate the post-update state: a partial PUT must still leave a
         // connection whose config satisfies the (possibly new) driver's schema.
         const driverId = (body.driverId as string | undefined) ?? existing.driverId;
-        const config =
+        const rawConfig =
           (body.config as Record<string, unknown> | undefined) ?? (existing.config as Record<string, unknown>) ?? {};
+        // Coerce string values to arrays for array-typed fields (e.g. textarea inputs).
+        const config = coerceConnectionConfig(driverId, rawConfig);
         // host/port are dedicated columns — spread config first so they win.
         assertValidConnectionConfig(driverId, {
           ...config,
@@ -111,7 +115,7 @@ export function connectionsRoutes(ctx: ApiContext): RouteMap {
           host: body.host as string | null | undefined,
           port: body.port as number | null | undefined,
           protocol: body.protocol as string | undefined,
-          config: body.config as Record<string, unknown> | undefined,
+          config: body.config !== undefined ? config : undefined,
           enabled: body.enabled as boolean | undefined,
         });
         if (!updated) throw new HttpError(404, "NOT_FOUND", "connection not found");
