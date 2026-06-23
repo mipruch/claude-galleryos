@@ -24,6 +24,7 @@ export type DeviceKind =
   | 'bssFader'
   | 'bssMatrix'
   | 'bssMeter'
+  | 'matrixOutput'
   | 'switch'
   | 'unsupported'
 
@@ -45,6 +46,8 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
     case 'netio.socket':
     case 'pjlink.projector':
       return 'switch'
+    case 'extron-matrix.output':
+      return 'matrixOutput'
     default:
       return 'unsupported'
   }
@@ -70,6 +73,45 @@ export function readOn(state: DeviceState | undefined, ...keys: string[]): boole
     // boolean false: keep looking — a later key may carry an authoritative "on"
   }
   return false
+}
+
+/** Read an integer value (e.g. a matrix input number), defaulting to 0. */
+export function readInt(state: DeviceState | undefined, ...keys: string[]): number {
+  for (const key of keys) {
+    const v = state?.[key]
+    if (typeof v === 'number' && Number.isInteger(v)) return v
+  }
+  return 0
+}
+
+/** A selectable matrix input: its switch number and a human label. */
+export interface MatrixInput {
+  value: number
+  label: string
+}
+
+/**
+ * Build the list of inputs a matrix output can select. Input labels are a
+ * property of the *matrix*, so they're read from the **connection** config —
+ * `config.inputs` (`string[]`, index 0 = input 1), named once and shared by
+ * every output — not from the per-output device. Falls back to "Input N" up to
+ * `config.inputCount` (default 10) for any unnamed input. Always prepends a
+ * `None` (0 = untie) option.
+ */
+export function matrixInputs(connectionConfig: Record<string, unknown> | undefined): MatrixInput[] {
+  const config = connectionConfig ?? {}
+  const labels = Array.isArray(config.inputs) ? (config.inputs as unknown[]) : []
+  const count = typeof config.inputCount === 'number' && config.inputCount > 0
+    ? config.inputCount
+    : labels.length || 10
+  const inputs: MatrixInput[] = [{ value: 0, label: 'None' }]
+  for (let i = 1; i <= count; i++) {
+    const label = typeof labels[i - 1] === 'string' && labels[i - 1] !== ''
+      ? `${i}. ${labels[i - 1] as string}`
+      : `Input ${i}`
+    inputs.push({ value: i, label })
+  }
+  return inputs
 }
 
 // ── optimistic-update helpers (snapshot + revert for command rollback) ───────

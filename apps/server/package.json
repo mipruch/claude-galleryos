@@ -18,6 +18,7 @@
     "@gallery/driver-core": "workspace:*",
     "@gallery/driver-dali-foxtron": "workspace:*",
     "@gallery/driver-dali-lunatone": "workspace:*",
+    "@gallery/driver-extron-matrix": "workspace:*",
     "@gallery/driver-netio": "workspace:*",
     "@gallery/driver-pjlink": "workspace:*",
     "@gallery/driver-tcp-generic": "workspace:*",

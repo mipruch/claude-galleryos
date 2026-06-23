@@ -814,7 +814,7 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 |`dali-foxtron` |Foxtron DALInet / DALI2net brána ✓    |TCP/ASCII   |Ne (poll)             |Ne        |
 |`netio`        |NETIO chytré zásuvky (PowerBOX/PDU) ✓ |HTTP/JSON   |Ne (poll)             |Ne        |
 |`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
-|`extron-matrix`|Extron video matice                   |TCP/SIS     |Ne                    |Ne        |
+|`extron-matrix`|Extron matice (DTP CrossPoint 108 4K) ✓|TCP/SIS     |Ne (poll)             |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
@@ -896,6 +896,46 @@ zásuvky (PowerBOX, PowerPDU, PowerDIN) přes **JSON M2M API nad HTTP** (manuál
 - **Endpoint `netio.socket`**, adresa `{ outputId: 1..8 }`. Příkazy: `on`, `off`,
   `toggle`, `shortOn`/`shortOff` (s volitelným `delayMs` — krátký impuls / power-cycle,
   Action 1/0/4/3/2 dle protokolu).
+
+#### `driver-extron-matrix` — Extron matice / DTP CrossPoint 108 4K (implementováno)
+
+Balíček `packages/drivers/driver-extron-matrix` (driver id `extron-matrix`). Ovládá
+Extron maticové přepínače (DTP CrossPoint 108 4K = 10 vstupů × 8 výstupů, dále
+CrossPoint, MAV Plus) přes **SIS protokol nad TCP 23** (Telnet). Gramatika je
+ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
+
+- **`src/sis.ts`** — čistý, samostatně testovaný kodek. Builder příkazů a
+  **tolerantní** parser odpovědí (firmware se v drobnostech liší — viz hlavička
+  souboru). Gramatika:
+  - tie (přepnutí): `{in}*{out}!` = AV/All (audio + video), `{in}*{out}%` = jen video,
+    `{in}*{out}$` = jen audio; vstup `0` rozpojí výstup
+  - dotaz: `{out}%` / `{out}$` = aktuální video/audio vstup na výstupu (bez `{in}*` prefixu)
+  - echo tie: `Out02 In05 All`; echo dotazu: `In05`; chyby: `E##` (mapováno na zprávy)
+- **`src/ExtronMatrixDriver.ts`** — jeden perzistentní socket na connection sdílený
+  všemi výstupy. Reconnect s exponenciálním backoffem; volitelný `Password:`
+  handshake na connectu. Veškeré I/O je **serializováno mutexem** (SIS je jedna
+  konverzace), takže se echo `Out.. In..` páruje s právě běžícím požadavkem podle
+  čísla výstupu. Nevyžádané změny z čelního panelu aktualizují cache a projeví se
+  při dalším pollu.
+- **Connection + endpoint model:** každý **výstup** je jeden endpoint
+  `extron-matrix.output` (Device v místnosti) s jediným výběrem „který vstup?“ —
+  8výstupová matice = 8 zařízení pod jednou connection. Mřížka 10×8 se v UI nikdy
+  nezobrazuje.
+- **Popisky vstupů patří matici (connection), ne jednotlivým výstupům.** Žijí
+  v `connection.config.inputs` (pole názvů, index 0 = vstup 1) a jsou pojmenované
+  **jednou** — přepojíš vstup 3 na jiné zařízení, přejmenuješ ho na jednom místě
+  a promítne se do pickeru všech výstupů. (Alternativy — celá matice jako jedno
+  zařízení, nebo samostatná DB tabulka mapování — by buď znemožnily rozdělení
+  výstupů do více místností, nebo přidaly tabulku navíc; config matice je
+  nejjednodušší správné místo.)
+- **Endpoint `extron-matrix.output`**, adresa `{ output: 1..outputCount }`.
+  Connection config: `{ host, port=23, password?, inputCount=10, outputCount=8,
+  inputs?: string[], responseTimeoutMs, reconnectMs }`. Příkazy: `setInput` (AV),
+  `setVideoInput`, `setAudioInput`, `readState`. Capabilities: `subscriptions: false`
+  (poll, ale emituje `state` na echo), `bidirectional: true`, `discovery: false`.
+- **User UI:** widget `MatrixOutputWidget` — jeden `<select>` vstupů na výstup
+  (`setInput`); popisky vstupů čte z `connection.config.inputs` přes
+  `useConnectionsStore`, fallback „Input N“.
 
 -----
 
