@@ -115,6 +115,18 @@ export interface ScheduleCreateInput {
 
 export type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
 
+// ── iframes (embedded device UIs) ────────────────────────────
+
+/** Body accepted by `POST /iframes` — one embedded UI / sidebar entry. */
+export interface IframeCreateInput {
+  name: string;
+  url: string;
+  /** Sidebar sort position (ascending). Defaults to 0 server-side. */
+  displayOrder?: number;
+}
+
+export type IframeUpdateInput = Partial<IframeCreateInput>;
+
 /**
  * `GET /schedules/:id/next` preview — upcoming UTC fire times for a job. Times
  * are ISO UTC strings; display logic converts them to local time.

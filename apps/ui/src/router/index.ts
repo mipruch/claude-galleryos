@@ -68,6 +68,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Schedules', subtitle: 'CRON jobs that run scenes' },
       },
       {
+        path: 'iframes',
+        name: 'admin-iframes',
+        component: () => import('@/views/admin/IframesView.vue'),
+        meta: { title: 'Iframes', subtitle: 'Embedded device UIs' },
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),

@@ -1469,6 +1469,18 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   do něj se sloučil i lokální `formatUptime` z dashboardu; vendorovaná
   `CardDescription`.
 
+#### Implementováno (pátý řez — Iframes)
+
+- **`/admin/iframes`** (`views/admin/IframesView.vue`) — tabulka embedovaných
+  device UI (každý řádek = jedna položka v sidebaru User panelu): pořadí, název,
+  URL (odkaz), edit a mazání + `IframeFormDialog` (vee-validate + Zod). URL má
+  klientský check `isEmbeddableUrl` (absolutní `http(s)`), aby se `<iframe>`
+  skutečně načetl; autoritativní zůstává server. `useIframesStore` drží seznam
+  seřazený podle `displayOrder` (`lib/iframes.ts`: `isEmbeddableUrl`,
+  `sortByDisplayOrder`, unit-testované) a má CRUD; `lib/api.ts` mapuje
+  `iframes.create/update` na nové typy `IframeCreateInput` / `IframeUpdateInput`.
+- Backend (`/api/v1/iframes`) i sidebar (`AdminSidebar.vue`) jsou propojené.
+
 Zbývající admin stránky (rooms, mappings, layouts) přidají další řezy
 — viz PLAN §"Priority 5 — UI".
 

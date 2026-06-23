@@ -20,6 +20,8 @@ import type {
   DeviceState,
   DeviceStatus,
   IframeDTO,
+  IframeCreateInput,
+  IframeUpdateInput,
   Jsonify,
   LevelCount,
   LogDTO,
@@ -152,8 +154,8 @@ export const api = {
   iframes: {
     list: () => get<IframeDTO[]>('/iframes'),
     get: (id: string) => get<IframeDTO>(`/iframes/${id}`),
-    create: (input: Partial<IframeDTO>) => post<IframeDTO>('/iframes', input),
-    update: (id: string, patch: Partial<IframeDTO>) => put<IframeDTO>(`/iframes/${id}`, patch),
+    create: (input: IframeCreateInput) => post<IframeDTO>('/iframes', input),
+    update: (id: string, patch: IframeUpdateInput) => put<IframeDTO>(`/iframes/${id}`, patch),
     remove: (id: string) => del(`/iframes/${id}`),
   },
 

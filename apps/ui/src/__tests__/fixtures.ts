@@ -7,7 +7,7 @@
  * *actual* DTO types with sensible defaults, so the fixtures stay coupled to the
  * wire contracts (a breaking DTO change is now a compile error in the tests).
  */
-import type { DeviceDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
+import type { DeviceDTO, IframeDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
 
@@ -63,6 +63,19 @@ export function makeSchedule(over: Partial<ScheduledJobDTO> = {}): ScheduledJobD
     createdAt: NOW,
     updatedAt: NOW,
     createdBy: 'admin',
+    ...over,
+  }
+}
+
+/** A complete `IframeDTO`; pass `over` to override defaults. */
+export function makeIframe(over: Partial<IframeDTO> = {}): IframeDTO {
+  return {
+    id: 'i',
+    name: 'Iframe',
+    url: 'https://example.com/ui',
+    displayOrder: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
     ...over,
   }
 }

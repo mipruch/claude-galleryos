@@ -396,6 +396,13 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           helpers (`formatUptime`, `capabilityLabels`, unit-tested); Dashboard's
           local `formatUptime` folded into it. New vendored `card` →
           `CardDescription`.
+    - [x] **`/admin/iframes`** (`views/admin/IframesView.vue`) — table (display
+          order, name, URL, edit, delete) + `IframeFormDialog` (vee-validate +
+          Zod, client-side `isEmbeddableUrl` http(s) check). New `useIframesStore`
+          (CRUD, list kept sorted by `displayOrder`) and `lib/iframes.ts`
+          (`isEmbeddableUrl`, `sortByDisplayOrder`, unit-tested). `lib/api.ts`
+          iframe create/update now typed via new `IframeCreateInput` /
+          `IframeUpdateInput`; `AdminSidebar` entry enabled.
     - [ ] rooms, mappings, layouts (later passes)
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
