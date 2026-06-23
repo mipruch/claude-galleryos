@@ -41,7 +41,7 @@ const pageSubtitle = computed(() => {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col">
+  <div class="flex h-screen overflow-hidden flex-col">
     <!-- Offline banner -->
     <div
       v-if="!store.connected"
@@ -86,7 +86,7 @@ const pageSubtitle = computed(() => {
           </div>
         </header>
 
-        <main class="w-full flex-1">
+        <main class="w-full flex-1 overflow-y-auto">
           <RouterView />
         </main>
       </div>

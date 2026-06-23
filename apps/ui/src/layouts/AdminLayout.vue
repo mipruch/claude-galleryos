@@ -21,7 +21,7 @@ const pageSubtitle = computed(() =>
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col">
+  <div class="flex h-screen overflow-hidden flex-col">
     <div
       v-if="!realtime.connected"
       class="bg-destructive/10 text-destructive flex items-center justify-center gap-2 px-4 py-1.5 text-sm"
