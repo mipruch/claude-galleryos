@@ -222,22 +222,38 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   private async doTransaction(body: string): Promise<string> {
     if (this.destroyed) throw new Error("driver destroyed");
 
+    // `responseTimeoutMs` is the budget for the *whole* transaction, not for
+    // each phase. A fresh socket is opened per command (PJLink projectors close
+    // the connection after every response), so connect + banner + command run
+    // sequentially; we share one deadline across them. This keeps the worst-case
+    // transaction time at ~responseTimeoutMs instead of 3× that, so it stays
+    // comfortably inside the core's IPC request timeout — otherwise the host
+    // gives up while the driver is still talking to the projector, which both
+    // spams the watchdog and (via the I/O lock below) makes the *next* user
+    // command time out too.
+    const deadline = Date.now() + this.timeoutMs;
+    const remaining = (): number => {
+      const ms = deadline - Date.now();
+      if (ms <= 0) throw new Error(`pjlink transaction exceeded ${this.timeoutMs}ms`);
+      return ms;
+    };
+
     const client = new TcpClient({
       hostname: this.host,
       port: this.port,
       rxDelimiter: "\r",
       txDelimiter: "\r",
       encoding: "latin1",
-      connectTimeoutMs: this.timeoutMs,
+      connectTimeoutMs: remaining(),
     });
 
     await client.connect();
     try {
-      const banner = await client.receive(this.timeoutMs);
+      const banner = await client.receive(remaining());
       const prefix = this.authPrefix(banner);
       // Log the raw protocol message sent to the physical device.
       this.ctx.logger.debug("pjlink tx →", { host: this.host, port: this.port, body });
-      const response = await client.request(prefix + body, this.timeoutMs);
+      const response = await client.request(prefix + body, remaining());
       this.ctx.logger.debug("pjlink rx ←", { host: this.host, response });
       return parseResponse(response);
     } finally {

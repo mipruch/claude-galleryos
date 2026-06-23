@@ -55,6 +55,12 @@ export const appConfig = {
     restartMaxAttempts: int("DRIVER_RESTART_MAX_ATTEMPTS", 0), // 0 = unlimited
     restartBaseDelayMs: int("DRIVER_RESTART_BASE_DELAY_MS", 1_000),
     restartMaxDelayMs: int("DRIVER_RESTART_MAX_DELAY_MS", 30_000),
-    commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 2_000),
+    // Budget for a single driver IPC round-trip (command/state/health). Must
+    // exceed a driver's own per-transaction timeout so the host doesn't abandon
+    // the call while the driver is still talking to the device — e.g. PJLink
+    // opens a fresh socket per command (connect + banner + command). A health
+    // check holding the driver's I/O lock plus a queued user command must both
+    // fit inside this window, hence the comfortable default.
+    commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 5_000),
   },
 } as const;

@@ -96,7 +96,7 @@ export class DriverHost extends EventEmitter {
     this.storage = options.storage;
     this.dryRun = options.dryRun ?? false;
     this.restart = options.restart ?? { maxAttempts: 0, baseDelayMs: 1_000, maxDelayMs: 30_000 };
-    this.commandTimeoutMs = options.commandTimeoutMs ?? 2_000;
+    this.commandTimeoutMs = options.commandTimeoutMs ?? 5_000;
     this.startTimeoutMs = options.startTimeoutMs ?? 8_000;
     this.runtimePath = options.runtimePath ?? DEFAULT_RUNTIME_PATH;
   }

@@ -2382,6 +2382,25 @@ Po restartu serveru je driver dostupný v Admin UI.
 | `tcp-generic` | Libovolné jednoduché TCP zařízení | TCP, raw | bidirectional |
 | `dali-lunatone` | Lunatone DALI-2 IoT gateway | HTTP REST, port 80 | discovery, bidirectional |
 
+**`driver-pjlink`** — PJLink Class 1 projektory. ⚠️ **transport: krátkožijící TCP
+spojení na každý příkaz** (connect → banner → command → close). PJLink **není**
+perzistentní spojení — projektor zavírá socket po každé odpovědi (potvrzeno specí,
+hlavičkou driveru i mockem `socket.end()`), takže keepalive na trvalém socketu
+nedává smysl. Logické `online`/`offline` je proto pouze výsledek reachability
+probe (`%1POWR ?`), ne stav otevřeného socketu. Operace jsou serializovány
+(`lock`, jedna transakce v jeden čas — PJLink to vyžaduje).
+
+- **Klíčové rozhodnutí — timeout je rozpočet celé transakce, ne jedné fáze.**
+  `responseTimeoutMs` (default 2000 ms) sdílí jeden deadline napříč connect +
+  banner + command. Dříve dostávala každá ze tří fází plný timeout, takže jedna
+  transakce mohla běžet až ~6 s a přetekla IPC timeout jádra (`commandTimeoutMs`).
+  To způsobovalo (a) spam watchdogu `driver request timed out after 2000ms` každých
+  10 s a (b) „první kliknutí On/Off v UI selže, druhé projde": health-check
+  transakce držela `lock` déle, než byl IPC timeout, takže uživatelský příkaz
+  zařazený za ní také vypršel. IPC `commandTimeoutMs` byl navíc zvednut na 5000 ms,
+  aby měl rozpočet transakce pohodlnou rezervu (health-check + zařazený příkaz se
+  oba vejdou do okna).
+
 **`driver-template`** — kostra pro nový driver. Na rozdíl od většiny šablon je to
 **funkční** mini-driver (hračkový ASCII line-protokol) s `// TODO` komentářem v každé
 metodě. Balíček je soběstačný: driver, jeho mock (`test/mock-device.ts`) i 6 testů

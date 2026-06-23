@@ -26,8 +26,11 @@ interface PjlinkConn {
 }
 
 /** Start a mock PJLink projector. Pass a password to require authentication. */
-export function startPjlinkMock(opts: { password?: string } = {}): PjlinkMockServer {
+export function startPjlinkMock(
+  opts: { password?: string; bannerDelayMs?: number } = {},
+): PjlinkMockServer {
   const password = opts.password;
+  const bannerDelayMs = opts.bannerDelayMs ?? 0;
   const state = { power: "0", input: "31", avmt: "30" };
   const conns = new WeakMap<Socket<PjlinkConn>, PjlinkConn>();
 
@@ -39,7 +42,11 @@ export function startPjlinkMock(opts: { password?: string } = {}): PjlinkMockSer
         const seed = "12345678"; // fixed seed keeps the test deterministic
         const conn: PjlinkConn = { buf: "", authed: !password, seed };
         conns.set(socket, conn);
-        socket.write(password ? `PJLINK 1 ${seed}\r` : "PJLINK 0\r");
+        const banner = password ? `PJLINK 1 ${seed}\r` : "PJLINK 0\r";
+        // Optionally stall the auth banner to exercise the driver's total
+        // transaction deadline (a sluggish projector after socket accept).
+        if (bannerDelayMs > 0) setTimeout(() => socket.write(banner), bannerDelayMs);
+        else socket.write(banner);
       },
       data(socket, data) {
         const conn = conns.get(socket);

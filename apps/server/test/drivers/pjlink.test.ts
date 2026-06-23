@@ -95,6 +95,27 @@ describe("PjlinkDriver", () => {
     await driver.destroy();
   });
 
+  test("a whole transaction is bounded by responseTimeoutMs, not 3× per phase", async () => {
+    // Banner is stalled past the budget; connect + banner + command share one
+    // deadline, so the command must fail at ~responseTimeoutMs — well short of
+    // the 3× (per-phase) worst case the old code allowed.
+    const slow = startPjlinkMock({ bannerDelayMs: 400 });
+    const driver = new PjlinkDriver();
+    const { ctx } = testContext();
+    await driver.init(connConfig(slow.port, { responseTimeoutMs: 200 }), ctx);
+
+    const start = Date.now();
+    const result = await driver.executeCommand(endpoint, "on", {});
+    const elapsed = Date.now() - start;
+
+    expect(result.success).toBe(false);
+    // Bounded by the single 200ms budget (+ scheduling slack), not 600ms.
+    expect(elapsed).toBeLessThan(450);
+
+    await driver.destroy();
+    slow.stop();
+  });
+
   test("dry-run does not touch the device", async () => {
     const driver = new PjlinkDriver();
     const { ctx } = testContext(true);
