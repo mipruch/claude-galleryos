@@ -19,7 +19,13 @@ export type { DeviceDTO as DeviceRecord, DeviceState, DeviceStatus } from '@gall
  * Which control widget a device maps to. Derived from the driver endpoint
  * type (`subtype`). Adding a new driver = one line here.
  */
-export type DeviceKind = 'lightFader' | 'bssFader' | 'bssMatrix' | 'switch' | 'unsupported'
+export type DeviceKind =
+  | 'lightFader'
+  | 'bssFader'
+  | 'bssMatrix'
+  | 'bssMeter'
+  | 'switch'
+  | 'unsupported'
 
 export function deviceKind(device: DeviceRecord): DeviceKind {
   switch (device.subtype) {
@@ -31,6 +37,8 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
       return device.type === 'matrix' ? 'bssMatrix' : 'bssFader'
     case 'bss-soundweb.matrix':
       return 'bssMatrix'
+    case 'bss-soundweb.meter-widget':
+      return 'bssMeter'
     case 'dali.fixture':
     case 'dali-foxtron.fixture':
       return 'lightFader'

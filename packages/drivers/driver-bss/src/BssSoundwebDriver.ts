@@ -26,6 +26,7 @@ import {
   type EndpointDescriptor,
   type HealthStatus,
   type IDeviceDriver,
+  type MeterUpdate,
 } from "@gallery/driver-core";
 import { manifest } from "./manifest.ts";
 import {
@@ -38,6 +39,9 @@ import {
   levelToPercentRaw,
   percentRawToLevel,
 } from "./london-di.ts";
+
+/** Endpoint type of the live-meter widget (not auto-subscribed like faders). */
+const METER_WIDGET_TYPE = "bss-soundweb.meter-widget";
 
 /** Parsed `bss-soundweb.fader` endpoint address. */
 interface FaderAddress {
@@ -52,6 +56,29 @@ interface FaderAddress {
 interface Subscription {
   endpoint: EndpointDescriptor;
   addr: FaderAddress;
+}
+
+/**
+ * Parsed address of one live meter. Unlike a fader this is a single read-only
+ * parameter (the meter's level), driven on demand by the core's MeterService
+ * rather than auto-subscribed on connect.
+ */
+interface MeterAddr {
+  node: number;
+  virtualDevice: number;
+  object: number;
+  param: number;
+  /** dB at 0% bar height (default −80). */
+  minDb: number;
+  /** dB at 100% bar height (default +40). */
+  maxDb: number;
+}
+
+/** Bookkeeping for one active meter subscription. */
+interface MeterSub {
+  addr: MeterAddr;
+  /** The address echoed back on each reading so the core can route it. */
+  echo: Record<string, unknown>;
 }
 
 /** Which field an inbound parameter maps to. */
@@ -81,6 +108,8 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   private readonly subs = new Map<string, Subscription>();
   /** Route inbound (node:vd:object:param) → which endpoint+field it belongs to. */
   private readonly routes = new Map<string, { endpointId: string; field: Field }>();
+  /** Active meter subscriptions, keyed by route key (survives reconnects). */
+  private readonly meters = new Map<string, MeterSub>();
   /** Latest known state per endpoint id (fed by subscription pushes + echoes). */
   private readonly stateCache = new Map<string, FaderState>();
   /** Per-endpoint simulated state for dry-run. */
@@ -242,6 +271,9 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   // ── subscriptions ──────────────────────────────────────────
 
   async subscribeToEndpoint(endpoint: EndpointDescriptor): Promise<void> {
+    // Meter widgets carry no fader address and are driven on demand via
+    // subscribeMeter — skip them in the auto-subscribe-on-connect sweep.
+    if (endpoint.type === METER_WIDGET_TYPE) return;
     const addr = parseAddress(endpoint);
     this.subs.set(endpoint.id, { endpoint, addr });
     this.routes.set(routeKey(addr.node, addr.virtualDevice, addr.object, addr.gainParam), {
@@ -256,6 +288,7 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   }
 
   async unsubscribeFromEndpoint(endpoint: EndpointDescriptor): Promise<void> {
+    if (endpoint.type === METER_WIDGET_TYPE) return;
     const sub = this.subs.get(endpoint.id);
     if (!sub) return;
     const { addr } = sub;
@@ -274,9 +307,40 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     this.send(encodeAddressMessage(MsgType.SUBSCRIBE, paramAddr(addr, addr.muteParam)));
   }
 
-  /** Re-subscribe every tracked endpoint (after a reconnect). */
+  /** Re-subscribe every tracked endpoint + meter (after a reconnect). */
   private resubscribeAll(): void {
     for (const { addr } of this.subs.values()) this.sendSubscribe(addr);
+    for (const { addr } of this.meters.values()) {
+      this.send(encodeAddressMessage(MsgType.SUBSCRIBE, meterParamAddr(addr)));
+    }
+  }
+
+  // ── meters (live, push-only) ───────────────────────────────
+
+  /**
+   * Begin streaming one meter parameter. The device immediately returns the
+   * current value as a SET, then on every change (London DI manual, §SUBSCRIBE).
+   * Idempotent — re-subscribing the same meter just refreshes the bookkeeping and
+   * re-sends a SUBSCRIBE (harmless; the device coalesces it).
+   */
+  async subscribeMeter(address: Record<string, unknown>): Promise<void> {
+    if (this.ctx.dryRun) return;
+    const addr = parseMeterAddress(address);
+    const key = routeKey(addr.node, addr.virtualDevice, addr.object, addr.param);
+    this.meters.set(key, {
+      addr,
+      echo: { node: addr.node, virtualDevice: addr.virtualDevice, object: addr.object, param: addr.param },
+    });
+    if (this.online) this.send(encodeAddressMessage(MsgType.SUBSCRIBE, meterParamAddr(addr)));
+  }
+
+  /** Stop streaming a meter parameter. */
+  async unsubscribeMeter(address: Record<string, unknown>): Promise<void> {
+    if (this.ctx.dryRun) return;
+    const addr = parseMeterAddress(address);
+    const key = routeKey(addr.node, addr.virtualDevice, addr.object, addr.param);
+    if (!this.meters.delete(key)) return;
+    if (this.online) this.send(encodeAddressMessage(MsgType.UNSUBSCRIBE, meterParamAddr(addr)));
   }
 
   // ── socket lifecycle ───────────────────────────────────────
@@ -343,9 +407,18 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     }
   }
 
-  /** Map an inbound SET / SET_PERCENT to its endpoint and update state. */
+  /** Map an inbound SET / SET_PERCENT to its endpoint (or meter) and route it. */
   private routeInbound(msg: DiMessage): void {
-    const route = this.routes.get(routeKey(msg.node, msg.virtualDevice, msg.object, msg.param));
+    const key = routeKey(msg.node, msg.virtualDevice, msg.object, msg.param);
+
+    // Meters first: a meter is a separate, push-only channel (no Redis state).
+    const meter = this.meters.get(key);
+    if (meter) {
+      this.emit("meter", meterUpdateOf(meter, msg.value) satisfies MeterUpdate);
+      return;
+    }
+
+    const route = this.routes.get(key);
     if (!route) return; // not a parameter we track
 
     const patch: FaderState =
@@ -441,6 +514,45 @@ function parseAddress(endpoint: EndpointDescriptor): FaderAddress {
 /** Build a ParameterAddress for a specific parameter id within a fader. */
 function paramAddr(addr: FaderAddress, param: number): ParameterAddress {
   return { node: addr.node, virtualDevice: addr.virtualDevice, object: addr.object, param };
+}
+
+/** Parse + validate one meter address (a single read-only parameter). */
+function parseMeterAddress(a: Record<string, unknown>): MeterAddr {
+  const node = Number(a.node);
+  const object = Number(a.object);
+  if (!Number.isInteger(node) || node < 1 || node > 65534) {
+    throw new Error(`invalid meter address: node must be 1..65534 (got ${a.node})`);
+  }
+  if (!Number.isInteger(object) || object < 0 || object > 0xffffff) {
+    throw new Error(`invalid meter address: object must be 0..16777215 (got ${a.object})`);
+  }
+  const minDb = Number.isFinite(Number(a.minDb)) ? Number(a.minDb) : -80;
+  const maxDb = Number.isFinite(Number(a.maxDb)) ? Number(a.maxDb) : 40;
+  return {
+    node,
+    object,
+    virtualDevice: Number.isInteger(Number(a.virtualDevice)) ? Number(a.virtualDevice) : 3,
+    param: Number.isInteger(Number(a.param)) ? Number(a.param) : 0,
+    minDb,
+    maxDb: maxDb > minDb ? maxDb : minDb + 1, // guard against a zero/negative span
+  };
+}
+
+/** Build the ParameterAddress for a meter's single value parameter. */
+function meterParamAddr(addr: MeterAddr): ParameterAddress {
+  return { node: addr.node, virtualDevice: addr.virtualDevice, object: addr.object, param: addr.param };
+}
+
+/**
+ * Convert a raw meter value into a {@link MeterUpdate}. The London DI meter value
+ * is dB × 10000; we map [minDb, maxDb] onto a 0..1 bar level (see the worked
+ * example in `manuals/bss-meter-subscribe-example.js`).
+ */
+function meterUpdateOf(meter: MeterSub, value: number): MeterUpdate {
+  const { addr, echo } = meter;
+  const db = value / 10000;
+  const level = clamp01((db - addr.minDb) / (addr.maxDb - addr.minDb));
+  return { address: echo, value, level };
 }
 
 function routeKey(node: number, vd: number, object: number, param: number): string {

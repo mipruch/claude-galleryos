@@ -48,7 +48,11 @@ export function schemaToFields(schema: JsonSchema | undefined): SchemaField[] {
   const properties = (schema?.properties ?? {}) as Record<string, JsonSchema>
   const required = new Set((schema?.required as string[] | undefined) ?? [])
 
-  return Object.entries(properties).map(([key, prop]) => {
+  return Object.entries(properties)
+    // Arrays/objects aren't scalar fields; a caller that needs them (e.g. the
+    // meters editor) handles them out of band, so leave them to it.
+    .filter(([, prop]) => prop.type !== 'array' && prop.type !== 'object')
+    .map(([key, prop]) => {
     const kind = kindOf(prop)
     return {
       key,

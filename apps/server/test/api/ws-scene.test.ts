@@ -21,6 +21,7 @@ const ctx = {
       return id === "s1" ? { id: "s1", name: "Scene 1", actions: [] } : undefined;
     },
   },
+  meterService: { disconnect() {} },
 } as unknown as ApiContext;
 
 let server: Server<unknown>;

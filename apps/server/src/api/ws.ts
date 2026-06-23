@@ -87,6 +87,9 @@ export function makeWebSocketHandlers(ctx: ApiContext): WebSocketHandler<unknown
     },
     close(ws, code, reason) {
       ws.unsubscribe(BROADCAST_TOPIC);
+      // Release any live meters this client was watching (last watcher → BSS
+      // unsubscribe) so a closed tab never leaks a subscription.
+      ctx.meterService.disconnect(ws);
       log.info("client disconnected", { remoteAddress: ws.remoteAddress, code, reason });
     },
     async message(ws, raw) {
@@ -196,10 +199,37 @@ async function onSceneExecute(
   ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
 }
 
+/**
+ * A meter widget mounted on a client: start forwarding its meters to this socket
+ * (the MeterService ref-counts so only one BSS subscription exists per meter).
+ */
+async function onMeterSubscribe(
+  ws: ServerWebSocket<unknown>,
+  ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  const deviceId = String(data.deviceId ?? "");
+  if (!deviceId) return;
+  await ctx.meterService.subscribe(ws, deviceId);
+}
+
+/** A meter widget dismounted on a client: stop forwarding its meters. */
+async function onMeterUnsubscribe(
+  ws: ServerWebSocket<unknown>,
+  ctx: ApiContext,
+  data: WsData,
+): Promise<void> {
+  const deviceId = String(data.deviceId ?? "");
+  if (!deviceId) return;
+  await ctx.meterService.unsubscribe(ws, deviceId);
+}
+
 const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
   "device:state:patch": onStatePatch,
   "device:command": onDeviceCommand,
   "scene:execute": onSceneExecute,
+  "meter:subscribe": onMeterSubscribe,
+  "meter:unsubscribe": onMeterUnsubscribe,
 };
 
 // ── broadcast bridge ──────────────────────────────────────────────────────────

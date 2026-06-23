@@ -23,6 +23,7 @@ const ctx = {
       return { success: true, durationMs: 2, state: { power: "on" } };
     },
   },
+  meterService: { disconnect() {} },
 } as unknown as ApiContext;
 
 let server: Server<unknown>;
