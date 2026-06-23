@@ -14,6 +14,7 @@ import type { DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDriversStore } from '@/stores/drivers'
+import type { JsonSchema } from '@gallery/driver-core'
 import { defaultsFromSchema, pruneEmpty, schemaToFields, zodFromSchema } from '@/lib/schemaForm'
 import {
   Dialog,
@@ -31,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import SchemaFields from './SchemaFields.vue'
+import ArrayObjectField from './ArrayObjectField.vue'
 
 const props = defineProps<{ open: boolean; device?: DeviceRecord | null }>()
 const emit = defineEmits<{ 'update:open': [boolean] }>()
@@ -59,6 +61,28 @@ const endpointType = computed(() => drivers.endpointType(driverId.value, subtype
 const addressSchema = computed(() => endpointType.value?.addressSchema)
 const addressFields = computed(() => schemaToFields(addressSchema.value))
 
+// Array-of-object address properties (e.g. a meter widget's `meters`) are edited
+// outside vee-validate by ArrayObjectField; the scalar schema form skips them.
+interface ArrayProperty {
+  key: string
+  label: string
+  description?: string
+  schema: JsonSchema
+}
+const arrayProperties = computed<ArrayProperty[]>(() => {
+  const props = (addressSchema.value?.properties ?? {}) as Record<string, JsonSchema>
+  return Object.entries(props)
+    .filter(([, prop]) => prop.type === 'array')
+    .map(([key, prop]) => ({
+      key,
+      label: (prop.title as string | undefined) ?? key,
+      description: prop.description as string | undefined,
+      schema: prop,
+    }))
+})
+/** Live values for each array property, keyed by property name. */
+const arrays = ref<Record<string, Record<string, unknown>[]>>({})
+
 const validationSchema = computed(() =>
   toTypedSchema(
     z
@@ -81,6 +105,10 @@ function hydrate(): void {
   connectionId.value = d?.connectionId ?? ''
   subtype.value = d?.subtype ?? ''
   const address = (d?.address as Record<string, unknown> | undefined) ?? {}
+  // Seed array-of-object fields from the saved address (or empty).
+  arrays.value = Object.fromEntries(
+    arrayProperties.value.map((p) => [p.key, Array.isArray(address[p.key]) ? (address[p.key] as Record<string, unknown>[]) : []]),
+  )
   resetForm({
     values: {
       name: d?.name ?? '',
@@ -101,6 +129,8 @@ watch(subtype, (next, prev) => {
   for (const [key, value] of Object.entries(defaultsFromSchema(addressSchema.value))) {
     setFieldValue(key, value)
   }
+  // Reset array-of-object fields to empty for the newly selected endpoint type.
+  arrays.value = Object.fromEntries(arrayProperties.value.map((p) => [p.key, []]))
 })
 
 // Changing the connection invalidates the endpoint type (different driver).
@@ -128,6 +158,8 @@ const submit = handleSubmit(async (values) => {
   const address = pruneEmpty(
     Object.fromEntries(addressFields.value.map((f) => [f.key, (values as Record<string, unknown>)[f.key]])),
   )
+  // Merge in array-of-object fields (the meters list), which live outside the form.
+  for (const p of arrayProperties.value) address[p.key] = arrays.value[p.key] ?? []
   const payload: Partial<DeviceRecord> = {
     connectionId: connectionId.value,
     name: values.name,
@@ -237,6 +269,17 @@ const submit = handleSubmit(async (values) => {
 
           <!-- Driver-specific address (HiQnet node, DALI id, output number…). -->
           <SchemaFields :fields="addressFields" />
+
+          <!-- Array-of-object address fields (e.g. a meter widget's meters). -->
+          <ArrayObjectField
+            v-for="p in arrayProperties"
+            :key="p.key"
+            :label="p.label"
+            :description="p.description"
+            :schema="p.schema"
+            :model-value="arrays[p.key] ?? []"
+            @update:model-value="arrays[p.key] = $event"
+          />
 
           <FormField v-slot="{ componentField }" name="description">
             <FormItem>

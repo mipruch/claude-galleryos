@@ -6,6 +6,7 @@
 import type { DeviceManager, LiveStateStore } from "../core/DeviceManager.ts";
 import type { DriverRegistry } from "../core/DriverRegistry.ts";
 import type { EventBus } from "../core/EventBus.ts";
+import type { MeterService } from "../core/MeterService.ts";
 import type { SceneEngine } from "../core/SceneEngine.ts";
 import type { Scheduler } from "../core/Scheduler.ts";
 import type {
@@ -32,6 +33,7 @@ export interface ApiContext {
   scenes: typeof scenesRepo;
   sceneExecutions: typeof sceneExecutionsRepo;
   sceneEngine: SceneEngine;
+  meterService: MeterService;
   schedules: typeof scheduledJobsRepo;
   scheduler: Scheduler;
   /** Server start time (epoch ms) for uptime reporting. */

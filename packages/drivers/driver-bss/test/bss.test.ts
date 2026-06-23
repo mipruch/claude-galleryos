@@ -11,6 +11,7 @@ import type {
   ConnectionConfig,
   DriverContext,
   EndpointDescriptor,
+  MeterUpdate,
   StateChangeEvent,
 } from "@gallery/driver-core";
 import BssSoundwebDriver from "../src/index.ts";
@@ -151,6 +152,74 @@ describe("BssSoundwebDriver", () => {
     await waitFor(() => events.some((e) => e.source === "subscription" && (e.state as { level?: number }).level === 0.7));
     const ev = events.find((e) => e.source === "subscription" && (e.state as { level?: number }).level === 0.7)!;
     expect(ev.endpointId).toBe("fader-1");
+
+    await driver.destroy();
+  });
+
+  // ── meters ───────────────────────────────────────────────
+  // A meter at node 1, audio (vd 3), object 0x200, param 0, default range.
+  const meterAddr = { node: 1, virtualDevice: 3, object: 0x200, param: 0, minDb: -80, maxDb: 40 };
+  const meterWire = { node: 1, virtualDevice: 3, object: 0x200, param: 0 };
+
+  test("meter — subscribe sends SUBSCRIBE and emits a meter reading", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    const readings: MeterUpdate[] = [];
+    driver.on("meter", (u: MeterUpdate) => readings.push(u));
+
+    await driver.subscribeMeter(meterAddr);
+    // The mock answers SUBSCRIBE with the current value (0 → 0 dB → level 0.667).
+    await waitFor(() => readings.length > 0);
+    expect(mock.received()).toContain(0x89); // SUBSCRIBE (raw)
+
+    // Inject a meter change: -20 dB → (−20 + 80) / 120 = 0.5.
+    mock.setValue(meterWire, -200000, false);
+    await waitFor(() => readings.some((r) => Math.abs(r.level - 0.5) < 1e-6));
+    const reading = readings.find((r) => Math.abs(r.level - 0.5) < 1e-6)!;
+    expect(reading.address).toMatchObject(meterWire);
+    expect(reading.value).toBe(-200000);
+
+    await driver.destroy();
+  });
+
+  test("meter — unsubscribe stops the stream (sends UNSUBSCRIBE)", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    await driver.subscribeMeter(meterAddr);
+    await waitFor(() => mock.received().includes(0x89));
+
+    await driver.unsubscribeMeter(meterAddr);
+    await waitFor(() => mock.received().includes(0x8a)); // UNSUBSCRIBE
+
+    const readings: MeterUpdate[] = [];
+    driver.on("meter", (u: MeterUpdate) => readings.push(u));
+    // After unsubscribe the driver no longer routes this object to a meter.
+    mock.setValue(meterWire, 400000, false);
+    await Bun.sleep(30);
+    expect(readings).toHaveLength(0);
+
+    await driver.destroy();
+  });
+
+  test("meter — meter widgets are skipped by endpoint auto-subscribe", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    const widget: EndpointDescriptor = {
+      id: "widget-1",
+      type: "bss-soundweb.meter-widget",
+      address: { node: 1, meters: [{ label: "Mic", object: 0x200 }] },
+      name: "Mics",
+    };
+    // Must not throw on the fader address parse, and must send nothing.
+    await driver.subscribeToEndpoint(widget);
+    await Bun.sleep(20);
+    expect(mock.received()).toHaveLength(0);
 
     await driver.destroy();
   });

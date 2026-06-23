@@ -132,6 +132,12 @@ needs *two* params (gain + mute), so the address carries both rather than the si
 - [x] Reconnect (internal backoff) resubscribes all active endpoints
 - [x] Mock TCP server for tests (`test/mock-device.ts`)
 - [x] Register in `apps/server/src/drivers/registry.ts` (id `bss-soundweb`, pkg `@gallery/driver-bss`)
+- [x] **Live meters** — endpoint `bss-soundweb.meter-widget` + `subscribeMeter`/`unsubscribeMeter`
+      (SUBSCRIBE/UNSUBSCRIBE raw on a single meter param), `meter` events ({@link MeterUpdate},
+      dB×10000 → 0..1 level). Server-side ref-counted fan-out in `MeterService` (one BSS
+      subscription per meter, forwarded only to watching WS clients via `meter:subscribe` /
+      `meter:unsubscribe` / `meter:update`); UI `BssMeterWidget` subscribes on mount / unsubscribes
+      on unmount.
 
 ### 1.3 `driver-dali-lunatone` — Lunatone DALI-2 IoT gateway ✓
 
@@ -412,8 +418,11 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `label`, `form` (vee-validate), `select`, `dialog`, `alert-dialog`,
         `separator`, `skeleton`, `textarea`, `alert`.
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
-        mute, on/off switch. Each in a shared `DeviceCard` (title + description
-        tooltip + online dot). Widget chosen by driver `subtype`.
+        mute, on/off switch, **live BSS meters** (`BssMeterWidget` — bars that
+        grow/shrink, subscribe on mount / unsubscribe on unmount). Each in a shared
+        `DeviceCard` (title + description tooltip + online dot). Widget chosen by
+        driver `subtype`. Array-of-object address fields (the meter list) edited via
+        `ArrayObjectField`.
   - [x] **Routing + room sidebar (`vue-router`, `AppSidebar`):** `/` = all
         devices, `/rooms/:roomId` = that room (URL is the source of truth; a
         refresh stays put, unknown paths → `/`). The store carries a `roomScope`

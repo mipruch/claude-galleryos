@@ -157,6 +157,24 @@ export interface StateChangeEvent {
   timestamp: Date;
 }
 
+/**
+ * A live meter reading pushed by a driver while a meter subscription is active.
+ *
+ * Meters are a separate channel from {@link StateChangeEvent}: they are
+ * high-frequency, push-only, and forwarded only to the clients currently
+ * watching them (never persisted or broadcast to everyone). `address` echoes the
+ * meter address that was subscribed so the core can route the reading back to the
+ * right subscribers.
+ */
+export interface MeterUpdate {
+  /** The meter address this reading is for (echoes the subscribed address). */
+  address: Record<string, unknown>;
+  /** Raw device value (driver-specific scaling, e.g. dB × 10000). */
+  value: number;
+  /** Normalised 0..1 magnitude for a bar display (driver maps its own range). */
+  level: number;
+}
+
 /** A driver-reported error. `fatal` means the driver cannot recover itself. */
 export interface DriverError {
   level: "warning" | "error" | "fatal";

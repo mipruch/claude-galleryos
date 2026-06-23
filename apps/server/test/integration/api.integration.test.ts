@@ -26,6 +26,7 @@ import {
 } from "../../src/db/repositories.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/redis/state.ts";
 import { SceneEngine } from "../../src/core/SceneEngine.ts";
+import { MeterService } from "../../src/core/MeterService.ts";
 import { Scheduler } from "../../src/core/Scheduler.ts";
 import { startApiServer } from "../../src/api/server.ts";
 import { logger } from "../../src/logger.ts";
@@ -74,6 +75,8 @@ beforeAll(async () => {
     logger,
   });
   sceneEngine.start();
+  const meterService = new MeterService({ devices: dm, eventBus: bus, logger });
+  dm.setMeterListener(meterService.handleMeterUpdate);
   const scheduler = new Scheduler({ jobs: scheduledJobsRepo, sceneEngine, logger });
   await scheduler.start();
   server = startApiServer(
@@ -90,6 +93,7 @@ beforeAll(async () => {
       scenes: scenesRepo,
       sceneExecutions: sceneExecutionsRepo,
       sceneEngine,
+      meterService,
       schedules: scheduledJobsRepo,
       scheduler,
       startedAt: Date.now(),

@@ -18,6 +18,7 @@ import type {
   DriverError,
   EndpointDescriptor,
   LogLevel,
+  MeterUpdate,
   StateChangeEvent,
 } from "./types.ts";
 
@@ -42,6 +43,9 @@ export type CoreToDriverMessage =
   | { kind: "endpointHealthCheck"; requestId: string; endpoint: EndpointDescriptor }
   | { kind: "subscribeToEndpoint"; endpoint: EndpointDescriptor }
   | { kind: "unsubscribeFromEndpoint"; endpoint: EndpointDescriptor }
+  // Live meters (fire-and-forget; the core ref-counts subscribers itself).
+  | { kind: "meterSubscribe"; address: Record<string, unknown> }
+  | { kind: "meterUnsubscribe"; address: Record<string, unknown> }
   | { kind: "discoverEndpoints"; requestId: string }
   // Reply to a child-initiated storage.get request.
   | { kind: "storage.reply"; requestId: string; value?: unknown; error?: string };
@@ -56,6 +60,7 @@ export type DriverToCoreMessage =
   | { kind: "connected" }
   | { kind: "disconnected"; reason: string }
   | { kind: "state"; event: StateChangeEvent }
+  | { kind: "meter"; update: MeterUpdate }
   | { kind: "error"; error: DriverError }
   | { kind: "log"; level: LogLevel; message: string; meta?: Record<string, unknown> }
   // Response to a parent request

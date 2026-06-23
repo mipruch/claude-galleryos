@@ -843,6 +843,18 @@ a ověřeného skriptu `manuals/bss.js`.
   - `setLevel (0..1)` → SET PERCENT (0x8D), `setMute (bool)` → SET (0x88).
 - **Endpoint `bss-soundweb.fader`**, adresa `{ node, object, virtualDevice?=3, gainParam?=0,
   muteParam?=1 }` — fader potřebuje dva parametry (gain + mute), proto adresa nese oba.
+- **Endpoint `bss-soundweb.meter-widget`** — virtuální zařízení s panelem **živých
+  metrů** (rostoucí/klesající sloupce, bez ticků a čísel). Adresa nese `{ node,
+  virtualDevice?=3, minDb?=-80, maxDb?=40, meters: [{ label, object, param?=0 }] }` —
+  admin napíše libovolný počet metrů, každý s popiskem a adresou meter objektu.
+  - **`subscribeMeter` / `unsubscribeMeter`** posílají SUBSCRIBE / UNSUBSCRIBE (raw, 0x89/0x8A)
+    na jednotlivý meter parametr; idempotentní (jedna BSS subscription na meter). Po
+    reconnectu se metry re-subscribují spolu s fadery.
+  - Příchozí SET na sledovaném meteru se emituje jako `meter` událost
+    ({@link MeterUpdate}): `value` je dB×10000, `level` je 0..1 namapované z `[minDb, maxDb]`
+    (viz `manuals/bss-meter-subscribe-example.js`). Metry jdou **mimo** EventBus/Redis —
+    jsou vysokofrekvenční a forwardují se jen klientům, kteří je právě sledují (viz
+    [`MeterService`](#meterservice--fan-out-živých-bss-metrů) níže).
 
 #### `driver-dali-foxtron` — Foxtron DALInet / DALI2net (implementováno)
 
@@ -1311,6 +1323,10 @@ socket.on('device:command:ack', (data: {
 }) => {})
 // Při úspěchu server navíc broadcastne `device:state` ostatním UI (viz níže).
 // Při chybě se NEbroadcastuje nic — jen warn log; origin podle `success: false` vrátí stav.
+
+// Živé metry (BSS meter widget) — subscribe při mountu, unsubscribe při unmountu.
+socket.emit('meter:subscribe',   { deviceId: string })   // deviceId meter-widgetu
+socket.emit('meter:unsubscribe', { deviceId: string })
 ```
 
 ### Server → Klient (broadcast všem)
@@ -1345,6 +1361,38 @@ socket.on('driver:error', (data: { connectionId: string; driverId: string; messa
 // Systémové zprávy
 socket.on('system:alert', (data: { level: 'info' | 'warn' | 'error'; message: string }) => {})
 ```
+
+### Server → Klient (cílené, jen sledujícím)
+
+```typescript
+// Živý odečet jednoho meteru — adresováno BSS objektem, ať si widget najde
+// správný sloupec. `level` (0..1) je výška sloupce, `db` je informativní (raw signál).
+socket.on('meter:update', (data: {
+  node: number; virtualDevice: number; object: number; param: number;
+  level: number; db: number;
+}) => {})
+// Na rozdíl od `device:state` se `meter:update` NEbroadcastuje všem — jde jen
+// klientům, kteří daný meter právě sledují (vysoká frekvence, žádné Redis/EventBus).
+```
+
+#### `MeterService` — fan-out živých BSS metrů
+
+`apps/server/src/core/MeterService.ts` drží invariant z diagramu výše:
+
+```
+BSS meter update ──► server ──┬─► browser A
+                              ├─► browser B
+                              └─► browser C
+```
+
+- **Jedna BSS subscription na fyzický meter**, ať ho sleduje kolik chce prohlížečů
+  (ref-counting: první divák subscribuje, poslední unsubscribuje). Klíč je
+  `connectionId:node:vd:object:param`.
+- Odečty chodí z driveru přes `DeviceManager.setMeterListener` (mimo EventBus/Redis),
+  službа je namapuje zpět na meter a pošle jen jeho odběratelům přes `ws.send`.
+- Úklid: zavření socketu (`ws.close`) uvolní všechny metry klienta; po reconnectu
+  connection (i restartu driver subprocessu, který ztratí svoje subscriptions) se
+  všechny aktivní metry re-subscribují (`connection.connected`).
 
 -----
 
@@ -1606,6 +1654,13 @@ demo, že datová cesta funguje od Redisu přes HTTP/WebSocket až do komponent.
     `setLevel { level }` + `setMute { muted }`.
   - **On/off switch** (`SwitchWidget`) — zásuvky a projektory (`netio.socket`,
     `pjlink.projector`), příkazy `on` / `off`.
+  - **Live metry** (`BssMeterWidget`) — panel sloupcových metrů
+    (`bss-soundweb.meter-widget`). Při **mountu** pošle `meter:subscribe { deviceId }`,
+    při **unmountu** (změna routy / skrytí filtrem) `meter:unsubscribe`. Sloupce čte ze
+    `stores/meters.ts` (klíč `node:object:param`), které jsou ref-countované per zařízení
+    a re-subscribují se po reconnectu. Admin formulář pro pole `meters` (array of objects)
+    používá `ArrayObjectField` — generický editor řízený `items` schématem (scalar
+    `SchemaFields` arraye/objekty záměrně přeskakuje).
   - Mapování `subtype → widget` je na jednom místě (`lib/devices.ts` →
     `deviceKind()`); přidání driveru = jeden řádek.
 - **Sdílené, neopakované díly:** `DeviceCard` (karta s názvem zařízení, online

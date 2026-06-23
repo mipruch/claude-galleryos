@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { deviceKind, type DeviceRecord } from '@/lib/devices'
 import LightFaderWidget from './LightFaderWidget.vue'
 import BssFaderWidget from './BssFaderWidget.vue'
+import BssMeterWidget from './BssMeterWidget.vue'
 import SwitchWidget from './SwitchWidget.vue'
 
 const props = defineProps<{ device: DeviceRecord }>()
@@ -15,6 +16,8 @@ const widget = computed(() => {
     case 'bssFader':
     case 'bssMatrix':  // same widget, different semantics detected internally
       return BssFaderWidget
+    case 'bssMeter':
+      return BssMeterWidget
     case 'switch':
       return SwitchWidget
     default:

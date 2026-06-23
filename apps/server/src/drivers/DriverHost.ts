@@ -24,6 +24,7 @@ import type {
   DriverToCoreMessage,
   EndpointDescriptor,
   HealthStatus,
+  MeterUpdate,
   StateChangeEvent,
 } from "@gallery/driver-core";
 import { errMsg } from "@gallery/driver-core";
@@ -180,11 +181,22 @@ export class DriverHost extends EventEmitter {
     this.send({ kind: "unsubscribeFromEndpoint", endpoint });
   }
 
+  /** Start streaming one meter parameter (the driver emits `meter` events). */
+  meterSubscribe(address: Record<string, unknown>): void {
+    this.send({ kind: "meterSubscribe", address });
+  }
+
+  /** Stop streaming one meter parameter. */
+  meterUnsubscribe(address: Record<string, unknown>): void {
+    this.send({ kind: "meterUnsubscribe", address });
+  }
+
   // ── typed events ───────────────────────────────────────────
 
   override on(event: "connected", listener: () => void): this;
   override on(event: "disconnected", listener: (reason: string) => void): this;
   override on(event: "state", listener: (e: StateChangeEvent) => void): this;
+  override on(event: "meter", listener: (u: MeterUpdate) => void): this;
   override on(event: "error", listener: (e: DriverError) => void): this;
   override on(event: "crashed", listener: (info: CrashInfo) => void): this;
   override on(event: string, listener: (...args: never[]) => void): this {
@@ -251,6 +263,9 @@ export class DriverHost extends EventEmitter {
         return;
       case "state":
         this.emit("state", msg.event);
+        return;
+      case "meter":
+        this.emit("meter", msg.update);
         return;
       case "error":
         this.logger[msg.error.level === "warning" ? "warn" : "error"](

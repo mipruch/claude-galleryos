@@ -24,6 +24,7 @@ import type {
   DriverLogger,
   DriverToCoreMessage,
   IDeviceDriver,
+  MeterUpdate,
   StateChangeEvent,
 } from "@gallery/driver-core";
 import { errMsg } from "@gallery/driver-core";
@@ -76,6 +77,7 @@ function wireDriverEvents(d: IDeviceDriver): void {
   d.on("connected", () => send({ kind: "connected" }));
   d.on("disconnected", (reason: string) => send({ kind: "disconnected", reason }));
   d.on("state", (event: StateChangeEvent) => send({ kind: "state", event }));
+  d.on("meter", (update: MeterUpdate) => send({ kind: "meter", update }));
   d.on("error", (error: DriverError) => send({ kind: "error", error }));
 }
 
@@ -172,6 +174,12 @@ async function handleMessage(msg: CoreToDriverMessage): Promise<void> {
       return;
     case "unsubscribeFromEndpoint":
       await d.unsubscribeFromEndpoint?.(msg.endpoint);
+      return;
+    case "meterSubscribe":
+      await d.subscribeMeter?.(msg.address);
+      return;
+    case "meterUnsubscribe":
+      await d.unsubscribeMeter?.(msg.address);
       return;
   }
 }

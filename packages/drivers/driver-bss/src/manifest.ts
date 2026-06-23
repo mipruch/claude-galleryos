@@ -141,5 +141,91 @@ export const manifest: DriverManifest = {
         },
       ],
     },
+
+    {
+      type: "bss-soundweb.meter-widget",
+      name: "Meter widget (live bars)",
+      description:
+        "A panel of live signal meters. The widget streams each meter only while it is " +
+        "visible on screen; the server keeps one BSS subscription per meter and fans the " +
+        "readings out to every watching browser.",
+
+      // A meter widget is a *virtual* device: one node, many meter objects. Each
+      // meter is a single read-only parameter (its level); the admin gives it a
+      // label and the meter object's id (from Audio Architect's Venue Explorer).
+      addressSchema: {
+        type: "object",
+        required: ["node", "meters"],
+        properties: {
+          node: {
+            type: "integer",
+            title: "Node address",
+            description: "Physical device id (Venue Explorer).",
+            minimum: 1,
+            maximum: 65534,
+          },
+          virtualDevice: {
+            type: "integer",
+            title: "Virtual device",
+            description: "Object category — Audio = 3, Logic = 2.",
+            default: 3,
+            minimum: 0,
+            maximum: 255,
+          },
+          minDb: {
+            type: "number",
+            title: "Bar minimum (dB)",
+            description: "Signal level shown as an empty bar.",
+            default: -80,
+            minimum: -100,
+            maximum: 0,
+          },
+          maxDb: {
+            type: "number",
+            title: "Bar maximum (dB)",
+            description: "Signal level shown as a full bar.",
+            default: 40,
+            minimum: -40,
+            maximum: 60,
+          },
+          meters: {
+            type: "array",
+            title: "Meters",
+            description: "One bar per meter, in display order.",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["label", "object"],
+              properties: {
+                label: { type: "string", title: "Label", minLength: 1 },
+                object: {
+                  type: "integer",
+                  title: "Meter object id",
+                  description: "24-bit Processing Object id of the meter.",
+                  minimum: 0,
+                  maximum: 16777215,
+                },
+                param: {
+                  type: "integer",
+                  title: "Parameter id",
+                  description: "Parameter id of the meter value (usually 0).",
+                  default: 0,
+                  minimum: 0,
+                  maximum: 65535,
+                },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+
+      // Meters are not Redis-backed state; they stream over a dedicated channel.
+      stateSchema: { type: "object", properties: {} },
+
+      // No commands: meters are read-only.
+      commands: [],
+    },
   ],
 };
