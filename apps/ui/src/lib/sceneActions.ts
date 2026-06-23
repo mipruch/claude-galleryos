@@ -50,7 +50,7 @@ export function toEditAction(a: SceneActionDTO): EditAction {
     deviceId: a.deviceId ?? '',
     command: a.command ?? '',
     childSceneId: a.childSceneId ?? '',
-    params: { ...(a.params ?? {}) },
+    params: { ...a.params },
     delayMs: a.delayMs ? String(a.delayMs) : '',
     parallelGroup: a.parallelGroup ? String(a.parallelGroup) : '',
     onFailure: a.onFailure ?? 'continue',

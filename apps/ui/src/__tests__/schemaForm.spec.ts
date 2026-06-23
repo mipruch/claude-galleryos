@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { assert, describe, expect, it } from 'vitest'
 import type { JsonSchema } from '@gallery/driver-core'
 import { defaultsFromSchema, pruneEmpty, schemaToFields, zodFromSchema } from '@/lib/schemaForm'
 
@@ -62,8 +62,8 @@ describe('zodFromSchema', () => {
 
   it('coerces numeric strings and enforces min/max', () => {
     const ok = zodFromSchema(schema).safeParse({ host: '10.0.0.1', port: '1023', encoding: 'utf-8', persistent: true })
-    expect(ok.success).toBe(true)
-    if (ok.success) expect(ok.data.port).toBe(1023)
+    assert(ok.success)
+    expect(ok.data.port).toBe(1023)
 
     const tooHigh = zodFromSchema(schema).safeParse({ host: '10.0.0.1', port: '99999' })
     expect(tooHigh.success).toBe(false)
@@ -71,8 +71,8 @@ describe('zodFromSchema', () => {
 
   it('treats a blank optional number as unset', () => {
     const result = zodFromSchema(schema).safeParse({ host: '10.0.0.1', port: '', encoding: 'utf-8', persistent: false })
-    expect(result.success).toBe(true)
-    if (result.success) expect(result.data.port).toBeUndefined()
+    assert(result.success)
+    expect(result.data.port).toBeUndefined()
   })
 
   it('rejects an enum value outside the allowed set', () => {

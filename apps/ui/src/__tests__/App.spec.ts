@@ -10,7 +10,7 @@ import DevicesView from '../views/DevicesView.vue'
 beforeAll(() => {
   // jsdom provides neither fetch nor WebSocket; stub just enough for App to
   // mount and run its onMounted hook without throwing.
-  globalThis.fetch = vi.fn().mockResolvedValue({
+  globalThis.fetch = vi.fn<() => Promise<unknown>>().mockResolvedValue({
     ok: true,
     json: async () => [],
   }) as unknown as typeof fetch
