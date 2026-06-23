@@ -84,11 +84,9 @@ export const manifest: DriverManifest = {
           power: { type: "string", enum: ["off", "on", "cooling", "warming", "unknown"] },
           input: { type: "string", description: "PJLink input code, e.g. 31 (Digital)" },
           inputLabel: { type: "string", description: "Friendly input label, e.g. 'Digital (31)'" },
-          muted: { type: "boolean", description: "AV mute state (true = muted)" },
-          muteItem: {
-            type: "string",
-            enum: ["video", "audio", "av"],
-            description: "Which mute item the projector last reported.",
+          muted: {
+            type: "boolean",
+            description: "AV mute state (true = muted). Set via setMute; not polled.",
           },
           errors: {
             type: "object",

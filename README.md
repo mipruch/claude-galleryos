@@ -958,12 +958,21 @@ označen jako offline. To je ta „Online/Offline lež“.
   pak **všechny dotazy zřetězené na témže socketu** (manuál §5.3 to povoluje),
   a zavřít. Tolerantní vůči projektorům, které socket zavřou po každé odpovědi
   (vezme, co stihl přečíst — projektor je tak jako tak prokazatelně dostupný).
+- ⚠️ **Tvrdé zavření socketu (`closeMode: "force"`).** PJLink projektor přijímá
+  **jen jedno spojení** a slot uvolní, až je spojení úplně pryč. Graceful `end()`
+  (FIN, half-close) nechá projektor držet slot až do jeho **vlastního ~30s idle
+  timeoutu**, což se trefí s naším dalším pollem → `connect timeout after 2000ms`
+  (i když `nc` na první dobrou projde). `TcpClient` proto u pjlinku dělá **tvrdé
+  zavření přes `socket.terminate()` (SO_LINGER 0 → RST)** — slot je volný okamžitě.
 - **Interní časovač (`pollIntervalMs`, default 30 000 ms)** se každý tik zeptá na
-  `POWR / INPT / AVMT / ERST`, **emituje `state`** (proteče existující cestou
-  driver → DeviceManager → EventBus → WS, takže všechna UI vidí skutečný power/
-  input/mute/chyby) a řídí online/offline. Endpoint id se driver dozví přes
-  `subscribeToEndpoint` (DeviceManager subscribuje při connectu, protože manifest
-  hlásí `subscriptions: true`).
+  `POWR / INPT`, **emituje `state`** (proteče existující cestou driver →
+  DeviceManager → EventBus → WS, takže všechna UI vidí skutečný power/input/chyby)
+  a řídí online/offline. **AVMT (mute) se nepolluje vůbec** (jen na explicitní
+  `setMute`), **ERST (chyby) jen občas** (`erstIntervalMs`, default 60 000 ms) —
+  míň zbytečného provozu. Po uživatelském příkazu se odpočet pollu **resetuje**
+  (příkaz právě kontaktoval projektor, další poll je tak celý interval daleko).
+  Endpoint id se driver dozví přes `subscribeToEndpoint` (DeviceManager subscribuje
+  při connectu, protože manifest hlásí `subscriptions: true`).
 - **Online = spojení se podařilo a přišel banner — i odpověď `ERR` znamená
   online**; **offline jen když spojení selže** (nedostupný host / špatné heslo →
   `PJLINK ERRA`). `connected` / `disconnected` se emitují **jen při přechodu**,
@@ -976,13 +985,12 @@ označen jako offline. To je ta „Online/Offline lež“.
   (`%1AVMT 31/30`). Příkaz proběhne v jednom spojení; `ERR` z projektoru =
   `success:false`, ale **neoznačí** zařízení offline (odpověděl).
 - **Mapování odpovědí + ERR zprávy:** power `0/1/2/3 → off/on/cooling/warming`,
-  AVMT (`muted` + `muteItem` video/audio/av), ERST 6 znaků →
-  `errors {fan,lamp,temperature,cover,filter,other}` (`ok/warning/error`),
-  čitelné hlášky pro `ERR1–4` a `ERRA`. Poll posílá **částečný patch** (pole, jejichž
-  dotaz vrátil `ERR` — typicky INPT/AVMT ve standby — se vynechají; Redis je merguje,
-  takže poslední známý vstup/mute zůstane).
+  ERST 6 znaků → `errors {fan,lamp,temperature,cover,filter,other}`
+  (`ok/warning/error`), čitelné hlášky pro `ERR1–4` a `ERRA`. Poll posílá
+  **částečný patch** (pole, jejichž dotaz vrátil `ERR` — typicky INPT ve standby —
+  se vynechají; Redis je merguje, takže poslední známý vstup zůstane).
 - **Connection config:** `{ host, port=4352, password?, responseTimeoutMs=2000,
-  pollIntervalMs=30000 }`. Endpoint `pjlink.projector` (jeden na connection,
+  pollIntervalMs=30000, erstIntervalMs=60000 }`. Endpoint `pjlink.projector` (jeden na connection,
   bez adresy). Capabilities: `subscriptions: true` (poll-emulovaný push),
   `bidirectional: true`, `discovery: false`.
 - **User UI:** `SwitchWidget` (on/off); `readOn` bere `power` `"on"` i přechodové
@@ -991,9 +999,10 @@ označen jako offline. To je ta „Online/Offline lež“.
   pomalé-ale-dostupné zařízení nikdy nehlásilo falešný IPC timeout (krátkožijící
   session = connect + banner + response).
 - Testy: in-process mock projektor (`test/mock-device.ts`) + 10 testů
-  (`test/pjlink.test.ts`): poll/state, cachovaný healthCheck, „ERR drží online“,
-  offline na výpadku spojení, on/off/setInput/setMute, neplatný vstup bez I/O,
-  auth (správné/špatné heslo), dry-run.
+  (`test/pjlink.test.ts`): poll/state (POWR/INPT/ERST, AVMT se nepolluje),
+  cachovaný healthCheck, „ERR drží online“, offline na výpadku spojení,
+  on/off/setInput/setMute, neplatný vstup bez I/O, auth (správné/špatné heslo),
+  dry-run.
 
 -----
 

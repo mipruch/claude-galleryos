@@ -29,6 +29,16 @@ export interface TcpClientOptions {
   encoding?: BufferEncoding;
   /** Max time to wait for the socket to open. Default 3000ms. */
   connectTimeoutMs?: number;
+  /**
+   * Close mode for `close()`. `"graceful"` (default) sends a FIN via
+   * `socket.end()` and leaves the connection half-open until the peer also
+   * closes. `"force"` calls `socket.terminate()` (SO_LINGER 0 → RST) to tear the
+   * connection down immediately — required for devices that only free their
+   * single connection slot when the connection is fully gone (e.g. PJLink
+   * projectors, which otherwise hold the slot until their own idle timeout and
+   * make the next connect time out).
+   */
+  closeMode?: "graceful" | "force";
 }
 
 interface Waiter {
@@ -48,6 +58,7 @@ export class TcpClient {
   private readonly txDelimiter: string;
   private readonly encoding: BufferEncoding;
   private readonly connectTimeoutMs: number;
+  private readonly closeMode: "graceful" | "force";
 
   /** Set to receive unsolicited frames (when no `receive()` is pending). */
   onMessage?: (frame: string) => void;
@@ -59,6 +70,7 @@ export class TcpClient {
     this.txDelimiter = options.txDelimiter ?? this.rxDelimiter;
     this.encoding = options.encoding ?? "utf-8";
     this.connectTimeoutMs = options.connectTimeoutMs ?? 3000;
+    this.closeMode = options.closeMode ?? "graceful";
   }
 
   isConnected(): boolean {
@@ -146,7 +158,8 @@ export class TcpClient {
 
   /** Close the socket and reject any pending waiters. */
   close(): void {
-    this.socket?.end();
+    if (this.closeMode === "force") this.socket?.terminate();
+    else this.socket?.end();
     this.handleClose("local close");
   }
 

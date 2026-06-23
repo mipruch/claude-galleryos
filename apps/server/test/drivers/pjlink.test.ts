@@ -63,6 +63,7 @@ describe("PjlinkDriver", () => {
     await driver.executeCommand(endpoint, "setInput", { input: "HDMI1" });
     expect(mock.state().input).toBe("31");
 
+    // Mute is still settable on demand, even though it is no longer polled.
     await driver.executeCommand(endpoint, "setMute", { muted: true });
     expect(mock.state().avmt).toBe("31");
 
@@ -77,8 +78,10 @@ describe("PjlinkDriver", () => {
     await driver.executeCommand(endpoint, "on", {});
     await driver.executeCommand(endpoint, "setInput", { input: "RGB1" });
 
+    // readState polls POWR + INPT (+ ERST); AVMT/mute is no longer queried.
     const state = await driver.readState(endpoint);
-    expect(state).toMatchObject({ power: "on", input: "11", muted: false });
+    expect(state).toMatchObject({ power: "on", input: "11" });
+    expect(state.muted).toBeUndefined();
 
     await driver.destroy();
   });

@@ -75,11 +75,6 @@ const ERR_MESSAGES: Record<string, string> = {
   ERRA: "authentication error (wrong or missing password)",
 };
 
-/** AV-mute item digit → label (first digit of an AVMT value). */
-const MUTE_ITEM: Record<string, string> = {
-  "1": "video", "2": "audio", "3": "av",
-};
-
 /** Error-status digit → label (each digit of an ERST value). */
 const ERROR_STATE: Record<string, string> = {
   "0": "ok", "1": "warning", "2": "error",
@@ -206,8 +201,10 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
 
     try {
       const results = await this.serialize(() => this.runSession([line]));
-      // The projector answered, so it is reachable → online.
+      // The projector answered, so it is reachable → online. The command just
+      // refreshed contact, so push the next poll out a full interval.
       this.setOnline(true);
+      this.resetPollTimer();
 
       const value = results[commandNameOf(line)];
       if (value && isErr(value)) {
@@ -252,6 +249,17 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   private startPolling(): void {
     if (this.pollTimer || this.destroyed) return;
     this.pollTimer = setInterval(() => void this.pollOnce(), this.pollIntervalMs);
+  }
+
+  /**
+   * Restart the poll countdown. Called after a user command has just talked to
+   * the projector, so the next poll is a full interval away instead of firing
+   * right on the heels of the command — fewer connections, no redundant probe.
+   */
+  private resetPollTimer(): void {
+    if (this.destroyed || !this.pollTimer) return;
+    this.stopPolling();
+    this.startPolling();
   }
 
   private stopPolling(): void {
@@ -380,6 +388,12 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       txDelimiter: "\r",
       encoding: "latin1",
       connectTimeoutMs: this.timeoutMs,
+      // PJLink projectors accept a single connection and only release the slot
+      // when the connection is fully gone. A graceful half-close (FIN) leaves the
+      // projector holding the slot until its own ~30 s idle timeout, which races
+      // with our next poll and makes the connect time out. Force a hard close
+      // (RST) so the slot is freed the instant we're done.
+      closeMode: "force",
     });
 
     await client.connect();
@@ -490,13 +504,6 @@ function mapPower(code: string): string {
     case "3": return "warming";
     default: return "unknown";
   }
-}
-
-/** Decode an AVMT value (`item` digit + `state` digit), e.g. `31` → muted A/V. */
-function parseAvmt(code: string): Record<string, unknown> {
-  const item = MUTE_ITEM[code[0] ?? ""] ?? "av";
-  const muted = code[1] === "1";
-  return { muted, muteItem: item };
 }
 
 /** Decode an ERST value (6 digits: fan, lamp, temp, cover, filter, other). */
