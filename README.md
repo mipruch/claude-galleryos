@@ -1529,7 +1529,19 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   `iframes.create/update` na nové typy `IframeCreateInput` / `IframeUpdateInput`.
 - Backend (`/api/v1/iframes`) i sidebar (`AdminSidebar.vue`) jsou propojené.
 
-Zbývající admin stránky (rooms, mappings, layouts) přidají další řezy
+#### Implementováno (pátý řez — Rooms)
+
+- **`/admin/rooms`** (`views/admin/RoomsView.vue`) — tabulka místností v pořadí
+  podle `displayOrder` s počtem zařízení na místnost, přeřazením nahoru/dolů,
+  editací a mazáním. Mazání místnost odstraní, ale zařízení/scény v ní jen
+  „odpojí“ (FK `ON DELETE SET NULL`), nemaže je.
+- `RoomFormDialog` (name, description, icon, colour) — plochý vee-validate + Zod
+  formulář; pořadí se needituje ve formuláři, řeší ho přeřazování v seznamu.
+- Nové `useRoomsStore` + čistý `lib/rooms.ts` (`sortRooms`, `computeReorder`) —
+  reorder přečísluje `displayOrder` na souvislé 0..n-1 (opraví i shodné hodnoty
+  ze seedu, kde je vše `0`) a persistuje jen změněné místnosti; unit-testováno.
+
+Zbývající admin stránky (mappings, layouts) přidají další řezy
 — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce

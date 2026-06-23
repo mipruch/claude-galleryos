@@ -402,6 +402,13 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           helpers (`formatUptime`, `capabilityLabels`, unit-tested); Dashboard's
           local `formatUptime` folded into it. New vendored `card` →
           `CardDescription`.
+    - [x] **`/admin/rooms`** (`views/admin/RoomsView.vue`) — table with per-room
+          device counts, up/down reordering, edit and delete (delete leaves
+          devices/scenes unassigned via `ON DELETE SET NULL`). `RoomFormDialog`
+          (name/description/icon/colour, vee-validate + Zod). New `useRoomsStore`
+          + pure `lib/rooms.ts` (`sortRooms`, `computeReorder` — renumbers
+          `displayOrder`, repairs ties; unit-tested).
+    - [ ] mappings, layouts (later passes)
     - [x] **`/admin/iframes`** (`views/admin/IframesView.vue`) — table (display
           order, name, URL, edit, delete) + `IframeFormDialog` (vee-validate +
           Zod, client-side `isEmbeddableUrl` http(s) check). New `useIframesStore`
@@ -409,7 +416,6 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (`isEmbeddableUrl`, `sortByDisplayOrder`, unit-tested). `lib/api.ts`
           iframe create/update now typed via new `IframeCreateInput` /
           `IframeUpdateInput`; `AdminSidebar` entry enabled.
-    - [ ] rooms, mappings, layouts (later passes)
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.

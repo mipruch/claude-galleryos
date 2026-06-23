@@ -38,6 +38,12 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: { name: 'admin-dashboard' } },
       {
+        path: 'rooms',
+        name: 'admin-rooms',
+        component: () => import('@/views/admin/RoomsView.vue'),
+        meta: { title: 'Rooms', subtitle: 'Group devices and scenes' },
+      },
+      {
         path: 'dashboard',
         name: 'admin-dashboard',
         component: () => import('@/views/admin/DashboardView.vue'),
