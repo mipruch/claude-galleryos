@@ -64,12 +64,16 @@ export function readLevel(state: DeviceState | undefined, ...keys: string[]): nu
   return 0
 }
 
-/** Read a boolean on/off value. Tolerates PJLink's string `power` ("on"/"off"). */
+/**
+ * Read a boolean on/off value. Tolerates PJLink's string `power`: `"on"` and the
+ * transitional `"warming"` count as on (the projector is lit / lighting up);
+ * `"off"` and `"cooling"` count as off.
+ */
 export function readOn(state: DeviceState | undefined, ...keys: string[]): boolean {
   for (const key of keys) {
     const v = state?.[key]
     if (v === true) return true
-    if (typeof v === 'string') return v === 'on'
+    if (typeof v === 'string') return v === 'on' || v === 'warming'
     // boolean false: keep looking — a later key may carry an authoritative "on"
   }
   return false

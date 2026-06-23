@@ -813,7 +813,7 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 |`dali-lunatone`|Lunatone DALI-2 IoT gateway ✓         |HTTP/REST   |Ne                    |Ano (sken)|
 |`dali-foxtron` |Foxtron DALInet / DALI2net brána ✓    |TCP/ASCII   |Ne (poll)             |Ne        |
 |`netio`        |NETIO chytré zásuvky (PowerBOX/PDU) ✓ |HTTP/JSON   |Ne (poll)             |Ne        |
-|`pjlink`       |PJLink projektory                     |TCP         |Ne (poll)             |Ne        |
+|`pjlink`       |PJLink projektory (Class 1) ✓         |TCP/ASCII   |Ano (poll, ~30 s)     |Ne        |
 |`extron-matrix`|Extron matice (DTP CrossPoint 108 4K) ✓|TCP/SIS     |Ne (poll)             |Ne        |
 |`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
@@ -936,6 +936,64 @@ ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
 - **User UI:** widget `MatrixOutputWidget` — jeden `<select>` vstupů na výstup
   (`setInput`); popisky vstupů čte z `connection.config.inputs` přes
   `useConnectionsStore`, fallback „Input N“.
+
+#### `driver-pjlink` — PJLink projektory (Class 1, TCP 4352) ✓
+
+Balíček `packages/drivers/driver-pjlink` (driver id `pjlink`). Ovládá PJLink Class 1
+projektory přes **ASCII protokol nad TCP 4352** (manuál `manuals/PJLink_5-1.pdf`
++ screenshoty + referenční Companion modul `manuals/companion-driver/`).
+
+⚠️ **Korekce protokolu / přepis driveru.** Spojení **není perzistentní** — projektor
+po ~30 s nečinnosti socket sám zavře (manuál §5.4). Původní implementace proto
+otevírala **nový krátkožijící socket na každý příkaz** a `readState` dělala **tři
+sériová spojení** (POWR/INPT/AVMT), každé `connect + banner + response` (až 6 s),
+zatímco IPC request timeout byl 2 s → watchdog hlásil `driver request timed out
+after 2000ms` co 10 s a příkazy padaly na `connect timeout`. Navíc `healthCheck`
+zahazoval hodnotu POWR (stav se do UI nikdy nepropsal) a `parseResponse` **házel
+výjimku na `ERR1–4`**, takže projektor, který *odpověděl chybou* (= je živý), byl
+označen jako offline. To je ta „Online/Offline lež“.
+
+**Nový model — poll vlastním časovačem (`subscriptions: true`):**
+- **Jedno krátkožijící spojení na jeden poll**, banner + (volitelně) auth jednou,
+  pak **všechny dotazy zřetězené na témže socketu** (manuál §5.3 to povoluje),
+  a zavřít. Tolerantní vůči projektorům, které socket zavřou po každé odpovědi
+  (vezme, co stihl přečíst — projektor je tak jako tak prokazatelně dostupný).
+- **Interní časovač (`pollIntervalMs`, default 30 000 ms)** se každý tik zeptá na
+  `POWR / INPT / AVMT / ERST`, **emituje `state`** (proteče existující cestou
+  driver → DeviceManager → EventBus → WS, takže všechna UI vidí skutečný power/
+  input/mute/chyby) a řídí online/offline. Endpoint id se driver dozví přes
+  `subscribeToEndpoint` (DeviceManager subscribuje při connectu, protože manifest
+  hlásí `subscriptions: true`).
+- **Online = spojení se podařilo a přišel banner — i odpověď `ERR` znamená
+  online**; **offline jen když spojení selže** (nedostupný host / špatné heslo →
+  `PJLINK ERRA`). `connected` / `disconnected` se emitují **jen při přechodu**,
+  ne každý poll (žádný 30s boilerplate).
+- **`healthCheck` (watchdog vrstva 1) nedělá žádné I/O** — vrací cachovaný flag,
+  který udržuje poll. Watchdog tak nemůže nikdy spadnout na timeout ani projektor
+  duplicitně dotazovat. Vrstva 2 (`endpointHealthCheck`) se pro pjlink nepoužívá.
+- **Příkazy:** `on`/`off` (`%1POWR 1/0`), `setInput` (přijímá přátelské názvy
+  `HDMI1`/`RGB1`/… i syrový dvojmístný kód, plná tabulka aliasů), `setMute`
+  (`%1AVMT 31/30`). Příkaz proběhne v jednom spojení; `ERR` z projektoru =
+  `success:false`, ale **neoznačí** zařízení offline (odpověděl).
+- **Mapování odpovědí + ERR zprávy:** power `0/1/2/3 → off/on/cooling/warming`,
+  AVMT (`muted` + `muteItem` video/audio/av), ERST 6 znaků →
+  `errors {fan,lamp,temperature,cover,filter,other}` (`ok/warning/error`),
+  čitelné hlášky pro `ERR1–4` a `ERRA`. Poll posílá **částečný patch** (pole, jejichž
+  dotaz vrátil `ERR` — typicky INPT/AVMT ve standby — se vynechají; Redis je merguje,
+  takže poslední známý vstup/mute zůstane).
+- **Connection config:** `{ host, port=4352, password?, responseTimeoutMs=2000,
+  pollIntervalMs=30000 }`. Endpoint `pjlink.projector` (jeden na connection,
+  bez adresy). Capabilities: `subscriptions: true` (poll-emulovaný push),
+  `bidirectional: true`, `discovery: false`.
+- **User UI:** `SwitchWidget` (on/off); `readOn` bere `power` `"on"` i přechodové
+  `"warming"` jako zapnuto, `"off"`/`"cooling"` jako vypnuto.
+- Globální IPC default `DRIVER_COMMAND_TIMEOUT_MS` zvednut **2000 → 5000 ms**, aby
+  pomalé-ale-dostupné zařízení nikdy nehlásilo falešný IPC timeout (krátkožijící
+  session = connect + banner + response).
+- Testy: in-process mock projektor (`test/mock-device.ts`) + 10 testů
+  (`test/pjlink.test.ts`): poll/state, cachovaný healthCheck, „ERR drží online“,
+  offline na výpadku spojení, on/off/setInput/setMute, neplatný vstup bez I/O,
+  auth (správné/špatné heslo), dry-run.
 
 -----
 
@@ -2378,7 +2436,7 @@ Po restartu serveru je driver dostupný v Admin UI.
 
 | Driver (id) | Zařízení | Transport | Capabilities |
 |---|---|---|---|
-| `pjlink` | PJLink projektory (Class 1) | TCP 4352, ASCII | bidirectional |
+| `pjlink` | PJLink projektory (Class 1) | TCP 4352, ASCII | subscriptions (poll ~30 s), bidirectional |
 | `tcp-generic` | Libovolné jednoduché TCP zařízení | TCP, raw | bidirectional |
 | `dali-lunatone` | Lunatone DALI-2 IoT gateway | HTTP REST, port 80 | discovery, bidirectional |
 

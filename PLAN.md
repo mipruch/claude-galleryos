@@ -10,7 +10,14 @@ Mark items `[x]` as they are implemented and tested.
 ## Already done (core)
 
 - [x] driver-core: `IDeviceDriver` contract, IPC protocol, `TcpClient` transport
-- [x] `driver-pjlink` — PJLink Class 1 (auth, on/off/input/mute/readState)
+- [x] `driver-pjlink` — PJLink Class 1 (auth, on/off/input/mute/readState).
+      **Reworked** to match the protocol: short-lived connection per poll with
+      *pipelined* queries (manual §5.3), an internal ~30 s status poll that emits
+      `state` (so UIs see real power/input/mute/errors) via `subscriptions: true`,
+      online iff the connection succeeds (an `ERR` response still counts as online;
+      only a failed connection is offline), cached `healthCheck` (no watchdog
+      double-poll / false timeouts), and full `ERR`/power/mute/ERST mapping.
+      Global `DRIVER_COMMAND_TIMEOUT_MS` default 2000 → 5000 ms for IPC headroom.
 - [x] `driver-tcp-generic` — configurable raw TCP send/receive
 - [x] `DriverHost` — Bun.spawn subprocess manager with exponential-backoff restart
 - [x] `DeviceManager` — per-endpoint command serialisation, live-state mirroring

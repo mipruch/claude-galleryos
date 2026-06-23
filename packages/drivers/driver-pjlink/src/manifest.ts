@@ -4,6 +4,11 @@
  * PJLink is a standardised TCP protocol (port 4352) for controlling projectors
  * from many vendors. One connection == one projector, so a connection has a
  * single endpoint of type `pjlink.projector`.
+ *
+ * `subscriptions: true` — the projector closes idle sockets after 30 s, so the
+ * driver cannot hold a socket open; instead it polls on its own timer and emits
+ * `state` events (a "fake push"). The core therefore subscribes the endpoint on
+ * connect, which is how the driver learns the endpoint id to emit state for.
  */
 
 import type { DriverManifest } from "@gallery/driver-core";
@@ -11,7 +16,7 @@ import type { DriverManifest } from "@gallery/driver-core";
 export const manifest: DriverManifest = {
   id: "pjlink",
   name: "PJLink Projector",
-  version: "0.1.0",
+  version: "0.2.0",
   vendor: "PJLink (JBMIA)",
   description: "Controls PJLink Class 1 compatible projectors over TCP.",
 
@@ -31,16 +36,28 @@ export const manifest: DriverManifest = {
       responseTimeoutMs: {
         type: "integer",
         title: "Response timeout (ms)",
+        description: "Timeout for each network step (connect, banner, response).",
         default: 2000,
         minimum: 200,
         maximum: 10000,
+      },
+      pollIntervalMs: {
+        type: "integer",
+        title: "Status poll interval (ms)",
+        description:
+          "How often to connect and read the projector's status. The projector " +
+          "disconnects idle sockets after ~30 s, so each poll uses a fresh connection.",
+        default: 30000,
+        minimum: 5000,
+        maximum: 600000,
       },
     },
   },
 
   capabilities: {
     discovery: false,
-    subscriptions: false, // poll-based; the core reads state via readState()
+    // Poll-emulated push: the driver runs its own status poll and emits `state`.
+    subscriptions: true,
     bidirectional: true,
   },
 
@@ -55,8 +72,26 @@ export const manifest: DriverManifest = {
         type: "object",
         properties: {
           power: { type: "string", enum: ["off", "on", "cooling", "warming", "unknown"] },
-          input: { type: "string", description: "PJLink input code, e.g. 31 (HDMI1)" },
-          muted: { type: "boolean", description: "AV mute state" },
+          input: { type: "string", description: "PJLink input code, e.g. 31 (Digital)" },
+          inputLabel: { type: "string", description: "Friendly input label, e.g. 'Digital (31)'" },
+          muted: { type: "boolean", description: "AV mute state (true = muted)" },
+          muteItem: {
+            type: "string",
+            enum: ["video", "audio", "av"],
+            description: "Which mute item the projector last reported.",
+          },
+          errors: {
+            type: "object",
+            description: "Per-subsystem error status from ERST (ok / warning / error).",
+            properties: {
+              fan: { type: "string" },
+              lamp: { type: "string" },
+              temperature: { type: "string" },
+              cover: { type: "string" },
+              filter: { type: "string" },
+              other: { type: "string" },
+            },
+          },
         },
       },
       commands: [

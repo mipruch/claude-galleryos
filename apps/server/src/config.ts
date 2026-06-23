@@ -55,6 +55,10 @@ export const appConfig = {
     restartMaxAttempts: int("DRIVER_RESTART_MAX_ATTEMPTS", 0), // 0 = unlimited
     restartBaseDelayMs: int("DRIVER_RESTART_BASE_DELAY_MS", 1_000),
     restartMaxDelayMs: int("DRIVER_RESTART_MAX_DELAY_MS", 30_000),
-    commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 2_000),
+    // IPC request budget for executeCommand / readState / healthCheck. Must
+    // comfortably exceed a driver's worst-case single round-trip (e.g. a PJLink
+    // session = connect + banner + response over a short-lived socket) so a slow
+    // but reachable device is never reported as a false IPC timeout.
+    commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 5_000),
   },
 } as const;

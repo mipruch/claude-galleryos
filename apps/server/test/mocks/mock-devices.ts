@@ -2,8 +2,9 @@
  * In-process mock TCP devices for driver tests (Bun.listen).
  *
  * - {@link startPjlinkMock} speaks enough of the PJLink Class 1 protocol
- *   (banner, optional auth, POWR/INPT/AVMT) and closes after each command, like
- *   a real projector.
+ *   (banner, optional auth, POWR/INPT/AVMT/ERST). Per the manual (§5.3) it keeps
+ *   the connection open and accepts multiple commands on it; the client closes
+ *   when done (a real projector also drops the socket after ~30 s idle).
  * - {@link startEchoMock} echoes any newline-framed line back as `ECHO:<line>`.
  */
 
@@ -65,7 +66,8 @@ export function startPjlinkMock(opts: { password?: string } = {}): PjlinkMockSer
           }
 
           socket.write(handlePjlink(line, state) + "\r");
-          socket.end(); // projectors close the socket after each command
+          // Keep the connection open: the manual allows multiple commands on one
+          // connection. The client closes it when its session is done.
         }
       },
     },
@@ -83,7 +85,8 @@ function handlePjlink(cmd: string, state: { power: string; input: string; avmt: 
   if (c.startsWith("%1INPT ")) return (state.input = c.slice(7)), "%1INPT=OK";
   if (c === "%1AVMT ?") return `%1AVMT=${state.avmt}`;
   if (c.startsWith("%1AVMT ")) return (state.avmt = c.slice(7)), "%1AVMT=OK";
-  return `%1${c.slice(1, 5)}=ERR1`;
+  if (c === "%1ERST ?") return "%1ERST=000000"; // no errors reported
+  return `%1${c.slice(2, 6)}=ERR1`;
 }
 
 /** Start a mock newline-framed echo server. */
