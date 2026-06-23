@@ -45,11 +45,21 @@ export const manifest: DriverManifest = {
         type: "integer",
         title: "Status poll interval (ms)",
         description:
-          "How often to connect and read the projector's status. The projector " +
-          "disconnects idle sockets after ~30 s, so each poll uses a fresh connection.",
+          "How often to connect and read the projector's status (POWR + INPT). " +
+          "The projector disconnects idle sockets after ~30 s, so each poll uses a fresh connection.",
         default: 30000,
         minimum: 5000,
         maximum: 600000,
+      },
+      erstIntervalMs: {
+        type: "integer",
+        title: "Error status poll interval (ms)",
+        description:
+          "How often to request ERST (fan/lamp/temp/cover/filter/other error status). " +
+          "Infrequent by design — error states rarely change.",
+        default: 60000,
+        minimum: 10000,
+        maximum: 3600000,
       },
     },
   },

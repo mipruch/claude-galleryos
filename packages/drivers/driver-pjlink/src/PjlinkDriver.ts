@@ -16,10 +16,14 @@
  * Because the link is not permanent we cannot "watch" the socket for liveness.
  * Instead the driver runs its own **poll timer** (default 30 s): each tick opens
  * a connection, asks the projector for its status, emits a `state` event (so all
- * UIs see the real power/input/mute), and tracks online/offline. The rule the
- * user asked for: **any response — even an `ERR` — means the projector is online;
- * only a failed connection means offline.** Connected/disconnected are emitted
- * only on an actual transition, never once per poll.
+ * UIs see the real power/input), and tracks online/offline. The rule the user
+ * asked for: **any response — even an `ERR` — means the projector is online; only
+ * a failed connection means offline.** Connected/disconnected are emitted only on
+ * an actual transition, never once per poll.
+ *
+ * AVMT (mute) is never polled — only sent on explicit `setMute` commands.
+ * ERST (error status) is polled at a lower rate (default 60 s, configurable via
+ * `erstIntervalMs`) to reduce traffic.
  *
  * The watchdog's connection health check (`healthCheck`) therefore does no I/O —
  * it returns the cached flag the poll timer maintains, so it can never time out
@@ -39,8 +43,10 @@ import {
 } from "@gallery/driver-core";
 import { manifest } from "./manifest.ts";
 
-/** Status queries sent (pipelined) on every poll. */
-const POLL_COMMANDS = ["%1POWR ?", "%1INPT ?", "%1AVMT ?", "%1ERST ?"] as const;
+/** Queries sent on every regular poll. */
+const POLL_COMMANDS = ["%1POWR ?", "%1INPT ?"] as const;
+/** Extra query sent on the slow (ERST) poll. */
+const ERST_COMMAND = "%1ERST ?" as const;
 
 /** Friendly input names → PJLink 2-digit input codes (class digit + number). */
 const INPUT_ALIASES: Record<string, string> = {
@@ -89,6 +95,8 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   private timeoutMs = 2000;
   /** How often the poll timer asks the projector for its status. */
   private pollIntervalMs = 30_000;
+  /** How often the slower ERST query runs (default 60 s). */
+  private erstIntervalMs = 60_000;
 
   private ctx!: DriverContext;
   private online = false;
@@ -99,9 +107,11 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   /** Last known state, used to carry fields forward when a query errors. */
   private lastState: Record<string, unknown> = {};
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Timestamp of the last ERST query (ms), used to gate infrequent polling. */
+  private lastErstPollMs = 0;
 
   /** In-memory state used in dry-run mode. */
-  private simState: Record<string, unknown> = { power: "off", input: "31", muted: false };
+  private simState: Record<string, unknown> = { power: "off", input: "31" };
 
   /** Serialises all device I/O — one connection / transaction at a time. */
   private lock: Promise<unknown> = Promise.resolve();
@@ -113,6 +123,7 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
     this.password = String(config.config.password ?? "");
     this.timeoutMs = Number(config.config.responseTimeoutMs ?? 2000);
     this.pollIntervalMs = Number(config.config.pollIntervalMs ?? 30_000);
+    this.erstIntervalMs = Number(config.config.erstIntervalMs ?? 60_000);
 
     ctx.signal.addEventListener("abort", () => {
       this.destroyed = true;
@@ -162,6 +173,8 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   /** Record the projector endpoint and push its state to the UI right away. */
   async subscribeToEndpoint(endpoint: EndpointDescriptor): Promise<void> {
     this.endpointId = endpoint.id;
+    // Reset the ERST clock so the first subscribe poll always fetches full state.
+    this.lastErstPollMs = 0;
     this.startPolling();
     await this.pollOnce();
   }
@@ -221,8 +234,9 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
     if (this.ctx.dryRun) return { ...this.simState };
 
     try {
-      const results = await this.serialize(() => this.runSession([...POLL_COMMANDS]));
+      const results = await this.serialize(() => this.runSession([...POLL_COMMANDS, ERST_COMMAND]));
       this.setOnline(true);
+      this.lastErstPollMs = Date.now();
       const state = buildState(results);
       this.lastState = { ...this.lastState, ...state };
       this.emit("state", { endpointId: endpoint.id, state, source: "poll", timestamp: new Date() });
@@ -248,9 +262,10 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
   }
 
   /**
-   * One status poll: connect, ask the projector for POWR/INPT/AVMT/ERST, emit the
-   * resulting state, and update the online flag. Any response keeps us online;
-   * only a connection failure flips us offline. Never throws.
+   * One status poll: connect, ask the projector for POWR/INPT (and ERST when
+   * `erstIntervalMs` has elapsed), emit the resulting state, and update the online
+   * flag. Any response keeps us online; only a connection failure flips us offline.
+   * Never throws.
    */
   private async pollOnce(): Promise<void> {
     if (this.destroyed) return;
@@ -268,10 +283,16 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       return;
     }
 
-    const start = Date.now();
+    const now = Date.now();
+    const includeErst = now - this.lastErstPollMs >= this.erstIntervalMs;
+    const commands: string[] = [...POLL_COMMANDS];
+    if (includeErst) commands.push(ERST_COMMAND);
+
+    const start = now;
     try {
-      const results = await this.serialize(() => this.runSession([...POLL_COMMANDS]));
+      const results = await this.serialize(() => this.runSession(commands));
       this.lastLatencyMs = Date.now() - start;
+      if (includeErst) this.lastErstPollMs = Date.now();
       this.setOnline(true);
       const state = buildState(results);
       this.lastState = { ...this.lastState, ...state };
@@ -309,7 +330,6 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       case "on": this.simState.power = "on"; break;
       case "off": this.simState.power = "off"; break;
       case "setInput": this.simState.input = resolveInput(String(params.input ?? "")); break;
-      case "setMute": this.simState.muted = Boolean(params.muted); break;
     }
     return { ...this.simState };
   }
@@ -505,9 +525,6 @@ function buildState(results: Record<string, string>): Record<string, unknown> {
     state.input = inpt;
     state.inputLabel = inputLabel(inpt);
   }
-
-  const avmt = results.AVMT;
-  if (avmt && !isErr(avmt) && /^\d{2}$/.test(avmt)) Object.assign(state, parseAvmt(avmt));
 
   const erst = results.ERST;
   if (erst && !isErr(erst) && /^\d{6}$/.test(erst)) state.errors = parseErst(erst);

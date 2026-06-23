@@ -105,7 +105,7 @@ describe("PjlinkDriver", () => {
   });
 
   test("an ERR response keeps the projector online (offline only on connect failure)", async () => {
-    // Powered off → the projector answers ERR3 to INPT/AVMT queries.
+    // Powered off → the projector answers ERR3 to INPT query.
     mock = startPjlinkMock({ power: "0" });
     driver = new PjlinkDriver();
     await driver.init(config(mock.port), makeCtx());
@@ -120,9 +120,8 @@ describe("PjlinkDriver", () => {
 
     const last = states.at(-1)!;
     expect(last.state.power).toBe("off");
-    // ERR'd fields are omitted (Redis keeps the last known value).
+    // ERR'd / unpolled fields are omitted (Redis keeps the last known value).
     expect(last.state.input).toBeUndefined();
-    expect(last.state.muted).toBeUndefined();
   });
 
   test("a failed connection marks the projector offline", async () => {
