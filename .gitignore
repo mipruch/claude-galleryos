@@ -13,6 +13,10 @@ logs/
 dist/
 build/
 
+# vue-tsc / tsc emit artifacts (generated alongside source when type-checking)
+apps/ui/src/**/*.js
+apps/ui/src/**/*.vue.js
+
 # Bun
 .bun/
 
