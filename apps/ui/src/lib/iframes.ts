@@ -9,6 +9,42 @@
 
 import type { IframeDTO } from '@gallery/types'
 
+/** A single iframe's new display order to persist. */
+export interface IframeOrderChange {
+  id: string
+  displayOrder: number
+}
+
+/**
+ * Move iframe `id` by `delta` (-1 up / +1 down) within the sorted list and
+ * renumber to contiguous positions.
+ *
+ * @returns the new ordered list plus the minimal set whose `displayOrder`
+ *   actually changed, or `null` when the move is a no-op.
+ */
+export function computeIframeReorder(
+  iframes: IframeDTO[],
+  id: string,
+  delta: number,
+): { order: IframeDTO[]; changed: IframeOrderChange[] } | null {
+  const sorted = sortByDisplayOrder(iframes)
+  const from = sorted.findIndex((f) => f.id === id)
+  if (from < 0) return null
+  const to = from + delta
+  if (to < 0 || to >= sorted.length) return null
+
+  const order = [...sorted]
+  const [moved] = order.splice(from, 1)
+  if (!moved) return null
+  order.splice(to, 0, moved)
+
+  const changed: IframeOrderChange[] = []
+  order.forEach((frame, index) => {
+    if (frame.displayOrder !== index) changed.push({ id: frame.id, displayOrder: index })
+  })
+  return { order, changed }
+}
+
 /** True when `value` is an absolute http(s) URL the browser can embed. */
 export function isEmbeddableUrl(value: string): boolean {
   if (!value) return false

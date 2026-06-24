@@ -33,6 +33,19 @@ const deviceOnline = computed(() => devices.devices.filter((d) => devices.status
 const runningScenes = computed(() => Object.values(scenes.running).filter(Boolean).length)
 const favourites = computed(() => scenes.records.filter((s) => s.isFavorite && s.enabled))
 
+/** Returns non-ok PJLink error entries for a connection's projector, if any. */
+function pjlinkErrors(connectionId: string): { key: string; val: string }[] {
+  const device = devices.devices.find(
+    (d) => d.connectionId === connectionId && d.subtype === 'pjlink.projector',
+  )
+  if (!device) return []
+  const state = devices.stateOf(device.id) as { errors?: Record<string, string> }
+  if (!state?.errors) return []
+  return Object.entries(state.errors)
+    .filter(([, v]) => v && v !== 'ok')
+    .map(([k, v]) => ({ key: k, val: v }))
+}
+
 const REFRESH_MS = 10_000
 let timer: ReturnType<typeof setInterval> | undefined
 
@@ -130,14 +143,26 @@ onBeforeUnmount(() => {
         <CardHeader><CardTitle class="text-base">Connections</CardTitle></CardHeader>
         <CardContent>
           <ul v-if="connections.connections.length" class="divide-y">
-            <li v-for="c in connections.connections" :key="c.id" class="flex items-center gap-3 py-2">
-              <span class="size-2 shrink-0 rounded-full" :class="STATE_DOT[c.state]" />
-              <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ c.name }}</span>
-              <span class="text-muted-foreground shrink-0 text-xs">{{ c.driverId }}</span>
-              <span class="shrink-0 text-xs" :class="STATE_COLOR[c.state]">{{ STATE_LABEL[c.state] }}</span>
-              <span v-if="c.status.latencyMs != null" class="text-muted-foreground shrink-0 text-xs tabular-nums">
-                {{ c.status.latencyMs }}ms
-              </span>
+            <li v-for="c in connections.connections" :key="c.id" class="py-2">
+              <div class="flex items-center gap-3">
+                <span class="size-2 shrink-0 rounded-full" :class="STATE_DOT[c.state]" />
+                <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ c.name }}</span>
+                <span class="text-muted-foreground shrink-0 text-xs">{{ c.driverId }}</span>
+                <span class="shrink-0 text-xs" :class="STATE_COLOR[c.state]">{{ STATE_LABEL[c.state] }}</span>
+                <span v-if="c.status.latencyMs != null" class="text-muted-foreground shrink-0 text-xs tabular-nums">
+                  {{ c.status.latencyMs }}ms
+                </span>
+              </div>
+              <div v-if="pjlinkErrors(c.id).length" class="mt-1 flex flex-wrap gap-1 pl-5">
+                <span
+                  v-for="e in pjlinkErrors(c.id)"
+                  :key="e.key"
+                  class="rounded px-1.5 py-0.5 text-xs font-medium"
+                  :class="e.val === 'error' ? 'bg-destructive/15 text-destructive' : 'bg-amber-500/15 text-amber-600'"
+                >
+                  {{ e.key }}: {{ e.val }}
+                </span>
+              </div>
             </li>
           </ul>
           <p v-else class="text-muted-foreground text-sm">No connections configured.</p>

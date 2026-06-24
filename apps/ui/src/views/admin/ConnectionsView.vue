@@ -4,14 +4,15 @@
  * create/edit/delete. Reuses `useConnectionsStore` (already hydrated + live via
  * the shared socket) so the table reflects realtime status without re-fetching.
  */
-import { onMounted, ref } from 'vue'
-import { CableIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
+import { CableIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from '@lucide/vue'
 import type { ConnectionView } from '@/stores/connections'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDriversStore } from '@/stores/drivers'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   AlertDialog,
@@ -34,6 +35,20 @@ onMounted(() => {
 })
 
 const driverName = (id: string) => drivers.get(id)?.name ?? id
+
+const search = ref('')
+const rows = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return store.connections
+  return store.connections.filter((c) => {
+    const addr = [c.host, c.port].filter(Boolean).join(':')
+    return (
+      c.name.toLowerCase().includes(q) ||
+      driverName(c.driverId).toLowerCase().includes(q) ||
+      addr.toLowerCase().includes(q)
+    )
+  })
+})
 
 const STATE_LABEL: Record<string, string> = {
   connected: 'Connected',
@@ -81,8 +96,14 @@ async function confirmDelete(): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-4 p-6">
-    <div class="flex items-center justify-between gap-4">
-      <p class="text-muted-foreground text-sm">{{ store.connections.length }} connection(s)</p>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <div class="relative">
+          <SearchIcon class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+          <Input v-model="search" placeholder="Search connections…" class="w-56 pl-8" />
+        </div>
+        <p class="text-muted-foreground text-sm">{{ rows.length }} connection(s)</p>
+      </div>
       <Button @click="openCreate">
         <PlusIcon class="size-4" />
         New connection
@@ -102,7 +123,7 @@ async function confirmDelete(): Promise<void> {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="c in store.connections" :key="c.id">
+          <TableRow v-for="c in rows" :key="c.id">
             <TableCell class="font-medium">{{ c.name }}</TableCell>
             <TableCell>
               <Badge variant="secondary">{{ driverName(c.driverId) }}</Badge>
@@ -135,7 +156,7 @@ async function confirmDelete(): Promise<void> {
             </TableCell>
           </TableRow>
 
-          <TableRow v-if="!store.connections.length">
+          <TableRow v-if="!rows.length">
             <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
               <CableIcon class="mx-auto mb-2 size-6 opacity-50" />
               No connections yet. Add one to start talking to a device.

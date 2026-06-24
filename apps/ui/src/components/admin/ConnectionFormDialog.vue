@@ -39,7 +39,6 @@ const emit = defineEmits<{ 'update:open': [boolean] }>()
 const store = useConnectionsStore()
 const drivers = useDriversStore()
 
-const PROTOCOLS = ['tcp', 'udp', 'http', 'serial'] as const
 
 const isEdit = computed(() => !!props.connection)
 // Driver lives outside the validated form: it *picks* which dynamic schema (and
@@ -76,7 +75,6 @@ const validationSchema = computed(() =>
     z
       .object({
         name: z.string().min(1, 'Required'),
-        protocol: z.string().min(1, 'Required'),
         enabled: z.boolean(),
       })
       .merge(zodFromSchema(configSchema.value)),
@@ -100,7 +98,6 @@ function hydrate(): void {
   resetForm({
     values: {
       name: c?.name ?? '',
-      protocol: c?.protocol ?? 'tcp',
       enabled: c?.enabled ?? true,
       ...defaultsFromSchema(configSchema.value),
       ...config,
@@ -150,7 +147,6 @@ const submit = handleSubmit(async (values) => {
   const payload: Partial<ConnectionDTO> = {
     name: values.name,
     driverId: driverId.value,
-    protocol: values.protocol,
     enabled: values.enabled,
     host: schemaKeys.includes('host') ? ((values as Record<string, unknown>).host as string) || null : undefined,
     port: schemaKeys.includes('port')
@@ -218,23 +214,6 @@ const submit = handleSubmit(async (values) => {
             :model-value="stringArrays[p.key] ?? []"
             @update:model-value="stringArrays[p.key] = $event"
           />
-
-          <FormField v-slot="{ componentField }" name="protocol">
-            <FormItem>
-              <FormLabel>Protocol</FormLabel>
-              <Select v-bind="componentField">
-                <FormControl>
-                  <SelectTrigger><SelectValue placeholder="Protocol" /></SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem v-for="p in PROTOCOLS" :key="p" :value="p">{{ p.toUpperCase() }}</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          </FormField>
 
           <FormField v-slot="{ value, handleChange }" name="enabled">
             <FormItem>

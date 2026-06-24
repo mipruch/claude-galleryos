@@ -5,7 +5,7 @@
  * the shared socket app-wide), filtered by room/type client-side.
  */
 import { computed, onMounted, ref } from 'vue'
-import { MonitorSpeakerIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
+import { MonitorSpeakerIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from '@lucide/vue'
 import type { DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
 import { useConnectionsStore } from '@/stores/connections'
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,13 +47,25 @@ const types = computed(() => [...new Set(devices.records.map((d) => d.type))].so
 const ALL = '__all__'
 const roomFilter = ref(ALL)
 const typeFilter = ref(ALL)
+const search = ref('')
 
-const rows = computed(() =>
-  [...devices.records]
+const rows = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  return [...devices.records]
     .filter((d) => (roomFilter.value !== ALL ? d.roomId === roomFilter.value : true))
     .filter((d) => (typeFilter.value !== ALL ? d.type === typeFilter.value : true))
-    .sort((a, b) => a.name.localeCompare(b.name)),
-)
+    .filter((d) => {
+      if (!q) return true
+      return (
+        d.name.toLowerCase().includes(q) ||
+        d.type.toLowerCase().includes(q) ||
+        (d.subtype ?? '').toLowerCase().includes(q) ||
+        roomName(d.roomId).toLowerCase().includes(q) ||
+        connName(d.connectionId).toLowerCase().includes(q)
+      )
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
 
 // ── dialog + delete state ───────────────────────────────────────────────────
 const formOpen = ref(false)
@@ -86,6 +99,10 @@ async function confirmDelete(): Promise<void> {
   <div class="flex flex-col gap-4 p-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <SearchIcon class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+          <Input v-model="search" placeholder="Search devices…" class="w-48 pl-8" />
+        </div>
         <Select v-model="roomFilter">
           <SelectTrigger class="w-44"><SelectValue placeholder="All rooms" /></SelectTrigger>
           <SelectContent>

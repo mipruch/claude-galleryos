@@ -4,8 +4,8 @@
  * with its URL and display order, plus create / edit / delete. Reuses
  * `useIframesStore`.
  */
-import { onMounted, ref } from 'vue'
-import { AppWindowIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
+import { AppWindowIcon, ArrowDownIcon, ArrowUpIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
 import type { IframeDTO } from '@gallery/types'
 import { useIframesStore } from '@/stores/iframes'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,8 @@ import IframeFormDialog from '@/components/admin/IframeFormDialog.vue'
 const store = useIframesStore()
 
 onMounted(() => store.fetchAll())
+
+const rows = computed(() => store.records)
 
 // ── dialog + delete state ───────────────────────────────────────────────────
 const formOpen = ref(false)
@@ -55,7 +57,7 @@ async function confirmDelete(): Promise<void> {
 <template>
   <div class="flex flex-col gap-4 p-6">
     <div class="flex items-center justify-between gap-4">
-      <p class="text-muted-foreground text-sm">{{ store.records.length }} iframe(s)</p>
+      <p class="text-muted-foreground text-sm">{{ rows.length }} iframe(s)</p>
       <Button @click="openCreate">
         <PlusIcon class="size-4" />
         New iframe
@@ -73,8 +75,17 @@ async function confirmDelete(): Promise<void> {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="f in store.records" :key="f.id">
-            <TableCell class="text-muted-foreground tabular-nums">{{ f.displayOrder }}</TableCell>
+          <TableRow v-for="(f, i) in rows" :key="f.id">
+            <TableCell>
+              <div class="flex gap-1">
+                <Button variant="ghost" size="icon-sm" aria-label="Move up" :disabled="i === 0" @click="store.move(f.id, -1)">
+                  <ArrowUpIcon class="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon-sm" aria-label="Move down" :disabled="i === rows.length - 1" @click="store.move(f.id, 1)">
+                  <ArrowDownIcon class="size-4" />
+                </Button>
+              </div>
+            </TableCell>
             <TableCell class="font-medium">{{ f.name }}</TableCell>
             <TableCell class="text-muted-foreground max-w-md truncate">
               <a :href="f.url" target="_blank" rel="noopener noreferrer" class="hover:text-foreground hover:underline">
@@ -93,7 +104,7 @@ async function confirmDelete(): Promise<void> {
             </TableCell>
           </TableRow>
 
-          <TableRow v-if="!store.records.length">
+          <TableRow v-if="!rows.length">
             <TableCell colspan="4" class="text-muted-foreground py-10 text-center">
               <AppWindowIcon class="mx-auto mb-2 size-6 opacity-50" />
               No iframes yet. Add one to embed an external device UI.

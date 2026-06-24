@@ -8,7 +8,7 @@
  * actions behave identically to the on-screen controls.
  */
 
-import { type DeviceRecord, type DeviceState } from './devices'
+import { type DeviceRecord, type DeviceState, matrixInputs } from './devices'
 
 export interface DeviceAction {
   /** Stable id within a device (used as the list key). */
@@ -23,7 +23,10 @@ export interface DeviceAction {
 /** Level presets offered for dimmer/fader capabilities. */
 const LEVEL_PRESETS = [100, 50, 0] as const
 
-export function deviceActions(device: DeviceRecord): DeviceAction[] {
+export function deviceActions(
+  device: DeviceRecord,
+  connectionConfig?: Record<string, unknown>,
+): DeviceAction[] {
   const caps = new Set(device.capabilities)
   const actions: DeviceAction[] = []
 
@@ -60,6 +63,19 @@ export function deviceActions(device: DeviceRecord): DeviceAction[] {
   }
   if (caps.has('shortOff')) {
     actions.push({ id: 'shortOff', label: 'Pulse off', command: 'shortOff', params: {} })
+  }
+
+  // Extron matrix output: generate an action per available input.
+  if (device.subtype === 'extron-matrix.output') {
+    for (const input of matrixInputs(connectionConfig)) {
+      actions.push({
+        id: `setInput-${input.value}`,
+        label: `Route: ${input.label}`,
+        command: 'setInput',
+        params: { input: input.value },
+        optimistic: { input: input.value },
+      })
+    }
   }
 
   return actions

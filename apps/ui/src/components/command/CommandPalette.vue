@@ -14,11 +14,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { SearchIcon, ChevronRightIcon, CornerDownLeftIcon } from '@lucide/vue'
 import { toast } from 'vue-sonner'
-import { searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
+import { deviceKind, searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
 import { searchScenes, sceneIcon, type SceneRecord } from '@/lib/scenes'
 import { deviceActions, type DeviceAction } from '@/lib/commands'
 import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
+import { useConnectionsStore } from '@/stores/connections'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 interface PaletteItem {
@@ -32,6 +33,7 @@ interface PaletteItem {
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
+const connections = useConnectionsStore()
 const { open, close, toggle } = useCommandPalette()
 
 const query = ref('')
@@ -58,7 +60,8 @@ const results = computed<PaletteItem[]>(() => {
   if (view.value === 'device' && activeDevice.value) {
     const device = activeDevice.value
     const q = query.value.trim().toLowerCase()
-    return deviceActions(device)
+    const connConfig = connections.configOf(device.connectionId)
+    return deviceActions(device, connConfig)
       .filter((a) => !q || a.label.toLowerCase().includes(q))
       .map((a) => ({
         id: a.id,
@@ -79,7 +82,9 @@ const results = computed<PaletteItem[]>(() => {
     icon: sceneIcon(s.icon),
     onSelect: () => runScene(s),
   }))
-  const deviceItems: PaletteItem[] = searchDevices(store.devices, query.value, store.rooms).map(
+  const deviceItems: PaletteItem[] = searchDevices(store.devices, query.value, store.rooms)
+    .filter((d) => deviceKind(d) !== 'bssMeter')
+    .map(
     (d) => ({
       id: d.id,
       title: d.name,

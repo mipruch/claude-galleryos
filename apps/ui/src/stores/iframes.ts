@@ -11,7 +11,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { IframeDTO, IframeCreateInput, IframeUpdateInput } from '@gallery/types'
-import { sortByDisplayOrder } from '@/lib/iframes'
+import { computeIframeReorder, sortByDisplayOrder } from '@/lib/iframes'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
 
@@ -95,5 +95,28 @@ export const useIframesStore = defineStore('iframes', () => {
     }
   }
 
-  return { records, loading, loaded, error, fetchAll, create, update, remove }
+  /**
+   * Reorders an iframe by one position (delta -1 up / +1 down), persisting only
+   * the iframes whose `displayOrder` changed. Optimistic; reverts via refetch on error.
+   */
+  async function move(id: string, delta: number): Promise<void> {
+    const result = computeIframeReorder(records.value, id, delta)
+    if (!result || !result.changed.length) return
+
+    for (const change of result.changed) {
+      const frame = records.value.find((f) => f.id === change.id)
+      if (frame) frame.displayOrder = change.displayOrder
+    }
+    records.value = sortByDisplayOrder(records.value)
+    try {
+      await Promise.all(
+        result.changed.map((c) => api.iframes.update(c.id, { displayOrder: c.displayOrder })),
+      )
+    } catch (err) {
+      toast.error('Could not reorder iframes', { description: errMsg(err) })
+      await fetchAll()
+    }
+  }
+
+  return { records, loading, loaded, error, fetchAll, create, update, remove, move }
 })
