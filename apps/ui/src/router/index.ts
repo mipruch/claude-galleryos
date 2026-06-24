@@ -89,7 +89,7 @@ const routes: RouteRecordRaw[] = [
         path: 'layouts/:id',
         name: 'admin-layout-builder',
         component: () => import('@/views/admin/KioskBuilderView.vue'),
-        meta: { title: 'Layout builder', subtitle: 'Arrange device widgets' },
+        meta: { title: 'Layout builder', subtitle: 'Arrange device widgets', fullHeight: true },
       },
       {
         path: 'logs',
