@@ -80,6 +80,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Iframes', subtitle: 'Embedded device UIs' },
       },
       {
+        path: 'mappings',
+        name: 'admin-mappings',
+        component: () => import('@/views/admin/MappingsView.vue'),
+        meta: { title: 'Mappings', subtitle: 'OSC/TCP/HTTP signals → actions' },
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),

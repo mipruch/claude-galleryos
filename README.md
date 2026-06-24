@@ -1255,20 +1255,73 @@ Implementováno (Step 0.2). Vlastní Winston transport (`winston-transport`), kt
 
 ### 7.7 Protocol Input Bus
 
-#### OscServer — `apps/server/src/input/OscServer.ts`
+#### InputMapper — `apps/server/src/input/InputMapper.ts` ✓
 
-UDP server poslouchající na portu `OSC_PORT` (default 8765).
+Sdílené, **na transportu nezávislé** jádro ingressu: převádí příchozí signál
+(OSC / TCP / HTTP) na systémovou akci podle pravidel z tabulky `input_mappings`.
+Každý ingress server jen rozparsuje svůj wire formát do neutrálního
+`InputSignal` (`{ protocol, address, args }`) a zavolá `handle(signal)` — veškerý
+pattern matching, šablonování parametrů a dispatch žije tady jednou, takže se
+všechny protokoly chovají stejně.
 
-Pro každou přijatou OSC zprávu:
+- **`src/input/patterns.ts`** — čisté, samostatně testované funkce. Pattern je
+  `/`-oddělená cesta: segment začínající `:` je pojmenovaný zástupný znak (zachytí
+  daný segment adresy), ostatní segmenty se musí shodovat doslovně; pattern bez
+  zástupného znaku se matchuje přesnou rovností.
+  - `compilePattern("/scene/execute")` → přesná shoda
+  - `compilePattern("/dim/:level")` → matchne `/dim/0.5`, zachytí `level="0.5"`
+- **Vyhodnocení šablony** (`paramsTemplate`): hodnota je buď literál (projde beze
+  změny), **celý token** (`{arg[0]}` = N-tý poziční argument, `{:level}` = zachycený
+  path param — celotokenová reference si zachová typ odkazované hodnoty; path param
+  se z číselného/booleovského řetězce zkoerciuje), nebo **vnořený token** v delším
+  řetězci (interpoluje se jako text). Vnořené objekty/pole se procházejí rekurzivně;
+  nevyřešená reference (arg mimo rozsah / chybějící param) klíč vynechá.
+- **Cache** — pouze **povolená** (`enabled`) mapování, seskupená podle protokolu;
+  `reload()` ji přestaví. Mappings CRUD volá `reload()` po každé editaci, takže se
+  změny projeví bez restartu. `match(signal)` je čistý (bez dispatch) — používá ho i
+  dry-run `/mappings/test`.
+- **Dispatch** dle `target_type`:
+  - `scene.execute` → `SceneEngine.startScene(targetId, protocol, …)` (source = protokol,
+    sourceDetail = `protokol:adresa`, např. `osc:/scene/execute`)
+  - `device.command` → `DeviceManager.execute(targetId, targetCommand, params)` (šablonované params)
+  - `event.emit` → `EventBus.emit("input.mapping.triggered", …)` — pojmenovaný,
+    typovaný hook držený na serveru (sběrnice má uzavřený katalog, takže nelze
+    emitovat libovolný event)
+  - Každý match vrátí `DispatchOutcome`; jeden signál může spustit více pravidel.
+    Chyby se chytají per-pravidlo (z `handle()` nikdy nepropadne výjimka).
 
-1. Emitovat `input.osc.received` na EventBus (pro logování)
-1. Vyhledat pasující `InputMapping` záznamy z DB cache (pattern matching)
-1. Pro každý match: vyhodnotit `params_template` (substituovat `{arg[0]}`, `{arg[1]}`, …)
-1. Spustit akci dle `target_type`:
-- `scene.execute` → `SceneEngine.executeScene(targetId, 'osc')`
-- `device.command` → `DeviceManager.execute(targetId, targetCommand, params)`
+> ⚠️ **Korekce protokolu / sjednocení.** PLAN sketchoval `params_template` jen pro
+> poziční `{arg[N]}` a TCP `/test` přes `{ protocol, message }`. Skutečná
+> implementace přidává i `{:name}` z path params a sjednocuje matching na neutrální
+> `address` (OSC adresa = TCP cesta), takže `/test` bere `{ protocol, address, args? }`
+> a stejný matcher slouží všem transportům.
 
-Pattern matching: `/scene/execute` matchuje přesně, `/dim/:level` matchuje `/dim/0.5` a extrahuje `level = "0.5"`.
+#### OscServer — `apps/server/src/input/OscServer.ts` ✓
+
+UDP server poslouchající na portu `OSC_PORT` (default 8765), postavený na
+`Bun.udpSocket`. **Tenký transport** nad sdíleným `InputMapper` — sám neumí žádný
+matching ani dispatch, jen převede UDP datagram na neutrální signály a předá je dál.
+
+- **`src/input/osc.ts`** — čistý, samostatně testovaný **dekodér OSC 1.0** (žádná
+  závislost). Rozparsuje datagram na zprávy `{ address, args }`: OSC-string (null +
+  padding na násobek 4), OSC-blob, type-tag string a argumenty. Podporované tagy
+  `i f s S b h t d T F N I c r m` (64-bit `h`/`t` se zúží na `number` kvůli JSON).
+  Umí i **bundly** (`#bundle` + time-tag + vnořené prvky) — rekurzivně je rozbalí,
+  time-tag ignoruje (ingress se spouští okamžitě). Neznámý tag / poškozený rámec →
+  `OscParseError`.
+- **`OscServer.receive(datagram)`** (nezávislé na socketu, proto přímo testovatelné):
+  pro každou zprávu emituje `input.osc.received` (audit) a předá
+  `{ protocol: "osc", address, args }` do `InputMapper.handle()`. Vadný datagram se
+  zaloguje a zahodí — špatný odesílatel server nerozbije.
+- **`start()`** jen nabinduje UDP socket a forwarduje datagramy do `receive()`.
+  Selhání bindu (port obsazený) v composition rootu zaloguje, ale **nezhodí** server
+  (OSC ingress je doplňkový).
+
+Veškerý matching/templating/dispatch tedy řeší `InputMapper` (viz výše) stejně pro
+OSC jako pro budoucí TCP/HTTP: `/scene/execute` matchuje přesně, `/dim/:level`
+matchne `/dim/0.5` a zachytí `level`, a `target_type` rozhodne o akci
+(`scene.execute` → `SceneEngine.startScene`, `device.command` →
+`DeviceManager.execute`, `event.emit` → `input.mapping.triggered`).
 
 #### TcpInputServer — `apps/server/src/input/TcpInputServer.ts`
 
@@ -1363,13 +1416,19 @@ GET    /schedules/:id/next       - příštích 5 spuštění (preview)
 ### Input Mappings
 
 ```
-GET    /mappings                 - seznam mapování
-POST   /mappings                 - vytvořit
-GET    /mappings/:id             - detail
-PUT    /mappings/:id             - aktualizovat
-DELETE /mappings/:id             - smazat
-POST   /mappings/test            - test pattern matching { protocol, address, args }
+GET    /mappings                 - seznam mapování (?protocol= ?enabled=)               ✓
+POST   /mappings                 - vytvořit (validuje protocol/targetType + existenci cíle) ✓
+GET    /mappings/:id             - detail                                              ✓
+PUT    /mappings/:id             - aktualizovat (re-validuje sloučený cíl, reload cache) ✓
+DELETE /mappings/:id             - smazat (reload cache)                                ✓
+PATCH  /mappings/:id/toggle      - povolit/zakázat ({enabled} nebo flip, reload cache)  ✓
+POST   /mappings/test            - dry-run match { protocol, address, args? } → matched + params ✓
 ```
+
+Každá mutace zapíše do DB **i** zavolá `InputMapper.reload()`, takže se pravidla
+projeví bez restartu. Cíl se validuje předem: `target_type` rozhoduje, které z
+`targetId`/`targetCommand` jsou povinné, a odkazovaná scéna/zařízení musí existovat
+(→ 400) — vadné pravidlo se k matcheru nikdy nedostane.
 
 ### UI Layouts
 
@@ -1648,8 +1707,21 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   reorder přečísluje `displayOrder` na souvislé 0..n-1 (opraví i shodné hodnoty
   ze seedu, kde je vše `0`) a persistuje jen změněné místnosti; unit-testováno.
 
-Zbývající admin stránky (mappings, layouts) přidají další řezy
-— viz PLAN §"Priority 5 — UI".
+- **`/admin/mappings`** (`views/admin/MappingsView.vue`) — tabulka vstupních
+  mapování (název, protokol, pattern, cíl, povolit/zakázat, editace, mazání) +
+  tlačítko **Test signal**. Cíl se v tabulce vykreslí čitelně přes
+  `targetSummary` (jména scén/zařízení dotažená ze storů).
+- `MappingFormDialog` (vee-validate + Zod) — selecty protokolu a akce, pattern a
+  **podmíněný cíl**: u „Run scene“ picker scény, u „Device command“ picker
+  zařízení + příkazu (přes `useDeviceCommands`, stejně jako editor scén), plus
+  JSON editor `paramsTemplate` (s nápovědou k tokenům `{arg[0]}` / `{:name}`).
+- `MappingTestDialog` — dry-run `POST /mappings/test` (protokol + adresa + args),
+  vypíše pravidla, která matchla, a vyhodnocené parametry; nic nespouští.
+- Nové `useMappingsStore` (CRUD + `toggle` + `test`) a čistý `lib/mappings.ts`
+  (labely, `targetSummary`, `parse/stringifyParamsTemplate`, `parseTestArgs`) —
+  unit-testováno; `lib/api.ts` má skupinu `mappings`.
+
+Zbývající admin stránka (layouts) přidá další řez — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce
 

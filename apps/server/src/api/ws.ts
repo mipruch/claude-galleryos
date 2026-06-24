@@ -61,6 +61,7 @@ const PROJECTIONS: { [T in GalleryEventType]: (e: EventOf<T>) => ServerMessage |
   }),
   "input.osc.received": () => null,
   "input.tcp.received": () => null,
+  "input.mapping.triggered": () => null,
   "system.driver.crashed": (e) => ({
     event: "driver:error",
     data: { connectionId: e.connectionId, driverId: e.driverId, message: e.error },

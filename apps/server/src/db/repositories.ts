@@ -11,6 +11,7 @@ import {
   connections,
   devices,
   iframes,
+  inputMappings,
   logs,
   rooms,
   sceneActions,
@@ -25,6 +26,7 @@ import type {
   NewConnection,
   NewDevice,
   NewIframe,
+  NewInputMapping,
   NewScheduledJob,
   SceneActionInput,
   SceneCreateInput,
@@ -399,6 +401,56 @@ export const scheduledJobsRepo = {
 
   setLastRunAt: (id: string, lastRunAt: Date) =>
     db.update(scheduledJobs).set({ lastRunAt }).where(eq(scheduledJobs.id, id)),
+};
+
+// ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
+
+export interface InputMappingFilter {
+  protocol?: string;
+  enabled?: boolean;
+}
+
+export const inputMappingsRepo = {
+  /** All mappings, newest first; optionally filtered by protocol/enabled. */
+  list: (filter: InputMappingFilter = {}) => {
+    const conds: SQL[] = [];
+    if (filter.protocol !== undefined) conds.push(eq(inputMappings.protocol, filter.protocol as never));
+    if (filter.enabled !== undefined) conds.push(eq(inputMappings.enabled, filter.enabled));
+    const q = db.select().from(inputMappings).orderBy(desc(inputMappings.createdAt));
+    return conds.length ? q.where(and(...conds)) : q;
+  },
+
+  /** Only enabled mappings — what the InputMapper caches. */
+  listEnabled: () =>
+    db.select().from(inputMappings).where(eq(inputMappings.enabled, true)),
+
+  get: (id: string) =>
+    first(db.select().from(inputMappings).where(eq(inputMappings.id, id)).limit(1)),
+
+  create: (values: NewInputMapping) =>
+    first(db.insert(inputMappings).values(values).returning()),
+
+  update: (id: string, values: Partial<NewInputMapping>) =>
+    first(
+      db
+        .update(inputMappings)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(inputMappings.id, id))
+        .returning(),
+    ),
+
+  remove: (id: string) =>
+    first(db.delete(inputMappings).where(eq(inputMappings.id, id)).returning()),
+
+  /** Toggle enabled without touching the rest of the row. */
+  setEnabled: (id: string, enabled: boolean) =>
+    first(
+      db
+        .update(inputMappings)
+        .set({ enabled, updatedAt: new Date() })
+        .where(eq(inputMappings.id, id))
+        .returning(),
+    ),
 };
 
 // ── DeviceManager adapter (read-only) ────────────────────────

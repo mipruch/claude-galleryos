@@ -28,6 +28,9 @@ export type GalleryEvent =
   // Inputs (used by later steps)
   | { type: "input.osc.received"; address: string; args: unknown[] }
   | { type: "input.tcp.received"; message: string; client: string }
+  // An input mapping with target_type "event.emit" fired: a named hook other
+  // modules (or future automations) can react to. Stays server-side.
+  | { type: "input.mapping.triggered"; mappingId: string; name: string; params: Record<string, unknown> }
   // System
   | { type: "system.driver.crashed"; connectionId: string; driverId: string; error: string }
   | { type: "system.startup.complete" };

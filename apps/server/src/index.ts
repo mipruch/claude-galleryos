@@ -18,6 +18,7 @@ import {
   dbRepo,
   devicesRepo,
   iframesRepo,
+  inputMappingsRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -33,6 +34,8 @@ import { MeterService } from "./core/MeterService.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
+import { InputMapper } from "./input/InputMapper.ts";
+import { OscServer } from "./input/OscServer.ts";
 import { startApiServer } from "./api/server.ts";
 import { assertValidCommandParams } from "./api/validation.ts";
 
@@ -132,6 +135,37 @@ async function main(): Promise<void> {
   });
   await scheduler.start();
 
+  // Input mapper: turns incoming OSC/TCP/HTTP signals into scene runs / device
+  // commands / events via the `input_mappings` rules. Caches the enabled rules;
+  // the mappings REST controller reloads it on every edit. The transport servers
+  // (TCP/OSC ingress) feed it normalized signals — wired in a later step.
+  const inputMapper = new InputMapper({
+    repo: inputMappingsRepo,
+    logger,
+    sceneEngine,
+    deviceManager,
+    eventBus,
+  });
+  await inputMapper.start();
+
+  // OSC ingress: a UDP server that feeds incoming OSC messages through the same
+  // InputMapper. Optional — a bind failure (e.g. port in use) is logged but never
+  // takes down device control.
+  const oscServer = new OscServer({
+    inputMapper,
+    eventBus,
+    logger,
+    port: appConfig.input.oscPort,
+  });
+  try {
+    await oscServer.start();
+  } catch (err) {
+    log.error("OSC input server failed to start; OSC ingress disabled", {
+      port: appConfig.input.oscPort,
+      error: errMsg(err),
+    });
+  }
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -149,6 +183,8 @@ async function main(): Promise<void> {
     meterService,
     schedules: scheduledJobsRepo,
     scheduler,
+    mappings: inputMappingsRepo,
+    inputMapper,
     startedAt: Date.now(),
   });
 
@@ -161,6 +197,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    oscServer.stop();
     scheduler.stop();
     sceneEngine.stop();
     watchdog.stop();
