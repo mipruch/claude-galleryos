@@ -35,6 +35,7 @@ import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
 import { InputMapper } from "./input/InputMapper.ts";
+import { OscServer } from "./input/OscServer.ts";
 import { startApiServer } from "./api/server.ts";
 import { assertValidCommandParams } from "./api/validation.ts";
 
@@ -147,6 +148,24 @@ async function main(): Promise<void> {
   });
   await inputMapper.start();
 
+  // OSC ingress: a UDP server that feeds incoming OSC messages through the same
+  // InputMapper. Optional — a bind failure (e.g. port in use) is logged but never
+  // takes down device control.
+  const oscServer = new OscServer({
+    inputMapper,
+    eventBus,
+    logger,
+    port: appConfig.input.oscPort,
+  });
+  try {
+    await oscServer.start();
+  } catch (err) {
+    log.error("OSC input server failed to start; OSC ingress disabled", {
+      port: appConfig.input.oscPort,
+      error: errMsg(err),
+    });
+  }
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -178,6 +197,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
+    oscServer.stop();
     scheduler.stop();
     sceneEngine.stop();
     watchdog.stop();

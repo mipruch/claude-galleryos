@@ -1296,20 +1296,32 @@ všechny protokoly chovají stejně.
 > `address` (OSC adresa = TCP cesta), takže `/test` bere `{ protocol, address, args? }`
 > a stejný matcher slouží všem transportům.
 
-#### OscServer — `apps/server/src/input/OscServer.ts`
+#### OscServer — `apps/server/src/input/OscServer.ts` ✓
 
-UDP server poslouchající na portu `OSC_PORT` (default 8765).
+UDP server poslouchající na portu `OSC_PORT` (default 8765), postavený na
+`Bun.udpSocket`. **Tenký transport** nad sdíleným `InputMapper` — sám neumí žádný
+matching ani dispatch, jen převede UDP datagram na neutrální signály a předá je dál.
 
-Pro každou přijatou OSC zprávu:
+- **`src/input/osc.ts`** — čistý, samostatně testovaný **dekodér OSC 1.0** (žádná
+  závislost). Rozparsuje datagram na zprávy `{ address, args }`: OSC-string (null +
+  padding na násobek 4), OSC-blob, type-tag string a argumenty. Podporované tagy
+  `i f s S b h t d T F N I c r m` (64-bit `h`/`t` se zúží na `number` kvůli JSON).
+  Umí i **bundly** (`#bundle` + time-tag + vnořené prvky) — rekurzivně je rozbalí,
+  time-tag ignoruje (ingress se spouští okamžitě). Neznámý tag / poškozený rámec →
+  `OscParseError`.
+- **`OscServer.receive(datagram)`** (nezávislé na socketu, proto přímo testovatelné):
+  pro každou zprávu emituje `input.osc.received` (audit) a předá
+  `{ protocol: "osc", address, args }` do `InputMapper.handle()`. Vadný datagram se
+  zaloguje a zahodí — špatný odesílatel server nerozbije.
+- **`start()`** jen nabinduje UDP socket a forwarduje datagramy do `receive()`.
+  Selhání bindu (port obsazený) v composition rootu zaloguje, ale **nezhodí** server
+  (OSC ingress je doplňkový).
 
-1. Emitovat `input.osc.received` na EventBus (pro logování)
-1. Vyhledat pasující `InputMapping` záznamy z DB cache (pattern matching)
-1. Pro každý match: vyhodnotit `params_template` (substituovat `{arg[0]}`, `{arg[1]}`, …)
-1. Spustit akci dle `target_type`:
-- `scene.execute` → `SceneEngine.executeScene(targetId, 'osc')`
-- `device.command` → `DeviceManager.execute(targetId, targetCommand, params)`
-
-Pattern matching: `/scene/execute` matchuje přesně, `/dim/:level` matchuje `/dim/0.5` a extrahuje `level = "0.5"`.
+Veškerý matching/templating/dispatch tedy řeší `InputMapper` (viz výše) stejně pro
+OSC jako pro budoucí TCP/HTTP: `/scene/execute` matchuje přesně, `/dim/:level`
+matchne `/dim/0.5` a zachytí `level`, a `target_type` rozhodne o akci
+(`scene.execute` → `SceneEngine.startScene`, `device.command` →
+`DeviceManager.execute`, `event.emit` → `input.mapping.triggered`).
 
 #### TcpInputServer — `apps/server/src/input/TcpInputServer.ts`
 

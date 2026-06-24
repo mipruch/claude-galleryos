@@ -358,7 +358,7 @@ forward DST), the Scheduler with virtual time, and the REST routes.
 
 ---
 
-## Priority 4 — TCP Ingress
+## Priority 4 — Input Ingress (OSC / TCP)
 
 ### 4.1 `InputMapper` `src/input/InputMapper.ts` ✓
 Shared, transport-agnostic ingress logic. An ingress server only normalises its
@@ -405,6 +405,25 @@ catalog (projected to nothing on the wire). 67 new tests: pure pattern/template
 (`test/input/patterns.test.ts`), the mapper's cache/match/dispatch with fakes
 (`test/input/input-mapper.test.ts`), and the REST routes (`test/api/mappings.test.ts`).
 The `input_mappings` table already existed in the schema/migration `0000`.
+
+### 4.4 `OscServer` `src/input/OscServer.ts` ✓
+The first real ingress transport on top of the InputMapper — a UDP listener that
+turns incoming OSC into actions.
+- [x] **`src/input/osc.ts`** — pure, unit-tested OSC 1.0 decoder (no deps): OSC-string/
+      blob/type-tags, args (`i f s S b h t d T F N I c r m`; 64-bit narrowed to `number`),
+      and bundles (recursively unwrapped, time-tag ignored). Bad bytes → `OscParseError`.
+- [x] **`OscServer`** — `Bun.udpSocket` on `OSC_PORT` (default 8765). `receive(datagram)`
+      (socket-free, directly testable) decodes the packet and, per message, emits
+      `input.osc.received` and calls `InputMapper.handle({ protocol: "osc", address, args })`.
+      Malformed datagrams are logged + dropped.
+- [x] Wired into `src/index.ts` (started after the InputMapper, stopped on shutdown);
+      a bind failure is logged but does **not** crash the server (OSC is auxiliary).
+- [x] 17 tests: the pure decoder (`test/input/osc.test.ts`, with a test-only encoder
+      `test/input/osc-encode.ts`) and the server's `receive()` + a real UDP round-trip
+      (`test/input/osc-server.test.ts`).
+
+> **TcpInputServer (§4.2)** stays open: with `OscServer` proving the pattern, it is now
+> the same ~80-line shape over `Bun.listen` + newline-delimited JSON → `InputMapper.handle`.
 
 ---
 
