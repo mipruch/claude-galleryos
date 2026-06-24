@@ -209,9 +209,16 @@ export const manifest: DriverManifest = {
                 },
                 param: {
                   type: "integer",
-                  title: "Parameter id",
-                  description: "Parameter id of the meter value (usually 0).",
+                  title: "Parameter id (L / mono)",
+                  description: "Parameter id of the left or mono meter value (usually 0).",
                   default: 0,
+                  minimum: 0,
+                  maximum: 65535,
+                },
+                paramR: {
+                  type: "integer",
+                  title: "Parameter id (R)",
+                  description: "Right-channel parameter id. Leave blank for a mono bar.",
                   minimum: 0,
                   maximum: 65535,
                 },

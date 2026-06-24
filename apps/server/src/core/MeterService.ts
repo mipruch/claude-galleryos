@@ -237,6 +237,18 @@ function buildMeters(
       key: meterKey(connectionId, node, vd, object, param),
       address: { node, virtualDevice: vd, object, param, minDb, maxDb },
     });
+    // Optional R-channel: only when paramR is explicitly set (not blank/null/undefined).
+    const rawR = m.paramR;
+    if (rawR !== undefined && rawR !== null && rawR !== '') {
+      const paramR = Number(rawR);
+      if (Number.isInteger(paramR)) {
+        out.push({
+          connectionId,
+          key: meterKey(connectionId, node, vd, object, paramR),
+          address: { node, virtualDevice: vd, object, param: paramR, minDb, maxDb },
+        });
+      }
+    }
   }
   return out;
 }
