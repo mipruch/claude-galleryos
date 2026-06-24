@@ -18,6 +18,7 @@ import {
   dbRepo,
   devicesRepo,
   iframesRepo,
+  inputMappingsRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -33,6 +34,7 @@ import { MeterService } from "./core/MeterService.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
+import { InputMapper } from "./input/InputMapper.ts";
 import { startApiServer } from "./api/server.ts";
 import { assertValidCommandParams } from "./api/validation.ts";
 
@@ -132,6 +134,19 @@ async function main(): Promise<void> {
   });
   await scheduler.start();
 
+  // Input mapper: turns incoming OSC/TCP/HTTP signals into scene runs / device
+  // commands / events via the `input_mappings` rules. Caches the enabled rules;
+  // the mappings REST controller reloads it on every edit. The transport servers
+  // (TCP/OSC ingress) feed it normalized signals — wired in a later step.
+  const inputMapper = new InputMapper({
+    repo: inputMappingsRepo,
+    logger,
+    sceneEngine,
+    deviceManager,
+    eventBus,
+  });
+  await inputMapper.start();
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -149,6 +164,8 @@ async function main(): Promise<void> {
     meterService,
     schedules: scheduledJobsRepo,
     scheduler,
+    mappings: inputMappingsRepo,
+    inputMapper,
     startedAt: Date.now(),
   });
 

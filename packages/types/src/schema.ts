@@ -14,7 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import type { OnFailure } from "./enums.ts";
+import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import {
   bigserial,
   boolean,
@@ -235,9 +235,9 @@ export const inputMappings = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 100 }).notNull(),
-    protocol: varchar("protocol", { length: 20 }).notNull(),
+    protocol: varchar("protocol", { length: 20 }).$type<InputProtocol>().notNull(),
     pattern: varchar("pattern", { length: 255 }).notNull(),
-    targetType: varchar("target_type", { length: 50 }).notNull(),
+    targetType: varchar("target_type", { length: 50 }).$type<InputTargetType>().notNull(),
     targetId: uuid("target_id"),
     targetCommand: varchar("target_command", { length: 100 }),
     paramsTemplate: jsonb("params_template").$type<Record<string, unknown>>().notNull().default({}),

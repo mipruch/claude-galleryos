@@ -1255,6 +1255,47 @@ Implementováno (Step 0.2). Vlastní Winston transport (`winston-transport`), kt
 
 ### 7.7 Protocol Input Bus
 
+#### InputMapper — `apps/server/src/input/InputMapper.ts` ✓
+
+Sdílené, **na transportu nezávislé** jádro ingressu: převádí příchozí signál
+(OSC / TCP / HTTP) na systémovou akci podle pravidel z tabulky `input_mappings`.
+Každý ingress server jen rozparsuje svůj wire formát do neutrálního
+`InputSignal` (`{ protocol, address, args }`) a zavolá `handle(signal)` — veškerý
+pattern matching, šablonování parametrů a dispatch žije tady jednou, takže se
+všechny protokoly chovají stejně.
+
+- **`src/input/patterns.ts`** — čisté, samostatně testované funkce. Pattern je
+  `/`-oddělená cesta: segment začínající `:` je pojmenovaný zástupný znak (zachytí
+  daný segment adresy), ostatní segmenty se musí shodovat doslovně; pattern bez
+  zástupného znaku se matchuje přesnou rovností.
+  - `compilePattern("/scene/execute")` → přesná shoda
+  - `compilePattern("/dim/:level")` → matchne `/dim/0.5`, zachytí `level="0.5"`
+- **Vyhodnocení šablony** (`paramsTemplate`): hodnota je buď literál (projde beze
+  změny), **celý token** (`{arg[0]}` = N-tý poziční argument, `{:level}` = zachycený
+  path param — celotokenová reference si zachová typ odkazované hodnoty; path param
+  se z číselného/booleovského řetězce zkoerciuje), nebo **vnořený token** v delším
+  řetězci (interpoluje se jako text). Vnořené objekty/pole se procházejí rekurzivně;
+  nevyřešená reference (arg mimo rozsah / chybějící param) klíč vynechá.
+- **Cache** — pouze **povolená** (`enabled`) mapování, seskupená podle protokolu;
+  `reload()` ji přestaví. Mappings CRUD volá `reload()` po každé editaci, takže se
+  změny projeví bez restartu. `match(signal)` je čistý (bez dispatch) — používá ho i
+  dry-run `/mappings/test`.
+- **Dispatch** dle `target_type`:
+  - `scene.execute` → `SceneEngine.startScene(targetId, protocol, …)` (source = protokol,
+    sourceDetail = `protokol:adresa`, např. `osc:/scene/execute`)
+  - `device.command` → `DeviceManager.execute(targetId, targetCommand, params)` (šablonované params)
+  - `event.emit` → `EventBus.emit("input.mapping.triggered", …)` — pojmenovaný,
+    typovaný hook držený na serveru (sběrnice má uzavřený katalog, takže nelze
+    emitovat libovolný event)
+  - Každý match vrátí `DispatchOutcome`; jeden signál může spustit více pravidel.
+    Chyby se chytají per-pravidlo (z `handle()` nikdy nepropadne výjimka).
+
+> ⚠️ **Korekce protokolu / sjednocení.** PLAN sketchoval `params_template` jen pro
+> poziční `{arg[N]}` a TCP `/test` přes `{ protocol, message }`. Skutečná
+> implementace přidává i `{:name}` z path params a sjednocuje matching na neutrální
+> `address` (OSC adresa = TCP cesta), takže `/test` bere `{ protocol, address, args? }`
+> a stejný matcher slouží všem transportům.
+
 #### OscServer — `apps/server/src/input/OscServer.ts`
 
 UDP server poslouchající na portu `OSC_PORT` (default 8765).
@@ -1363,13 +1404,19 @@ GET    /schedules/:id/next       - příštích 5 spuštění (preview)
 ### Input Mappings
 
 ```
-GET    /mappings                 - seznam mapování
-POST   /mappings                 - vytvořit
-GET    /mappings/:id             - detail
-PUT    /mappings/:id             - aktualizovat
-DELETE /mappings/:id             - smazat
-POST   /mappings/test            - test pattern matching { protocol, address, args }
+GET    /mappings                 - seznam mapování (?protocol= ?enabled=)               ✓
+POST   /mappings                 - vytvořit (validuje protocol/targetType + existenci cíle) ✓
+GET    /mappings/:id             - detail                                              ✓
+PUT    /mappings/:id             - aktualizovat (re-validuje sloučený cíl, reload cache) ✓
+DELETE /mappings/:id             - smazat (reload cache)                                ✓
+PATCH  /mappings/:id/toggle      - povolit/zakázat ({enabled} nebo flip, reload cache)  ✓
+POST   /mappings/test            - dry-run match { protocol, address, args? } → matched + params ✓
 ```
+
+Každá mutace zapíše do DB **i** zavolá `InputMapper.reload()`, takže se pravidla
+projeví bez restartu. Cíl se validuje předem: `target_type` rozhoduje, které z
+`targetId`/`targetCommand` jsou povinné, a odkazovaná scéna/zařízení musí existovat
+(→ 400) — vadné pravidlo se k matcheru nikdy nedostane.
 
 ### UI Layouts
 

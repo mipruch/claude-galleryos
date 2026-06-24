@@ -12,11 +12,12 @@
  */
 
 import type { Jsonify } from "./json.ts";
-import type { OnFailure } from "./enums.ts";
+import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import {
   connections,
   devices,
   iframes,
+  inputMappings,
   logs,
   rooms,
   sceneActions,
@@ -39,6 +40,8 @@ export type Iframe = typeof iframes.$inferSelect;
 export type NewIframe = typeof iframes.$inferInsert;
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
+export type InputMapping = typeof inputMappings.$inferSelect;
+export type NewInputMapping = typeof inputMappings.$inferInsert;
 
 /** A scene plus its ordered actions — the shape `scenesRepo.get` returns. */
 export type SceneWithActions = Scene & { actions: SceneAction[] };
@@ -53,6 +56,7 @@ export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
 export type IframeDTO = Jsonify<Iframe>;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
+export type InputMappingDTO = Jsonify<InputMapping>;
 
 /**
  * A connection as `GET /connections` returns it: the serialized row plus the
@@ -126,6 +130,59 @@ export interface IframeCreateInput {
 }
 
 export type IframeUpdateInput = Partial<IframeCreateInput>;
+
+// ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
+
+/**
+ * Body accepted by `POST /mappings` — one rule mapping an incoming signal to an
+ * action.
+ *
+ * A `pattern` matches the signal address: either exact (`/scene/execute`) or
+ * parameterised with `:name` segments (`/dim/:level`), the latter capturing the
+ * matched segment for use in `paramsTemplate`.
+ *
+ * `paramsTemplate` values are either literals (passed through unchanged) or
+ * reference tokens substituted from the signal: `{arg[0]}` for the Nth positional
+ * argument, `{:name}` for a captured path param. A value that is exactly one token
+ * keeps the referenced value's type; a token embedded in a larger string
+ * interpolates as text.
+ *
+ * `targetId`/`targetCommand` requirements depend on `targetType`:
+ *   - `scene.execute`  → `targetId` = scene id (no command)
+ *   - `device.command` → `targetId` = device id + `targetCommand`
+ *   - `event.emit`     → neither required (the mapping name identifies the event)
+ */
+export interface InputMappingCreateInput {
+  name: string;
+  protocol: InputProtocol;
+  pattern: string;
+  targetType: InputTargetType;
+  targetId?: string | null;
+  targetCommand?: string | null;
+  paramsTemplate?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export type InputMappingUpdateInput = Partial<InputMappingCreateInput>;
+
+/**
+ * Result of `POST /mappings/test` — a dry-run that matches a sample signal
+ * against the enabled mappings without dispatching anything. Each match reports
+ * the rule that fired, the path params captured from `:name` segments, and the
+ * params after applying `paramsTemplate`.
+ */
+export interface InputMappingTestResult {
+  matched: boolean;
+  matches: Array<{
+    id: string;
+    name: string;
+    targetType: InputTargetType;
+    targetId: string | null;
+    targetCommand: string | null;
+    pathParams: Record<string, string>;
+    params: Record<string, unknown>;
+  }>;
+}
 
 /**
  * `GET /schedules/:id/next` preview — upcoming UTC fire times for a job. Times

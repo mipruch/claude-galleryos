@@ -9,10 +9,12 @@ import type { EventBus } from "../core/EventBus.ts";
 import type { MeterService } from "../core/MeterService.ts";
 import type { SceneEngine } from "../core/SceneEngine.ts";
 import type { Scheduler } from "../core/Scheduler.ts";
+import type { InputMapper } from "../input/InputMapper.ts";
 import type {
   connectionsRepo,
   devicesRepo,
   iframesRepo,
+  inputMappingsRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -36,6 +38,8 @@ export interface ApiContext {
   meterService: MeterService;
   schedules: typeof scheduledJobsRepo;
   scheduler: Scheduler;
+  mappings: typeof inputMappingsRepo;
+  inputMapper: InputMapper;
   /** Server start time (epoch ms) for uptime reporting. */
   startedAt: number;
 }

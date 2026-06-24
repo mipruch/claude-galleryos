@@ -18,6 +18,7 @@ import {
   dbRepo,
   devicesRepo,
   iframesRepo,
+  inputMappingsRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -28,6 +29,7 @@ import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/re
 import { SceneEngine } from "../../src/core/SceneEngine.ts";
 import { MeterService } from "../../src/core/MeterService.ts";
 import { Scheduler } from "../../src/core/Scheduler.ts";
+import { InputMapper } from "../../src/input/InputMapper.ts";
 import { startApiServer } from "../../src/api/server.ts";
 import { logger } from "../../src/logger.ts";
 import { startPjlinkMock, type PjlinkMockServer } from "../mocks/mock-devices.ts";
@@ -79,6 +81,14 @@ beforeAll(async () => {
   dm.setMeterListener(meterService.handleMeterUpdate);
   const scheduler = new Scheduler({ jobs: scheduledJobsRepo, sceneEngine, logger });
   await scheduler.start();
+  const inputMapper = new InputMapper({
+    repo: inputMappingsRepo,
+    logger,
+    sceneEngine,
+    deviceManager: dm,
+    eventBus: bus,
+  });
+  await inputMapper.start();
   server = startApiServer(
     {
       deviceManager: dm,
@@ -96,6 +106,8 @@ beforeAll(async () => {
       meterService,
       schedules: scheduledJobsRepo,
       scheduler,
+      mappings: inputMappingsRepo,
+      inputMapper,
       startedAt: Date.now(),
     },
     0,

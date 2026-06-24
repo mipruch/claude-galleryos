@@ -360,27 +360,51 @@ forward DST), the Scheduler with virtual time, and the REST routes.
 
 ## Priority 4 — TCP Ingress
 
-### 4.1 `InputMapper` `src/input/InputMapper.ts`
-Shared logic, used by TcpInputServer (and future OSC server):
-- [ ] Pattern matching: exact (`/scene/execute`) and parameterised (`/dim/:level`)
-- [ ] Template evaluation: replace `{arg[0]}`, `{arg[1]}`, `{:level}` with extracted values
-- [ ] In-memory DB cache of enabled mappings, with `reload()` called by mappings CRUD
+### 4.1 `InputMapper` `src/input/InputMapper.ts` ✓
+Shared, transport-agnostic ingress logic. An ingress server only normalises its
+wire format into an `InputSignal` (`{ protocol, address, args }`) and calls
+`handle(signal)`; matching, templating, and dispatch live here once so TCP/OSC/HTTP
+behave identically.
+- [x] Pattern matching (pure `src/input/patterns.ts`): exact (`/scene/execute`) and
+      parameterised (`/dim/:level`), the latter capturing each `:name` segment.
+- [x] Template evaluation: a `paramsTemplate` value is a literal (passed through), a
+      whole-token reference (`{arg[0]}` / `{:level}`, keeping the referenced value's
+      type — path params coerced from numeric/bool strings), or an embedded token
+      (interpolated as text). Nested objects/arrays recurse; unresolved refs drop the key.
+- [x] In-memory cache of the **enabled** mappings grouped by protocol, with `reload()`
+      called by the mappings CRUD so edits take effect without a restart.
+- [x] Dispatch — `scene.execute` → `SceneEngine.startScene` (source = protocol),
+      `device.command` → `DeviceManager.execute` (templated params), `event.emit` →
+      `EventBus.emit("input.mapping.triggered", …)` (a typed, server-side hook, since
+      the bus catalog is closed). Each match yields a `DispatchOutcome`; one signal can
+      fire several rules. Failures are caught per-rule (never throw out of `handle`).
 
 ### 4.2 `TcpInputServer` `src/input/TcpInputServer.ts`
+> Foundation in place — with `InputMapper.handle()` this is now a thin transport layer.
 - [ ] `Bun.listen` on `TCP_INPUT_PORT` (8766); persistent connections, newline-delimited JSON frames
-- [ ] Per message: emit `input.tcp.received`; look up matching mappings via `InputMapper`; dispatch:
-  - `scene.execute` → `SceneEngine.executeScene`
-  - `device.command` → `DeviceManager.execute`
-  - `event.emit` → `EventBus.emit`
+- [ ] Per message: emit `input.tcp.received`; normalise to an `InputSignal` and call `InputMapper.handle()`
 - [ ] Wire into `src/index.ts`
 
-### 4.3 InputMappings REST API `src/api/routes/mappings.ts`
-- [ ] `GET    /api/v1/mappings`
-- [ ] `POST   /api/v1/mappings`
-- [ ] `GET    /api/v1/mappings/:id`
-- [ ] `PUT    /api/v1/mappings/:id`
-- [ ] `DELETE /api/v1/mappings/:id`
-- [ ] `POST   /api/v1/mappings/test` — `{ protocol, message }` → dry-run match result
+### 4.3 InputMappings REST API `src/api/routes/mappings.ts` ✓
+- [x] `GET    /api/v1/mappings` — `?protocol=` `?enabled=`
+- [x] `POST   /api/v1/mappings` — validates protocol/targetType, requires the target
+      that `targetType` needs (`scene.execute`→scene id, `device.command`→device id +
+      command), and that the referenced scene/device exists (→ 400); reloads the cache
+- [x] `GET    /api/v1/mappings/:id`
+- [x] `PUT    /api/v1/mappings/:id` — re-validates the *effective* (merged) target; reloads
+- [x] `DELETE /api/v1/mappings/:id` — reloads
+- [x] `PATCH  /api/v1/mappings/:id/toggle` — enable/disable (explicit `{enabled}` or flip); reloads
+- [x] `POST   /api/v1/mappings/test` — `{ protocol, address, args? }` → dry-run match
+      result (rules that fire + captured path params + evaluated params), no dispatch
+
+**Types/repo/tests:** `InputMapping`/`InputMappingDTO` + `InputMappingCreateInput`/
+`InputMappingTestResult` and the `InputProtocol`/`InputTargetType` enums in
+`@gallery/types` (applied to the schema columns via `$type<>()`); `inputMappingsRepo`
+(CRUD + `listEnabled` + `setEnabled`). New `input.mapping.triggered` event in the
+catalog (projected to nothing on the wire). 67 new tests: pure pattern/template
+(`test/input/patterns.test.ts`), the mapper's cache/match/dispatch with fakes
+(`test/input/input-mapper.test.ts`), and the REST routes (`test/api/mappings.test.ts`).
+The `input_mappings` table already existed in the schema/migration `0000`.
 
 ---
 
