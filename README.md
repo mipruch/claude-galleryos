@@ -1707,8 +1707,21 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   reorder přečísluje `displayOrder` na souvislé 0..n-1 (opraví i shodné hodnoty
   ze seedu, kde je vše `0`) a persistuje jen změněné místnosti; unit-testováno.
 
-Zbývající admin stránky (mappings, layouts) přidají další řezy
-— viz PLAN §"Priority 5 — UI".
+- **`/admin/mappings`** (`views/admin/MappingsView.vue`) — tabulka vstupních
+  mapování (název, protokol, pattern, cíl, povolit/zakázat, editace, mazání) +
+  tlačítko **Test signal**. Cíl se v tabulce vykreslí čitelně přes
+  `targetSummary` (jména scén/zařízení dotažená ze storů).
+- `MappingFormDialog` (vee-validate + Zod) — selecty protokolu a akce, pattern a
+  **podmíněný cíl**: u „Run scene“ picker scény, u „Device command“ picker
+  zařízení + příkazu (přes `useDeviceCommands`, stejně jako editor scén), plus
+  JSON editor `paramsTemplate` (s nápovědou k tokenům `{arg[0]}` / `{:name}`).
+- `MappingTestDialog` — dry-run `POST /mappings/test` (protokol + adresa + args),
+  vypíše pravidla, která matchla, a vyhodnocené parametry; nic nespouští.
+- Nové `useMappingsStore` (CRUD + `toggle` + `test`) a čistý `lib/mappings.ts`
+  (labely, `targetSummary`, `parse/stringifyParamsTemplate`, `parseTestArgs`) —
+  unit-testováno; `lib/api.ts` má skupinu `mappings`.
+
+Zbývající admin stránka (layouts) přidá další řez — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce
 

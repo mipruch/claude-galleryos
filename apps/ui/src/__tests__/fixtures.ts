@@ -7,7 +7,7 @@
  * *actual* DTO types with sensible defaults, so the fixtures stay coupled to the
  * wire contracts (a breaking DTO change is now a compile error in the tests).
  */
-import type { DeviceDTO, IframeDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
+import type { DeviceDTO, IframeDTO, InputMappingDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
 
@@ -74,6 +74,24 @@ export function makeIframe(over: Partial<IframeDTO> = {}): IframeDTO {
     name: 'Iframe',
     url: 'https://example.com/ui',
     displayOrder: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `InputMappingDTO`; pass `over` to override defaults. */
+export function makeMapping(over: Partial<InputMappingDTO> = {}): InputMappingDTO {
+  return {
+    id: 'm',
+    name: 'Mapping',
+    protocol: 'osc',
+    pattern: '/scene/go',
+    targetType: 'scene.execute',
+    targetId: 's',
+    targetCommand: null,
+    paramsTemplate: {},
+    enabled: true,
     createdAt: NOW,
     updatedAt: NOW,
     ...over,

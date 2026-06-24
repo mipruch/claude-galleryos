@@ -22,6 +22,10 @@ import type {
   IframeDTO,
   IframeCreateInput,
   IframeUpdateInput,
+  InputMappingDTO,
+  InputMappingCreateInput,
+  InputMappingUpdateInput,
+  InputMappingTestResult,
   Jsonify,
   LevelCount,
   LogDTO,
@@ -189,6 +193,20 @@ export const api = {
       patch<ScheduledJobDTO>(`/schedules/${id}/toggle`, { enabled }),
     /** Preview the next `count` (default 5) UTC fire times of a schedule. */
     next: (id: string, count?: number) => get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
+  },
+
+  mappings: {
+    list: (filter?: { protocol?: string; enabled?: boolean }) =>
+      get<InputMappingDTO[]>(`/mappings${qs({ protocol: filter?.protocol, enabled: filter?.enabled })}`),
+    get: (id: string) => get<InputMappingDTO>(`/mappings/${id}`),
+    create: (input: InputMappingCreateInput) => post<InputMappingDTO>('/mappings', input),
+    update: (id: string, input: InputMappingUpdateInput) => put<InputMappingDTO>(`/mappings/${id}`, input),
+    remove: (id: string) => del(`/mappings/${id}`),
+    toggle: (id: string, enabled: boolean) =>
+      patch<InputMappingDTO>(`/mappings/${id}/toggle`, { enabled }),
+    /** Dry-run a sample signal against the enabled rules (no dispatch). */
+    test: (input: { protocol: string; address: string; args?: unknown[] }) =>
+      post<InputMappingTestResult>('/mappings/test', input),
   },
 
   drivers: {

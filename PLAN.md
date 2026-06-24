@@ -481,7 +481,17 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (name/description/icon/colour, vee-validate + Zod). New `useRoomsStore`
           + pure `lib/rooms.ts` (`sortRooms`, `computeReorder` — renumbers
           `displayOrder`, repairs ties; unit-tested).
-    - [ ] mappings, layouts (later passes)
+    - [x] **`/admin/mappings`** (`views/admin/MappingsView.vue`) — table (name,
+          protocol badge, pattern, resolved target, enable/disable, edit, delete) +
+          `MappingFormDialog` (vee-validate + Zod; protocol/action selects, a
+          conditional target — scene picker for "Run scene", device + command
+          pickers for "Device command" via `useDeviceCommands` — and a JSON
+          `paramsTemplate` editor) and `MappingTestDialog` (dry-run `POST
+          /mappings/test` showing matched rules + evaluated params). New
+          `useMappingsStore` (CRUD + `toggle` + `test`) and pure `lib/mappings.ts`
+          (labels, `targetSummary`, `parseParamsTemplate`/`stringifyParamsTemplate`,
+          `parseTestArgs`; unit-tested). `lib/api.ts` gained the `mappings` group.
+    - [ ] layouts (later pass)
     - [x] **`/admin/iframes`** (`views/admin/IframesView.vue`) — table (display
           order, name, URL, edit, delete) + `IframeFormDialog` (vee-validate +
           Zod, client-side `isEmbeddableUrl` http(s) check). New `useIframesStore`
