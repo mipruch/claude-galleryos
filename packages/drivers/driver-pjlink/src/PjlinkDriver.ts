@@ -222,8 +222,12 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
       this.resetPollTimer();
 
       const value = results[commandNameOf(line)];
-      if (value && isErr(value)) {
-        const message = `${value}: ${ERR_MESSAGES[value] ?? "device error"}`;
+      if (value !== "OK") {
+        const message = value && isErr(value)
+          ? `${value}: ${ERR_MESSAGES[value] ?? "device error"}`
+          : value
+            ? `unexpected response: ${value}`
+            : "no acknowledgement received";
         this.ctx.logger.warn("pjlink command rejected", { command, error: message });
         return { success: false, durationMs: Date.now() - start, error: message };
       }
@@ -444,7 +448,20 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
 
         const parsed = parseLine(response);
         if (parsed.authFailed) throw new Error(ERR_MESSAGES.ERRA);
-        if (parsed.command) out[parsed.command] = parsed.value;
+        if (parsed.command) {
+          const expected = commandNameOf(command);
+          if (parsed.command !== expected) {
+            this.ctx.logger.warn("pjlink response mismatch", {
+              host: this.host, sent: expected, got: parsed.command,
+            });
+          } else if (!isValidResponse(command, parsed.value)) {
+            this.ctx.logger.warn("pjlink unexpected value", {
+              host: this.host, command: parsed.command, value: parsed.value,
+            });
+          } else {
+            out[parsed.command] = parsed.value;
+          }
+        }
       }
       return out;
     } finally {
@@ -471,6 +488,23 @@ export class PjlinkDriver extends EventEmitter implements IDeviceDriver {
 /** True for a PJLink error value such as `ERR1`..`ERR4`. */
 function isErr(value: string): boolean {
   return /^ERR[1-4]$/i.test(value.trim());
+}
+
+/**
+ * True if `value` is a well-formed response for `requestLine`.
+ * Set commands (non-query) must respond with `OK`; query responses are
+ * validated per-command so that garbage values (e.g. `XD`) are rejected.
+ */
+function isValidResponse(requestLine: string, value: string): boolean {
+  if (isErr(value)) return true;
+  const isQuery = requestLine.trimEnd().endsWith("?");
+  if (!isQuery) return value === "OK";
+  switch (commandNameOf(requestLine)) {
+    case "POWR": return /^[0-3]$/.test(value);
+    case "INPT": return /^\d{2}$/.test(value);
+    case "ERST": return /^\d{6}$/.test(value);
+    default: return true;
+  }
 }
 
 interface ParsedLine {
