@@ -36,7 +36,7 @@ const items: NavItem[] = [
   { to: '/admin/schedules', label: 'Schedules', icon: CalendarClockIcon, enabled: true },
   { to: '/admin/iframes', label: 'Iframes', icon: AppWindowIcon, enabled: true },
   { to: '/admin/mappings', label: 'Mappings', icon: WaypointsIcon, enabled: false },
-  { to: '/admin/layouts', label: 'Layouts', icon: LayoutTemplateIcon, enabled: false },
+  { to: '/admin/layouts', label: 'Layouts', icon: LayoutTemplateIcon, enabled: true },
   { to: '/admin/logs', label: 'Logs', icon: ScrollTextIcon, enabled: true },
   { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, enabled: true },
 ]

@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, iframes, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
+import { connections, devices, iframes, kiosks, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -719,6 +719,27 @@ const SEED_IFRAMES = [
   },
 ];
 
+// One demo wall kiosk for the Main Hall, shown chromeless at /kiosk/Main%20Hall.
+// Tiles reference existing seed devices; geometry is in grid units (12 columns).
+const SEED_KIOSKS = [
+  {
+    id: "77777777-7777-7777-7777-777777777701",
+    name: "Main Hall",
+    width: 1920,
+    height: 1080,
+    config: {
+      columns: 12,
+      cellHeight: 80,
+      tiles: [
+        { id: "tile-projector", deviceId: DEV_PROJECTOR, x: 0, y: 0, w: 4, h: 2 },
+        { id: "tile-bss-mic1", deviceId: DEV_BSS_MIC1, x: 4, y: 0, w: 4, h: 2 },
+        { id: "tile-dali-spot1", deviceId: DEV_DALI_SPOT1, x: 8, y: 0, w: 4, h: 2 },
+        { id: "tile-netio-sock1", deviceId: DEV_NETIO_SOCK1, x: 0, y: 2, w: 4, h: 2 },
+      ],
+    },
+  },
+];
+
 // ── inserter ─────────────────────────────────────────────────
 /**
  * Populates the database with sample data for rooms, connections, devices, scenes, scene actions, and iframes.
@@ -735,6 +756,7 @@ async function main(): Promise<void> {
   await db.insert(sceneActions).values(SEED_SCENE_ACTIONS).onConflictDoNothing();
   await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
+  await db.insert(kiosks).values(SEED_KIOSKS).onConflictDoNothing();
 
   log.info("Seed complete", {
     rooms: SEED_ROOMS.length,
@@ -744,6 +766,7 @@ async function main(): Promise<void> {
     sceneActions: SEED_SCENE_ACTIONS.length,
     scheduledJobs: SEED_SCHEDULED_JOBS.length,
     iframes: SEED_IFRAMES.length,
+    kiosks: SEED_KIOSKS.length,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });
   await closeDb();

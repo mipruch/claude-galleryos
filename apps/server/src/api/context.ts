@@ -13,6 +13,7 @@ import type {
   connectionsRepo,
   devicesRepo,
   iframesRepo,
+  kiosksRepo,
   logsRepo,
   roomsRepo,
   sceneExecutionsRepo,
@@ -29,6 +30,7 @@ export interface ApiContext {
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
   iframes: typeof iframesRepo;
+  kiosks: typeof kiosksRepo;
   logs: typeof logsRepo;
   scenes: typeof scenesRepo;
   sceneExecutions: typeof sceneExecutionsRepo;

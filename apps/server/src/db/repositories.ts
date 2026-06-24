@@ -11,6 +11,7 @@ import {
   connections,
   devices,
   iframes,
+  kiosks,
   logs,
   rooms,
   sceneActions,
@@ -25,6 +26,7 @@ import type {
   NewConnection,
   NewDevice,
   NewIframe,
+  NewKiosk,
   NewScheduledJob,
   SceneActionInput,
   SceneCreateInput,
@@ -79,6 +81,21 @@ export const iframesRepo = {
       db.update(iframes).set({ ...values, updatedAt: new Date() }).where(eq(iframes.id, id)).returning(),
     ),
   remove: (id: string) => first(db.delete(iframes).where(eq(iframes.id, id)).returning()),
+};
+
+// ── kiosks (wall-screen / tablet layouts) ────────────────────
+
+export const kiosksRepo = {
+  list: () => db.select().from(kiosks).orderBy(kiosks.name),
+  get: (id: string) => first(db.select().from(kiosks).where(eq(kiosks.id, id)).limit(1)),
+  /** Lookup by the unique name — the `/kiosk/:name` viewer key. */
+  getByName: (name: string) => first(db.select().from(kiosks).where(eq(kiosks.name, name)).limit(1)),
+  create: (values: NewKiosk) => first(db.insert(kiosks).values(values).returning()),
+  update: (id: string, values: Partial<NewKiosk>) =>
+    first(
+      db.update(kiosks).set({ ...values, updatedAt: new Date() }).where(eq(kiosks.id, id)).returning(),
+    ),
+  remove: (id: string) => first(db.delete(kiosks).where(eq(kiosks.id, id)).returning()),
 };
 
 // ── connections ──────────────────────────────────────────────

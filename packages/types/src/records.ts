@@ -13,10 +13,12 @@
 
 import type { Jsonify } from "./json.ts";
 import type { OnFailure } from "./enums.ts";
+import type { KioskConfig } from "./kiosk.ts";
 import {
   connections,
   devices,
   iframes,
+  kiosks,
   logs,
   rooms,
   sceneActions,
@@ -37,6 +39,8 @@ export type SceneExecution = typeof sceneExecutions.$inferSelect;
 export type LogRow = typeof logs.$inferInsert;
 export type Iframe = typeof iframes.$inferSelect;
 export type NewIframe = typeof iframes.$inferInsert;
+export type Kiosk = typeof kiosks.$inferSelect;
+export type NewKiosk = typeof kiosks.$inferInsert;
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 
@@ -52,6 +56,7 @@ export type SceneActionDTO = Jsonify<SceneAction>;
 export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
 export type IframeDTO = Jsonify<Iframe>;
+export type KioskDTO = Jsonify<Kiosk>;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 
 /**
@@ -126,6 +131,21 @@ export interface IframeCreateInput {
 }
 
 export type IframeUpdateInput = Partial<IframeCreateInput>;
+
+// ── kiosks (wall-screen / tablet layouts) ────────────────────
+
+/** Body accepted by `POST /kiosks` — a new fixed-pixel layout canvas. */
+export interface KioskCreateInput {
+  name: string;
+  /** Canvas width in pixels. */
+  width: number;
+  /** Canvas height in pixels. */
+  height: number;
+  /** Grid geometry + placed tiles. Defaults to an empty 12-col grid server-side. */
+  config?: KioskConfig;
+}
+
+export type KioskUpdateInput = Partial<KioskCreateInput>;
 
 /**
  * `GET /schedules/:id/next` preview — upcoming UTC fire times for a job. Times

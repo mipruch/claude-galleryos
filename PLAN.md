@@ -438,7 +438,26 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (name/description/icon/colour, vee-validate + Zod). New `useRoomsStore`
           + pure `lib/rooms.ts` (`sortRooms`, `computeReorder` — renumbers
           `displayOrder`, repairs ties; unit-tested).
-    - [ ] mappings, layouts (later passes)
+    - [ ] mappings (later pass)
+    - [x] **`/admin/layouts`** (`views/admin/LayoutsView.vue`) — wall-screen /
+          tablet **kiosks**. Table (name, canvas size, grid, tile count) +
+          `KioskFormDialog` (name + canvas px width/height + grid columns / row
+          height; vee-validate + Zod). Creating a layout jumps into the
+          **Gridstack builder** (`views/admin/KioskBuilderView.vue`): a device
+          palette whose chips drag-and-clone onto a fixed-pixel grid; tiles move,
+          resize (span rows/cols), and delete with Gridstack enforcing bounds +
+          no overlap. The builder is imperative (Gridstack owns the grid DOM;
+          tiles are labelled placeholders) so Vue and Gridstack never fight; the
+          layout serialises to `kiosk.config.tiles`. The chromeless viewer
+          (`views/KioskView.vue`, route **`/kiosk/:name`**, no header/sidebar but
+          inherits the global toasts/tooltips) reproduces the exact geometry with
+          a plain CSS grid and renders the **live** `DeviceWidget`s (fed by the
+          app-wide devices store + socket). New `useKiosksStore`, `api.kiosks.*`,
+          and pure `lib/kiosks.ts` (`findKioskByName`, `tileGridStyle`,
+          `canvasGridStyle`, `isValidCanvasSize`, `withTiles` — unit-tested).
+          Backend: `kiosks` table (unique `name`, px `width`/`height`, `config`
+          JSONB = `KioskConfig`), migration `0003_kiosks`, `kiosksRepo`, and
+          `/api/v1/kiosks` CRUD + `/kiosks/by-name/:name` (the viewer lookup).
     - [x] **`/admin/iframes`** (`views/admin/IframesView.vue`) — table (display
           order, name, URL, edit, delete) + `IframeFormDialog` (vee-validate +
           Zod, client-side `isEmbeddableUrl` http(s) check). New `useIframesStore`
@@ -534,7 +553,7 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         event exists for schedules, so the view re-fetches on an interval and ticks
         a `now` clock so relative labels stay fresh. Sidebar entry +
         route-`meta` header title.
-  - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
+  - [x] Remaining shared stores: [x] system, [x] logs, [x] drivers, [x] kiosks (layouts)
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

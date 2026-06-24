@@ -535,6 +535,37 @@ CREATE TABLE ui_layouts (
 );
 ```
 
+### kiosks
+
+Nástěnné kiosky / tablety (admin sekce **Layouts**). Jeden řádek = jedno plátno
+s **pevnou pixelovou velikostí**, zobrazené načisto (bez chromu) na route
+`/kiosk/:name` — proto je `name` unikátní (lookup klíč v URL). Mřížka a rozmístění
+dlaždic žijí v `config` (`KioskConfig`). Pozn.: je to samostatná tabulka od
+`ui_layouts` výše — `kiosks` je implementovaný režim pevného plátna s Gridstack
+dlaždicemi, `ui_layouts` zůstává pro budoucí konfiguraci User UI.
+
+```sql
+CREATE TABLE kiosks (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(100) NOT NULL,          -- klíč v /kiosk/:name (unikátní)
+  width       INTEGER NOT NULL,               -- šířka plátna v px
+  height      INTEGER NOT NULL,               -- výška plátna v px
+  config      JSONB NOT NULL DEFAULT '{"columns":12,"cellHeight":80,"tiles":[]}',
+  -- Struktura config (KioskConfig):
+  -- {
+  --   "columns": 12,        -- počet sloupců mřížky
+  --   "cellHeight": 80,     -- výška jednoho řádku v px
+  --   "tiles": [
+  --     { "id": "uuid", "deviceId": "uuid", "x": 0, "y": 0, "w": 4, "h": 2 }
+  --   ]
+  -- }
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_kiosks_name ON kiosks(name);
+```
+
 ### logs
 
 Strukturovaný audit log jako **TimescaleDB hypertable** — automaticky particionovaná dle `ts`, komprimovaná po 7 dnech, s retention policy pro čištění starých záznamů. Dotazy přes standard SQL bez speciálního query language.
@@ -1635,6 +1666,40 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   `sortByDisplayOrder`, unit-testované) a má CRUD; `lib/api.ts` mapuje
   `iframes.create/update` na nové typy `IframeCreateInput` / `IframeUpdateInput`.
 - Backend (`/api/v1/iframes`) i sidebar (`AdminSidebar.vue`) jsou propojené.
+
+#### Implementováno (Layouts — nástěnné kiosky / tablety)
+
+Nový režim zobrazení: **wall kiosk** (nástěnný displej nebo tablet). Admin vytvoří
+v sekci **Layouts** libovolný počet obrazovek s **pevnou pixelovou velikostí
+plátna**; pokud je plátno větší než displej, kiosk se posouvá (scroll). Každá
+obrazovka se zobrazuje „načisto“ (bez headeru a sidebaru) na route
+**`/kiosk/:name`** — toasty a tooltipy dědí z globálního shellu v `App.vue`.
+
+- **`/admin/layouts`** (`views/admin/LayoutsView.vue`) — tabulka kiosků (název,
+  rozměr plátna, mřížka, počet dlaždic) s vytvořením, editací, mazáním, odkazem
+  do builderu a do živého vieweru. `KioskFormDialog` nastaví název (klíč v URL,
+  unikátní), px šířku/výšku plátna a granularitu mřížky (počet sloupců + výška
+  řádku); editace zachovává rozmístěné dlaždice. Po vytvoření se rovnou otevře
+  builder.
+- **Builder** (`views/admin/KioskBuilderView.vue`) staví na knihovně
+  **[Gridstack.js](https://github.com/gridstack/gridstack.js)**. Vlevo je paleta
+  všech ovladatelných zařízení (stejných jako v hlavním User UI); chip se
+  **přetáhne (naklonuje)** na mřížku, dlaždice jde posouvat a měnit velikost přes
+  více řádků/sloupců a mazat. Gridstack hlídá **hranice a kolize** (dlaždice se
+  nepřekrývají). Builder je **imperativní** — Gridstack vlastní celé DOM mřížky a
+  dlaždice jsou jen popisné placeholdery (název + typ), takže Vue a Gridstack
+  nebojují o stejné uzly; živé widgety se renderují až ve viewru. Stav se
+  serializuje zpět do `kiosk.config.tiles` a ukládá přes `useKiosksStore`.
+- **Viewer** (`views/KioskView.vue`, route `/kiosk/:name`) reprodukuje identickou
+  geometrii **čistým CSS gridem** (stejné `columns` / `cellHeight` / `x,y,w,h`),
+  ale plně řízeným Vue — uvnitř každé dlaždice běží **živý `DeviceWidget`** (data
+  z app-wide devices store + WebSocket). Kiosk se vyhledá podle jména přes
+  `GET /api/v1/kiosks/by-name/:name`.
+- Datový model: tabulka **`kiosks`** (unikátní `name`, px `width`/`height`,
+  `config` JSONB = `KioskConfig` = `{ columns, cellHeight, tiles[] }`), migrace
+  `0003_kiosks`, `kiosksRepo`, REST `/api/v1/kiosks` (CRUD) + `…/by-name/:name`.
+  Pure helpery v `lib/kiosks.ts` (`findKioskByName`, `tileGridStyle`,
+  `canvasGridStyle`, `isValidCanvasSize`, `withTiles`) jsou unit-testované.
 
 #### Implementováno (pátý řez — Rooms)
 
