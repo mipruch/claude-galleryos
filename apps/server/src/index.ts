@@ -14,6 +14,7 @@ import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
 import {
+  camerasRepo,
   connectionsRepo,
   dbRepo,
   devicesRepo,
@@ -34,6 +35,7 @@ import { MeterService } from "./core/MeterService.ts";
 import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
+import { StreamManager } from "./core/StreamManager.ts";
 import { InputMapper } from "./input/InputMapper.ts";
 import { OscServer } from "./input/OscServer.ts";
 import { startApiServer } from "./api/server.ts";
@@ -166,6 +168,21 @@ async function main(): Promise<void> {
     });
   }
 
+  // Camera streaming: an on-demand RTSP → HLS transcoder pool. Nothing is
+  // transcoded until a browser opens a camera view; the process is killed when
+  // the viewer leaves (explicit stop) or stops fetching segments (idle timeout).
+  const streamManager = new StreamManager({
+    logger,
+    ffmpegPath: appConfig.stream.ffmpegPath,
+    baseDir: appConfig.stream.hlsDir,
+    idleTimeoutMs: appConfig.stream.idleTimeoutMs,
+    startTimeoutMs: appConfig.stream.startTimeoutMs,
+    segmentTime: appConfig.stream.segmentTime,
+    listSize: appConfig.stream.listSize,
+    videoCodec: appConfig.stream.videoCodec,
+    rtspTransport: appConfig.stream.rtspTransport,
+  });
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -176,6 +193,8 @@ async function main(): Promise<void> {
     connections: connectionsRepo,
     devices: devicesRepo,
     iframes: iframesRepo,
+    cameras: camerasRepo,
+    streamManager,
     logs: logsRepo,
     scenes: scenesRepo,
     sceneExecutions: sceneExecutionsRepo,
@@ -201,6 +220,7 @@ async function main(): Promise<void> {
     scheduler.stop();
     sceneEngine.stop();
     watchdog.stop();
+    streamManager.stopAll();
     await apiServer.stop(true);
     await deviceManager.stop();
     await closeRedis();

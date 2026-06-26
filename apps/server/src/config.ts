@@ -46,6 +46,34 @@ export const appConfig = {
     tcpPort: int("TCP_INPUT_PORT", 8766),
   },
 
+  // On-demand RTSP → HLS transcoding for CCTV cameras (see core/StreamManager).
+  // A camera is only transcoded while a browser is watching it: the first
+  // playlist request spawns ffmpeg, and the process is killed once the viewer
+  // leaves (explicit stop) or stops fetching segments (idle timeout).
+  stream: {
+    // ffmpeg binary — resolved from PATH by default. Override for a pinned build.
+    ffmpegPath: str("FFMPEG_PATH", "ffmpeg"),
+    // Where HLS playlists/segments are written (one subdir per live camera).
+    hlsDir: str("STREAM_HLS_DIR", "./.cache/streams"),
+    // Kill ffmpeg this long after the last playlist/segment fetch. The HLS player
+    // polls continuously while visible, so silence means the viewer has left.
+    idleTimeoutMs: int("STREAM_IDLE_TIMEOUT_MS", 12_000),
+    // How long the first playlist request waits for ffmpeg to produce a manifest
+    // before giving up with 503 (camera unreachable / wrong credentials).
+    startTimeoutMs: int("STREAM_START_TIMEOUT_MS", 10_000),
+    // HLS segment length (s) and how many segments to keep in the live window.
+    // Short segments = lower latency at the cost of more requests.
+    segmentTime: int("STREAM_SEGMENT_TIME", 1),
+    listSize: int("STREAM_LIST_SIZE", 5),
+    // Video codec passed to ffmpeg. "copy" remuxes the camera's H.264 with near-
+    // zero CPU (the common CCTV case); set to e.g. "libx264" to force a transcode
+    // for cameras whose codec the browser can't play (H.265).
+    videoCodec: str("STREAM_VIDEO_CODEC", "copy"),
+    // RTSP transport. "tcp" is the most reliable over lossy networks; "udp" can
+    // cut latency on a clean LAN.
+    rtspTransport: str("STREAM_RTSP_TRANSPORT", "tcp"),
+  },
+
   watchdog: {
     connectionIntervalMs: int("WATCHDOG_CONNECTION_INTERVAL_MS", 10_000),
     endpointIntervalMs: int("WATCHDOG_ENDPOINT_INTERVAL_MS", 60_000),

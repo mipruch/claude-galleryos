@@ -9,6 +9,9 @@ node_modules/
 logs/
 *.log
 
+# On-demand camera HLS transcoding output (STREAM_HLS_DIR)
+.cache/
+
 # Build output (we run TS directly, but keep this for safety)
 dist/
 build/

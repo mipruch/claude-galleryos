@@ -8,6 +8,7 @@
 
 import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle-orm";
 import {
+  cameras,
   connections,
   devices,
   iframes,
@@ -23,6 +24,7 @@ import type {
   Connection,
   Device,
   LevelCount,
+  NewCamera,
   NewConnection,
   NewDevice,
   NewIframe,
@@ -81,6 +83,22 @@ export const iframesRepo = {
       db.update(iframes).set({ ...values, updatedAt: new Date() }).where(eq(iframes.id, id)).returning(),
     ),
   remove: (id: string) => first(db.delete(iframes).where(eq(iframes.id, id)).returning()),
+};
+
+// ── cameras (RTSP CCTV sources) ──────────────────────────────
+
+export const camerasRepo = {
+  list: () => db.select().from(cameras).orderBy(cameras.displayOrder),
+  /** Only enabled cameras — what the user UI sidebar shows. */
+  listEnabled: () =>
+    db.select().from(cameras).where(eq(cameras.enabled, true)).orderBy(cameras.displayOrder),
+  get: (id: string) => first(db.select().from(cameras).where(eq(cameras.id, id)).limit(1)),
+  create: (values: NewCamera) => first(db.insert(cameras).values(values).returning()),
+  update: (id: string, values: Partial<NewCamera>) =>
+    first(
+      db.update(cameras).set({ ...values, updatedAt: new Date() }).where(eq(cameras.id, id)).returning(),
+    ),
+  remove: (id: string) => first(db.delete(cameras).where(eq(cameras.id, id)).returning()),
 };
 
 // ── connections ──────────────────────────────────────────────

@@ -14,6 +14,7 @@
 import type { Jsonify } from "./json.ts";
 import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import {
+  cameras,
   connections,
   devices,
   iframes,
@@ -38,6 +39,8 @@ export type SceneExecution = typeof sceneExecutions.$inferSelect;
 export type LogRow = typeof logs.$inferInsert;
 export type Iframe = typeof iframes.$inferSelect;
 export type NewIframe = typeof iframes.$inferInsert;
+export type Camera = typeof cameras.$inferSelect;
+export type NewCamera = typeof cameras.$inferInsert;
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 export type InputMapping = typeof inputMappings.$inferSelect;
@@ -55,6 +58,12 @@ export type SceneActionDTO = Jsonify<SceneAction>;
 export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
 export type IframeDTO = Jsonify<Iframe>;
+/**
+ * A camera as the REST API exposes it: the serialized row with `username` and
+ * `password` stripped. RTSP credentials live only on the server (ffmpeg injects
+ * them when connecting) and must never cross the wire to the browser.
+ */
+export type CameraDTO = Omit<Jsonify<Camera>, "username" | "password">;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 export type InputMappingDTO = Jsonify<InputMapping>;
 
@@ -130,6 +139,28 @@ export interface IframeCreateInput {
 }
 
 export type IframeUpdateInput = Partial<IframeCreateInput>;
+
+// ── cameras (RTSP CCTV sources) ──────────────────────────────
+
+/**
+ * Body accepted by `POST /cameras` — one RTSP camera / sidebar live view.
+ *
+ * `url` is the RTSP base WITHOUT credentials (`rtsp://host:port/path`);
+ * `username`/`password` are stored separately and injected server-side when
+ * ffmpeg connects, so they are never echoed back to the browser.
+ */
+export interface CameraCreateInput {
+  name: string;
+  url: string;
+  username?: string | null;
+  password?: string | null;
+  /** Sidebar sort position (ascending). Defaults to 0 server-side. */
+  displayOrder?: number;
+  /** Whether the camera is selectable in the UI. Defaults to true. */
+  enabled?: boolean;
+}
+
+export type CameraUpdateInput = Partial<CameraCreateInput>;
 
 // ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
 

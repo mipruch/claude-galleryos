@@ -274,6 +274,27 @@ export const iframes = pgTable("iframes", {
 });
 
 // ─────────────────────────────────────────────────────────────
+// cameras — RTSP CCTV sources, each rendered as a live-view sidebar
+// entry. The server transcodes RTSP → HLS on demand (one ffmpeg
+// process per viewed camera); credentials never reach the browser.
+// One row = one sidebar entry.
+// ─────────────────────────────────────────────────────────────
+export const cameras = pgTable("cameras", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+  // RTSP base URL WITHOUT credentials: rtsp://host:port/path. The username and
+  // password below are injected server-side when ffmpeg connects, so secrets
+  // are never serialised into the URL the UI sees.
+  url: text("url").notNull(),
+  username: varchar("username", { length: 255 }),
+  password: varchar("password", { length: 255 }),
+  displayOrder: integer("display_order").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+// ─────────────────────────────────────────────────────────────
 // config — runtime key/value settings
 // ─────────────────────────────────────────────────────────────
 export const config = pgTable("config", {

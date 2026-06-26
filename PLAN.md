@@ -587,6 +587,28 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         event exists for schedules, so the view re-fetches on an interval and ticks
         a `now` clock so relative labels stay fresh. Sidebar entry +
         route-`meta` header title.
+  - [x] **Camera streaming (RTSP → HLS on demand):** CCTV cameras stream over
+        RTSP, which browsers can't play, so the server transcodes RTSP → HLS with
+        `ffmpeg` **only while a camera is being watched** (one process per viewed
+        camera, never 24/7). New `cameras` table (`url` is the RTSP base *without*
+        credentials; `username`/`password` stored separately, injected at ffmpeg
+        spawn time, never serialised to the browser or logs — `CameraDTO` strips
+        them). `core/StreamManager.ts` owns the lifecycle: first playlist request
+        spawns ffmpeg (`-an`, `-c:v copy`, rolling HLS window); each
+        playlist/segment fetch resets an idle timer, so when the viewer leaves
+        (explicit stop or no more fetches for `STREAM_IDLE_TIMEOUT_MS`) the process
+        is killed and its dir cleaned; an unexpected ffmpeg exit drops the session
+        (→ 503). Routes `GET/POST/PUT/DELETE /api/v1/cameras`,
+        `GET …/:id/stream.m3u8` (auto-start), `GET …/:id/seg/:file` (regex-guarded
+        against traversal), `POST …/:id/stop`; the high-frequency stream GETs skip
+        the request logger (the StreamManager logs lifecycle events instead).
+        Front-end: lazy-loaded `views/CameraView.vue` (hls.js, native HLS on
+        Safari) — starts on mount/route change, tears down + `sendBeacon`-stops on
+        unmount/`pagehide`; no audio, no controls. New `useCamerasStore`,
+        `lib/cameras.ts` (tested) and a structured `lib/logger.ts` for FE logging;
+        sidebar "Cameras" section. `spawn`/clock injectable → 21 server + 7 FE
+        tests, all hermetic (no real ffmpeg). DB migration `0003_cameras` + seed
+        rows. **No admin page yet** (CRUD lives in `lib/api.ts` for when it lands).
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.

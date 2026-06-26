@@ -2039,6 +2039,51 @@ User UI má **read-only** stránku pro sledování naplánovaných spuštění
 - Testy: 13 unit testů pro helpery v `lib/schedules.ts` (prahové hodnoty
   relativního času, převod timezone, řazení, imutabilita vstupu).
 
+#### Implementováno (kamery — RTSP → HLS na vyžádání)
+
+CCTV kamery streamují přes RTSP, který prohlížeč neumí přehrát přímo. Server
+proto **na vyžádání** transkóduje RTSP → HLS pomocí `ffmpeg`: každá kamera má
+vlastní routu v sidebaru User panelu a živý obraz se přehraje v `<video>` přes
+`hls.js`. Klíčový požadavek — **nikdy netranskódovat 24/7** — řeší životní
+cyklus řízený sledovaností (jeden ffmpeg proces na *právě sledovanou* kameru).
+
+- **Datový model:** tabulka `cameras` (`name`, `url`, `username`, `password`,
+  `display_order`, `enabled`). `url` je RTSP báze **bez** přihlašovacích údajů
+  (`rtsp://host:port/path`); `username`/`password` se ukládají zvlášť a vkládají
+  se do RTSP URL až při spuštění ffmpegu, takže se **nikdy nedostanou do
+  prohlížeče** ani do logů. DTO `CameraDTO` (a všechny API odpovědi) credentials
+  vyřezává — jsou write-only.
+- **`StreamManager`** (`core/StreamManager.ts`) — pool transkodérů. První
+  požadavek na playlist spustí ffmpeg (`-an`, `-c:v copy`, HLS s mazáním starých
+  segmentů). Každý požadavek na playlist/segment `touch`ne session a resetuje
+  **idle timer**; HLS přehrávač stahuje segmenty nepřetržitě, takže výpadek
+  požadavků delší než `STREAM_IDLE_TIMEOUT_MS` (12 s) znamená, že divák odešel →
+  proces se zabije a pracovní adresář smaže. Neočekávaný pád ffmpegu (nedostupná
+  kamera, špatné heslo) session zruší, takže `waitForPlaylist` rychle vrátí 503.
+  `spawn`/clock/playlist-check jsou injektovatelné → plně unit-testovatelné bez
+  reálného ffmpegu.
+- **API:** CRUD `GET/POST/PUT/DELETE /api/v1/cameras` (+ `:id`) a streamovací
+  endpointy `GET /api/v1/cameras/:id/stream.m3u8` (auto-start), `GET …/seg/:file`
+  (segment, název hlídaný regexem `seg_<n>.ts` proti path traversalu) a
+  `POST …/cameras/:id/stop` (okamžité zastavení při opuštění routy). Streamovací
+  GETy záměrně **obcházejí** `route()` logger (přehrávač je volá každou sekundu a
+  zaplavily by audit log) — smysluplné události (start/stop/idle/pád) loguje
+  `StreamManager`.
+- **Frontend:** `views/CameraView.vue` (lazy-loaded, takže `hls.js` je v bundlu
+  až při otevření kamery) — `onMounted`/změna routy spustí přehrávání, `onunmount`
+  + `pagehide` ho strhnou a přes `navigator.sendBeacon` řeknou serveru, ať
+  ffmpeg zabije. Bez zvuku, bez ovládání (živá stěna). `useCamerasStore` drží
+  seznam seřazený dle `displayOrder`; `lib/cameras.ts` (`isRtspUrl`,
+  `playlistUrl`, `stopUrl`, `sortByDisplayOrder`) je čistý a unit-testovaný.
+- **Logování na FE:** nový `lib/logger.ts` (`logger.child("camera-view")`) zrcadlí
+  ergonomii serverového loggeru a píše strukturované logy do konzole pro celý
+  životní cyklus streamu.
+- **Nasazení:** ffmpeg musí být na PATH serveru (`FFMPEG_PATH` pro override) —
+  v Docker image se doinstaluje. `-c:v copy` jen remuxuje H.264 (běžný případ
+  CCTV) s nulovým CPU; pro H.265 kamery lze `STREAM_VIDEO_CODEC=libx264`.
+- Testy: 21 server testů (`StreamManager` lifecycle + credential injection + route
+  guard, cameras routes) a 7 FE testů (helpery + store).
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.
@@ -2696,6 +2741,16 @@ WATCHDOG_ENDPOINT_INTERVAL_MS=60000     # jak často pingovat endpointy
 DRIVER_RESTART_MAX_ATTEMPTS=0    # 0 = neomezeně
 DRIVER_RESTART_BASE_DELAY_MS=1000
 DRIVER_RESTART_MAX_DELAY_MS=30000
+
+# Kamery (RTSP → HLS na vyžádání, viz core/StreamManager)
+FFMPEG_PATH=ffmpeg               # ffmpeg binárka (musí být na PATH serveru)
+STREAM_HLS_DIR=./.cache/streams  # kam se zapisují HLS playlisty/segmenty
+STREAM_IDLE_TIMEOUT_MS=12000     # zabít ffmpeg po této době bez požadavků (divák odešel)
+STREAM_START_TIMEOUT_MS=10000    # max čekání na první manifest, jinak 503
+STREAM_SEGMENT_TIME=1            # délka HLS segmentu (s) — kratší = nižší latence
+STREAM_LIST_SIZE=5               # počet segmentů v živém okně
+STREAM_VIDEO_CODEC=copy          # copy = jen remux (H.264); libx264 pro transkód (H.265)
+STREAM_RTSP_TRANSPORT=tcp        # tcp (spolehlivé) | udp (nižší latence na čisté LAN)
 
 # Logy
 LOG_RETENTION_DAYS=90

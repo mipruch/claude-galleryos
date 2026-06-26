@@ -7,7 +7,7 @@
  * *actual* DTO types with sensible defaults, so the fixtures stay coupled to the
  * wire contracts (a breaking DTO change is now a compile error in the tests).
  */
-import type { DeviceDTO, IframeDTO, InputMappingDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
+import type { CameraDTO, DeviceDTO, IframeDTO, InputMappingDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
 
@@ -74,6 +74,20 @@ export function makeIframe(over: Partial<IframeDTO> = {}): IframeDTO {
     name: 'Iframe',
     url: 'https://example.com/ui',
     displayOrder: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `CameraDTO` (credentials already stripped); pass `over` to override. */
+export function makeCamera(over: Partial<CameraDTO> = {}): CameraDTO {
+  return {
+    id: 'cam',
+    name: 'Camera',
+    url: 'rtsp://10.0.0.5:554/Streaming/Channels/101',
+    displayOrder: 0,
+    enabled: true,
     createdAt: NOW,
     updatedAt: NOW,
     ...over,

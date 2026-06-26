@@ -9,8 +9,10 @@ import type { EventBus } from "../core/EventBus.ts";
 import type { MeterService } from "../core/MeterService.ts";
 import type { SceneEngine } from "../core/SceneEngine.ts";
 import type { Scheduler } from "../core/Scheduler.ts";
+import type { StreamManager } from "../core/StreamManager.ts";
 import type { InputMapper } from "../input/InputMapper.ts";
 import type {
+  camerasRepo,
   connectionsRepo,
   devicesRepo,
   iframesRepo,
@@ -31,6 +33,9 @@ export interface ApiContext {
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
   iframes: typeof iframesRepo;
+  cameras: typeof camerasRepo;
+  /** On-demand RTSP → HLS transcoder pool for CCTV cameras. */
+  streamManager: StreamManager;
   logs: typeof logsRepo;
   scenes: typeof scenesRepo;
   sceneExecutions: typeof sceneExecutionsRepo;

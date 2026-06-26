@@ -13,6 +13,9 @@
 
 import type { DriverManifest } from '@gallery/driver-core'
 import type {
+  CameraDTO,
+  CameraCreateInput,
+  CameraUpdateInput,
   ConnectionDTO,
   ConnectionStatus,
   ConnectionWithRuntime,
@@ -161,6 +164,17 @@ export const api = {
     create: (input: IframeCreateInput) => post<IframeDTO>('/iframes', input),
     update: (id: string, patch: IframeUpdateInput) => put<IframeDTO>(`/iframes/${id}`, patch),
     remove: (id: string) => del(`/iframes/${id}`),
+  },
+
+  cameras: {
+    // The list/get/create/update responses omit RTSP credentials (write-only).
+    list: () => get<CameraDTO[]>('/cameras'),
+    get: (id: string) => get<CameraDTO>(`/cameras/${id}`),
+    create: (input: CameraCreateInput) => post<CameraDTO>('/cameras', input),
+    update: (id: string, patch: CameraUpdateInput) => put<CameraDTO>(`/cameras/${id}`, patch),
+    remove: (id: string) => del(`/cameras/${id}`),
+    /** Stop on-demand transcoding for a camera (called when its view unmounts). */
+    stop: (id: string) => post<null>(`/cameras/${id}/stop`).catch(() => null),
   },
 
   scenes: {

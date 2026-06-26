@@ -29,6 +29,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Schedules', subtitle: 'Upcoming scheduled scenes' },
       },
       { path: 'iframes/:iframeId', name: 'iframe', component: IframeView },
+      // Lazy-loaded so hls.js only enters the bundle when a camera is opened.
+      {
+        path: 'cameras/:cameraId',
+        name: 'camera',
+        component: () => import('@/views/CameraView.vue'),
+      },
     ],
   },
   {

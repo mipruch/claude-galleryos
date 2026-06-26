@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, iframes, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
+import { cameras, connections, devices, iframes, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -719,6 +719,29 @@ const SEED_IFRAMES = [
   },
 ];
 
+// RTSP CCTV cameras — transcoded to HLS on demand (see core/StreamManager). The
+// URL carries NO credentials; username/password are stored separately and
+// injected only when ffmpeg connects. Change the host/path/credentials to match
+// your cameras (typical Hikvision/Dahua path shown).
+const SEED_CAMERAS = [
+  {
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
+    name: "Hlavní sál (CCTV)",
+    url: "rtsp://192.168.1.200:554/Streaming/Channels/101",
+    username: "admin",
+    password: "change-me",
+    displayOrder: 0,
+  },
+  {
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+    name: "Foyer (CCTV)",
+    url: "rtsp://192.168.1.201:554/Streaming/Channels/101",
+    username: "admin",
+    password: "change-me",
+    displayOrder: 1,
+  },
+];
+
 // ── inserter ─────────────────────────────────────────────────
 /**
  * Populates the database with sample data for rooms, connections, devices, scenes, scene actions, and iframes.
@@ -735,6 +758,7 @@ async function main(): Promise<void> {
   await db.insert(sceneActions).values(SEED_SCENE_ACTIONS).onConflictDoNothing();
   await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
+  await db.insert(cameras).values(SEED_CAMERAS).onConflictDoNothing();
 
   log.info("Seed complete", {
     rooms: SEED_ROOMS.length,
@@ -744,6 +768,7 @@ async function main(): Promise<void> {
     sceneActions: SEED_SCENE_ACTIONS.length,
     scheduledJobs: SEED_SCHEDULED_JOBS.length,
     iframes: SEED_IFRAMES.length,
+    cameras: SEED_CAMERAS.length,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });
   await closeDb();

@@ -10,6 +10,7 @@ import type { Server } from "bun";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { ApiContext } from "./context.ts";
+import { camerasRoutes } from "./routes/cameras.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { devicesRoutes } from "./routes/devices.ts";
 import { driversRoutes } from "./routes/drivers.ts";
@@ -33,6 +34,7 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...connectionsRoutes(ctx),
       ...devicesRoutes(ctx),
       ...iframesRoutes(ctx),
+      ...camerasRoutes(ctx),
       ...systemRoutes(ctx),
       ...logsRoutes(ctx),
       ...scenesRoutes(ctx),
