@@ -166,6 +166,7 @@ export const api = {
     list: () => get<KioskDTO[]>('/kiosks'),
     get: (id: string) => get<KioskDTO>(`/kiosks/${id}`),
     byName: (name: string) => get<KioskDTO>(`/kiosks/by-name/${encodeURIComponent(name)}`),
+    byId: (id: string) => get<KioskDTO>(`/kiosks/${encodeURIComponent(id)}`),
     create: (input: KioskCreateInput) => post<KioskDTO>('/kiosks', input),
     update: (id: string, patch: KioskUpdateInput) => put<KioskDTO>(`/kiosks/${id}`, patch),
     remove: (id: string) => del(`/kiosks/${id}`),

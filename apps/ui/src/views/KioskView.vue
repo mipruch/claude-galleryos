@@ -29,12 +29,12 @@ const kiosk = ref<KioskDTO | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
 
-async function load(name: string): Promise<void> {
+async function load(id: string): Promise<void> {
   loading.value = true
   notFound.value = false
   kiosk.value = null
   try {
-    kiosk.value = await api.kiosks.byName(name)
+    kiosk.value = await api.kiosks.byId(id)
     if (!devices.records.length) await devices.fetchAll()
   } catch (err) {
     // A 404 is an expected "no such kiosk"; anything else is a real error.
@@ -46,8 +46,8 @@ async function load(name: string): Promise<void> {
 }
 
 watch(
-  () => route.params.name,
-  (name) => void load(typeof name === 'string' ? name : ''),
+  () => route.params.id,
+  (id) => void load(typeof id === 'string' ? id : ''),
   { immediate: true },
 )
 
@@ -81,7 +81,7 @@ const tiles = computed(() => kiosk.value?.config.tiles ?? [])
 
     <div v-else-if="notFound" class="flex min-h-screen flex-col items-center justify-center gap-1 text-center">
       <p class="text-foreground text-base font-medium">Kiosk not found</p>
-      <p class="text-muted-foreground text-sm">No layout named “{{ route.params.name }}”.</p>
+      <p class="text-muted-foreground text-sm">No layout with ID “{{ route.params.id }}”.</p>
     </div>
 
     <div v-else class="flex min-h-screen items-center justify-center">

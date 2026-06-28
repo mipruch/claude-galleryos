@@ -89,7 +89,7 @@ const routes: RouteRecordRaw[] = [
         path: 'layouts/:id',
         name: 'admin-layout-builder',
         component: () => import('@/views/admin/KioskBuilderView.vue'),
-        meta: { title: 'Layout builder', subtitle: 'Arrange device widgets', fullHeight: true },
+        meta: { title: 'Layout builder', subtitle: 'Arrange device widgets'},
       },
       {
         path: 'logs',
@@ -108,7 +108,7 @@ const routes: RouteRecordRaw[] = [
   // Chromeless kiosk viewer — no header/sidebar, just the canvas (toasts come
   // from the global shell in App.vue). Looked up by name (the URL key).
   {
-    path: '/kiosk/:name',
+    path: '/kiosk/:id',
     name: 'kiosk',
     component: () => import('@/views/KioskView.vue'),
   },

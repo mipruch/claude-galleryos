@@ -51,7 +51,7 @@ const pageSubtitle = computed(() =>
           </div>
         </header>
 
-        <main class="min-h-0 w-full flex-1" :class="route.meta.fullHeight ? 'overflow-hidden' : 'overflow-y-auto'">
+        <main class="min-h-0 w-full flex-1">
           <RouterView />
         </main>
       </div>
