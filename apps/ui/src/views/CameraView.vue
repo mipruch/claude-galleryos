@@ -122,6 +122,14 @@ function onHlsError(id: string, data: { type: string; details: string; fatal: bo
   }
   log.warn('hls fatal error', meta)
   if (!hls) return
+  // manifestLoadError means the server explicitly rejected the playlist (503/404).
+  // Don't retry from the client — the server already timed out waiting for ffmpeg.
+  if (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR) {
+    status.value = 'error'
+    errorText.value = 'Camera stream is unavailable.'
+    log.error('manifest load failed — server rejected the stream', meta)
+    return
+  }
   if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRecoveries < MAX_NETWORK_RECOVERIES) {
     networkRecoveries += 1
     log.info('recovering hls network error', { ...meta, attempt: networkRecoveries })
