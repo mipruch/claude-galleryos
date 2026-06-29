@@ -1,114 +1,160 @@
 <script setup lang="ts">
-import { onMounted, ref, type CSSProperties } from 'vue'
-import { CloudRainIcon, DropletIcon } from '@lucide/vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 
-interface Raindrop {
-  id: number
-  left: number
-  duration: number
-  delay: number
+const DROP_COUNT = 500
+
+function rnd(max: number): number {
+  return Math.floor(Math.random() * max) + 1
 }
 
-interface Bucket {
-  id: number
-  left: number
+interface DropStyle {
+  opacity: number
+  left: string
+  borderLeftWidth: string
+  animationName: string
+  animationDuration: string
+  animationDelay: string
 }
 
-const raindrops = ref<Raindrop[]>([])
-const buckets = ref<Bucket[]>([])
-let dropletId = 0
-let bucketId = 0
+// Generate all drop data and keyframes once at component definition time.
+// Each drop gets a unique fall-N keyframe so `var(--rain-angle)` is re-read
+// live — that's the trick that makes the wind direction update instantly.
+const drops: DropStyle[] = []
+const kfLines: string[] = []
+
+for (let i = 1; i <= DROP_COUNT; i++) {
+  drops.push({
+    opacity: rnd(90) * 0.01,
+    left: `${rnd(1200) * 0.1}vw`,
+    borderLeftWidth: `${rnd(80) * 0.1}vmin`,
+    animationName: `rain-fall-${i}`,
+    animationDuration: `${rnd(15) * 0.15}s`,
+    animationDelay: `${rnd(25) * -0.5}s`,
+  })
+  // A tiny random start-percentage keeps drops spread across the screen on mount.
+  const startPct = ((rnd(50) / 500) * 100).toFixed(2)
+  kfLines.push(
+    `@keyframes rain-fall-${i}{` +
+      `${startPct}%{transform:rotate(var(--rain-angle)) translateX(0)}` +
+      `to{transform:rotate(var(--rain-angle)) translateX(calc(100vh + 5vmin))}}`,
+  )
+}
+
+const injectedCSS =
+  `@property --rain-angle{syntax:"<angle>";inherits:true;initial-value:91deg;}\n` +
+  kfLines.join('\n')
+
+let styleEl: HTMLStyleElement | null = null
+const isLightning = ref(false)
+const angle = ref(91)
+let lightningTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMouseMove(e: MouseEvent) {
+  // Left edge → 105 deg, right edge → 77 deg, centre → 91 deg.
+  angle.value = 105 - (e.clientX / window.innerWidth) * 28
+}
+
+function onMouseDown() {
+  isLightning.value = true
+  if (lightningTimer) clearTimeout(lightningTimer)
+  lightningTimer = setTimeout(() => {
+    isLightning.value = false
+  }, 600)
+}
 
 onMounted(() => {
-  // Create initial buckets
-  const bucketCount = 5
-  for (let i = 0; i < bucketCount; i++) {
-    buckets.value.push({
-      id: bucketId++,
-      left: (i / bucketCount) * 100 + 10,
-    })
-  }
-
-  // Continuously create raindrops
-  const interval = setInterval(() => {
-    const raindrop: Raindrop = {
-      id: dropletId++,
-      left: Math.random() * 100,
-      duration: 2 + Math.random() * 1.5,
-      delay: 0,
-    }
-    raindrops.value.push(raindrop)
-
-    // Remove raindrop after animation completes
-    setTimeout(() => {
-      raindrops.value = raindrops.value.filter((d) => d.id !== raindrop.id)
-    }, (raindrop.duration + 0.5) * 1000)
-  }, 100)
-
-  return () => clearInterval(interval)
+  styleEl = document.createElement('style')
+  styleEl.textContent = injectedCSS
+  document.head.appendChild(styleEl)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mousedown', onMouseDown)
 })
 
-const rainContainerStyle: CSSProperties = {
-  position: 'fixed',
-  inset: '0',
-  pointerEvents: 'none',
-  zIndex: '40',
-  overflow: 'hidden',
-}
+onBeforeUnmount(() => {
+  styleEl?.remove()
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mousedown', onMouseDown)
+  if (lightningTimer) clearTimeout(lightningTimer)
+})
 </script>
 
 <template>
-  <div class="fixed inset-0 pointer-events-none z-40 overflow-hidden">
-    <!-- Rain drops -->
+  <div
+    class="rain-scene"
+    :class="{ lightning: isLightning }"
+    :style="{ '--rain-angle': `${angle}deg` }"
+  >
     <div
-      v-for="drop in raindrops"
-      :key="drop.id"
-      class="absolute w-1 h-3 bg-blue-400 rounded-full opacity-70"
+      v-for="(drop, i) in drops"
+      :key="i"
+      class="drop"
       :style="{
-        left: `${drop.left}%`,
-        top: '-12px',
-        animation: `fall ${drop.duration}s linear infinite`,
-        animationDelay: `${drop.delay}ms`,
+        opacity: drop.opacity,
+        left: drop.left,
+        borderLeftWidth: drop.borderLeftWidth,
+        animationName: drop.animationName,
+        animationDuration: drop.animationDuration,
+        animationDelay: drop.animationDelay,
       }"
     />
 
-    <!-- Buckets at the bottom -->
-    <div class="fixed bottom-0 left-0 right-0 flex justify-around px-8 py-8 pointer-events-none">
-      <div v-for="bucket in buckets" :key="bucket.id" class="flex flex-col items-center">
-        <!-- Bucket visual -->
-        <div
-          class="relative w-12 h-10 bg-gradient-to-b from-amber-600 to-amber-800 rounded-b-lg border-2 border-amber-900"
-          style="
-            clipPath: 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)';
-            boxShadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-          "
-        >
-          <!-- Bucket handle -->
-          <div
-            class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2 w-6 h-6 border-2 border-amber-900 rounded-full"
-            style="
-              transform: translateX(-50%) translateY(-8px);
-            "
-          />
-        </div>
-        <!-- Water droplets in bucket (animated) -->
-        <div class="mt-1 text-blue-400 animate-pulse">
-          <DropletIcon class="w-4 h-4" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Cloud icon floating at top -->
-    <div class="fixed top-8 left-1/2 transform -translate-x-1/2 text-gray-400 animate-bounce pointer-events-none">
-      <CloudRainIcon class="w-12 h-12" />
+    <!-- Buckets sitting at the bottom catching the rain -->
+    <div class="buckets">
+      <span v-for="n in 5" :key="n" class="bucket" :style="{ animationDelay: `${(n - 1) * 0.3}s` }">🪣</span>
     </div>
   </div>
-
-  <style scoped>
-    @keyframes fall {
-      to {
-        transform: translateY(100vh);
-      }
-    }
-  </style>
 </template>
+
+<style scoped>
+.rain-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(7, 19, 28, 0.82), rgba(48, 84, 114, 0.82));
+}
+
+.rain-scene.lightning {
+  animation: lightning 0.1s linear 0s 2, lightning 0.15s ease-out 0.25s 1;
+}
+
+@keyframes lightning {
+  50% {
+    background:
+      radial-gradient(circle at calc(50% - 10vw) -20%, #fff4, #fff0 20%),
+      linear-gradient(180deg, #fff9, #fff3);
+  }
+}
+
+.drop {
+  border: 0.25vmin solid transparent;
+  border-bottom-color: #abc2e9;
+  position: absolute;
+  top: -5vmin;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+}
+
+.buckets {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 4rem;
+}
+
+.bucket {
+  font-size: 2.5rem;
+  display: inline-block;
+  filter: drop-shadow(0 0 6px rgba(171, 194, 233, 0.5));
+  animation: wobble 1.8s ease-in-out infinite;
+}
+
+@keyframes wobble {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+</style>
