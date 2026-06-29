@@ -15,6 +15,7 @@
 
 import { sql } from "drizzle-orm";
 import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
+import type { KioskConfig } from "./kiosk.ts";
 import {
   bigserial,
   boolean,
@@ -25,6 +26,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -272,6 +274,26 @@ export const iframes = pgTable("iframes", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+// ─────────────────────────────────────────────────────────────
+// kiosks — wall-screen / tablet layouts (the "Layouts" admin section)
+// Each row is one fixed-pixel canvas shown chromeless at /kiosk/:name.
+// `name` is unique because it is the lookup key in that URL. The grid
+// geometry + placed device tiles live in `config` (KioskConfig).
+// ─────────────────────────────────────────────────────────────
+export const kiosks = pgTable(
+  "kiosks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 100 }).notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    config: jsonb("config").$type<KioskConfig>().notNull().default({ columns: 12, cellHeight: 80, tiles: [] }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("idx_kiosks_name").on(t.name)],
+);
 
 // ─────────────────────────────────────────────────────────────
 // config — runtime key/value settings

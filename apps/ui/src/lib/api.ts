@@ -27,6 +27,9 @@ import type {
   InputMappingUpdateInput,
   InputMappingTestResult,
   Jsonify,
+  KioskDTO,
+  KioskCreateInput,
+  KioskUpdateInput,
   LevelCount,
   LogDTO,
   RoomDTO,
@@ -161,6 +164,16 @@ export const api = {
     create: (input: IframeCreateInput) => post<IframeDTO>('/iframes', input),
     update: (id: string, patch: IframeUpdateInput) => put<IframeDTO>(`/iframes/${id}`, patch),
     remove: (id: string) => del(`/iframes/${id}`),
+  },
+
+  kiosks: {
+    list: () => get<KioskDTO[]>('/kiosks'),
+    get: (id: string) => get<KioskDTO>(`/kiosks/${id}`),
+    byName: (name: string) => get<KioskDTO>(`/kiosks/by-name/${encodeURIComponent(name)}`),
+    byId: (id: string) => get<KioskDTO>(`/kiosks/${encodeURIComponent(id)}`),
+    create: (input: KioskCreateInput) => post<KioskDTO>('/kiosks', input),
+    update: (id: string, patch: KioskUpdateInput) => put<KioskDTO>(`/kiosks/${id}`, patch),
+    remove: (id: string) => del(`/kiosks/${id}`),
   },
 
   scenes: {

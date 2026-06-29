@@ -86,6 +86,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Mappings', subtitle: 'OSC/TCP/HTTP signals → actions' },
       },
       {
+        path: 'layouts',
+        name: 'admin-layouts',
+        component: () => import('@/views/admin/LayoutsView.vue'),
+        meta: { title: 'Layouts', subtitle: 'Wall-screen & tablet kiosks' },
+      },
+      {
+        path: 'layouts/:id',
+        name: 'admin-layout-builder',
+        component: () => import('@/views/admin/KioskBuilderView.vue'),
+        meta: { title: 'Layout builder', subtitle: 'Arrange device widgets'},
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),
@@ -98,6 +110,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Settings', subtitle: 'Appearance, system and drivers' },
       },
     ],
+  },
+  // Chromeless kiosk viewer — no header/sidebar, just the canvas (toasts come
+  // from the global shell in App.vue). Looked up by name (the URL key).
+  {
+    path: '/kiosk/:id',
+    name: 'kiosk',
+    component: () => import('@/views/KioskView.vue'),
   },
   // Unknown paths fall back to the user home page.
   { path: '/:pathMatch(.*)*', redirect: '/' },

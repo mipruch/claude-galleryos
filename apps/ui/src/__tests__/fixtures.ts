@@ -7,7 +7,7 @@
  * *actual* DTO types with sensible defaults, so the fixtures stay coupled to the
  * wire contracts (a breaking DTO change is now a compile error in the tests).
  */
-import type { DeviceDTO, IframeDTO, InputMappingDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
+import type { DeviceDTO, IframeDTO, InputMappingDTO, KioskDTO, RoomDTO, SceneDTO, ScheduledJobDTO } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
 
@@ -92,6 +92,19 @@ export function makeMapping(over: Partial<InputMappingDTO> = {}): InputMappingDT
     targetCommand: null,
     paramsTemplate: {},
     enabled: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+  }
+}
+
+/** A complete `KioskDTO`; pass `over` to override defaults. */
+export function makeKiosk(over: Partial<KioskDTO> = {}): KioskDTO {
+  return {
+    id: 'k',
+    name: 'Kiosk',
+    width: 1920,
+    height: 1080,
+    config: { columns: 12, cellHeight: 80, tiles: [] },
     createdAt: NOW,
     updatedAt: NOW,
     ...over,
