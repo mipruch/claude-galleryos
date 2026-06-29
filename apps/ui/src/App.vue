@@ -12,10 +12,13 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
 import { useRealtimeStore } from '@/stores/realtime'
+import { useRaining } from '@/composables/useRaining'
+import RainingEasterEgg from '@/components/easter-eggs/RainingEasterEgg.vue'
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
 const realtime = useRealtimeStore()
+const { isRaining } = useRaining()
 
 onMounted(() => {
   realtime.open()
@@ -29,6 +32,7 @@ onBeforeUnmount(() => realtime.close())
   <TooltipProvider>
     <div class="bg-background text-foreground min-h-screen">
       <RouterView />
+      <RainingEasterEgg v-if="isRaining" />
     </div>
     <Toaster />
   </TooltipProvider>

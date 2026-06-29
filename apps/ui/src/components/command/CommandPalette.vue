@@ -12,7 +12,7 @@
  * `onSelect: () => runScene(...)` ("Run scene: Cinema") slots straight in.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
-import { SearchIcon, ChevronRightIcon, CornerDownLeftIcon } from '@lucide/vue'
+import { SearchIcon, ChevronRightIcon, CornerDownLeftIcon, CloudRainIcon } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { deviceKind, searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
 import { searchScenes, sceneIcon, type SceneRecord } from '@/lib/scenes'
@@ -21,6 +21,7 @@ import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
 import { useConnectionsStore } from '@/stores/connections'
 import { useCommandPalette } from '@/composables/useCommandPalette'
+import { useRaining } from '@/composables/useRaining'
 
 interface PaletteItem {
   id: string
@@ -35,6 +36,7 @@ const store = useDevicesStore()
 const scenes = useScenesStore()
 const connections = useConnectionsStore()
 const { open, close, toggle } = useCommandPalette()
+const { isRaining, toggleRaining } = useRaining()
 
 const query = ref('')
 const view = ref<'root' | 'device'>('root')
@@ -69,8 +71,22 @@ const results = computed<PaletteItem[]>(() => {
         onSelect: () => runAction(device, a),
       }))
   }
-  // Root: scenes first (one tap = run), then devices (drill into actions). Both
-  // reuse the same loose search the grid uses.
+  // Root: easter eggs, scenes first (one tap = run), then devices (drill into actions).
+  const easterEggItems: PaletteItem[] = []
+  const q = query.value.trim().toLowerCase()
+  if (!q || 'start raining'.includes(q) || 'stop raining'.includes(q)) {
+    easterEggItems.push({
+      id: 'easter-egg-rain',
+      title: isRaining.value ? 'Stop raining' : 'Start raining',
+      subtitle: '☔ A funny Easter egg',
+      icon: CloudRainIcon,
+      onSelect: () => {
+        toggleRaining()
+        close()
+      },
+    })
+  }
+
   const sceneItems: PaletteItem[] = searchScenes(
     scenes.records.filter((s) => s.enabled),
     query.value,
@@ -93,7 +109,7 @@ const results = computed<PaletteItem[]>(() => {
       onSelect: () => openDevice(d),
     }),
   )
-  return [...sceneItems, ...deviceItems]
+  return [...easterEggItems, ...sceneItems, ...deviceItems]
 })
 
 const emptyText = computed(() => {
