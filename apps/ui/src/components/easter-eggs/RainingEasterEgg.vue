@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
   z-index: 40;
   pointer-events: none;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(7, 19, 28, 0.82), rgba(48, 84, 114, 0.82));
+  background: linear-gradient(180deg, rgba(7, 19, 28, 0.392), rgba(48, 84, 114, 0.405));
 }
 
 .rain-scene.lightning {
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
 
 .drop {
   border: 0.25vmin solid transparent;
-  border-bottom-color: #abc2e9;
+  border-bottom-color: #3f5d90;
   position: absolute;
   top: -5vmin;
   animation-timing-function: ease-in;
