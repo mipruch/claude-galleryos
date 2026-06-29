@@ -17,7 +17,7 @@ export type { KioskConfig, KioskDTO, KioskTile } from '@gallery/types'
 
 /** Gap (px) between tiles. Gridstack uses half this as per-item margin so the
  * sum across two adjacent items equals one gap — matching the viewer's CSS gap. */
-export const KIOSK_GAP = 8
+export const KIOSK_GAP = 16
 
 /** Min/max canvas dimension (px) accepted by the form + server. */
 export const KIOSK_MIN_SIZE = 1
@@ -57,7 +57,6 @@ export function canvasGridStyle(kiosk: KioskDTO): Record<string, string> {
     display: 'grid',
     gridTemplateColumns: `repeat(${columns}, 1fr)`,
     gridAutoRows: `${cellHeight}px`,
-    gap: `${KIOSK_GAP}px`,
     padding: `${KIOSK_GAP / 2}px`,
   }
 }
@@ -67,6 +66,7 @@ export function tileGridStyle(tile: KioskTile): Record<string, string> {
   return {
     gridColumn: `${tile.x + 1} / span ${tile.w}`,
     gridRow: `${tile.y + 1} / span ${tile.h}`,
+    padding: `${KIOSK_GAP / 2}px`,
   }
 }
 

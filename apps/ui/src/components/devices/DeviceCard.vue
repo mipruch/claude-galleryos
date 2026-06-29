@@ -18,7 +18,7 @@ const online = computed(() => store.statusOf(props.device.id).online)
 </script>
 
 <template>
-  <Card class="gap-4 py-4">
+  <Card class="gap-4 py-4 h-full">
     <CardHeader class="px-4">
       <CardTitle class="flex items-center gap-2">
         <Tooltip>

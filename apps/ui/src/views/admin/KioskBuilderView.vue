@@ -13,12 +13,22 @@
  * The current grid is serialised back to `kiosk.config.tiles` and saved via the
  * kiosks store. The viewer reproduces the identical geometry with a CSS grid.
  */
-import { computed, getCurrentInstance, h, nextTick, onBeforeUnmount, onMounted, ref, render, type Ref } from 'vue'
+import {
+  computed,
+  getCurrentInstance,
+  h,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  render,
+  type Ref,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { GridStack, type GridStackNode, type GridStackWidget } from 'gridstack'
 import 'gridstack/dist/gridstack.min.css'
-import { ArrowLeftIcon, ExternalLinkIcon, GripVerticalIcon, InfoIcon, SaveIcon } from '@lucide/vue'
+import { ArrowLeftIcon, ExternalLinkIcon, GripVerticalIcon, SaveIcon } from '@lucide/vue'
 import type { KioskDTO, KioskTile, KioskUpdateInput } from '@gallery/types'
 import { useDevicesStore } from '@/stores/devices'
 import { KIOSK_GAP } from '@/lib/kiosks'
@@ -40,7 +50,6 @@ const loading = ref(false)
 const kiosk: Ref<KioskDTO | null> = ref(null)
 const error = ref(null)
 
-
 async function fetchData(id: string): Promise<void> {
   error.value = null
   kiosk.value = null
@@ -58,6 +67,15 @@ async function fetchData(id: string): Promise<void> {
   }
 }
 
+const TILE_SIZE = computed(() => {
+  if (!kiosk.value) return { width: 80, height: 80 }
+
+  return {
+    width: kiosk.value?.width / kiosk.value?.config.columns + 'px',
+    height: kiosk.value?.config.cellHeight + 'px',
+  }
+})
+
 let grid = null as GridStack | null
 
 onMounted(async () => {
@@ -68,13 +86,14 @@ onMounted(async () => {
 
   grid = GridStack.init(
     {
-      column:  20,
-      cellHeight: kiosk.value.config.cellHeight ?? 80,
-      margin: "10px",
+      column: kiosk.value?.config.columns ?? 12,
+      cellHeight: TILE_SIZE.value.height,
+      margin: KIOSK_GAP / 2,
       marginUnit: 'px',
       acceptWidgets: true,
       removable: true,
-      minRow: 10
+      minRow: 10,
+      float: true,
     },
     gridEl.value,
   )
@@ -88,12 +107,11 @@ onMounted(async () => {
   if (items.length) {
     // Ensure all tiles have a width/height (Gridstack requires it).
     items = items.filter((t) => devices.records.some((d) => d.id === t.deviceId))
-    items.forEach((t) => {
-      grid?.makeWidget(buildTileEl(t))
+    console.log('Loading tiles', items.length, items)
+    items.forEach((tile) => {
+      grid?.makeWidget(buildTileEl(tile))
     })
-
   }
-
 
   grid.load(items)
   setupPaletteDrag()
@@ -115,19 +133,25 @@ function buildTileEl(tile: KioskTile): HTMLDivElement {
   if (!device) throw new Error(`Device not found for tile: ${tile.deviceId}`)
 
   const item = document.createElement('div')
+  item.classList.add('grid-stack-item')
+  const itemContent = document.createElement('div')
+  itemContent.classList.add('grid-stack-item-content')
+
   const vnode = h(TooltipProvider, null, () =>
     h(DeviceWidget, { device, class: 'pointer-events-none' }),
   )
-  vnode.appContext = appContext
-  render(vnode, item)
 
-  item.className = 'grid-stack-item'
+  vnode.appContext = appContext
+  render(vnode, itemContent)
+
   // item.dataset.tileId = tile.id
   item.setAttribute('gs-x', String(tile.x))
   item.setAttribute('gs-y', String(tile.y))
   item.setAttribute('gs-w', String(tile.w))
   item.setAttribute('gs-h', String(tile.h))
   item.setAttribute('gs-id', device.id)
+
+  item.appendChild(itemContent)
 
   return item
 }
@@ -136,10 +160,9 @@ function buildTileEl(tile: KioskTile): HTMLDivElement {
 function addTile(tile: Omit<KioskTile, 'id'>): void {
   if (!grid) return
   // tileDevice.set(tileId, tile.deviceId)
-  const el = buildTileEl({...tile, id: crypto.randomUUID()})
+  const el = buildTileEl({ ...tile, id: crypto.randomUUID() })
   grid.makeWidget(el)
 }
-
 
 const currentTiles = ref<KioskTile[]>([])
 
@@ -178,10 +201,6 @@ function setupPaletteDrag(): void {
   GridStack.setupDragIn('.kiosk-palette-item', { appendTo: 'body', helper: 'clone' })
 }
 
-
-
-
-
 async function save(): Promise<void> {
   const k = kiosk.value
   if (!k) return
@@ -196,7 +215,8 @@ async function save(): Promise<void> {
 
   console.log('Saving kiosk layout', k.id, JSON.stringify(updateInput))
 
-  api.kiosks.update(k.id, updateInput)
+  api.kiosks
+    .update(k.id, updateInput)
     .then((updated) => {
       saving.value = false
       if (updated) {
@@ -209,11 +229,10 @@ async function save(): Promise<void> {
     })
 
   saving.value = false
-    toast.success('Layout saved')
+  toast.success('Layout saved')
 }
 
 const viewerHref = kiosk.value ? `/kiosk/${encodeURIComponent(kiosk.value.name)}` : '#'
-
 
 onBeforeUnmount(() => {
   // Tear down Gridstack listeners but leave the DOM for Vue to unmount.
@@ -288,13 +307,12 @@ onBeforeUnmount(() => {
       </aside>
 
       <!-- Canvas (scrolls when larger than the viewport) -->
-      <div class="bg-muted/30 min-w-0 flex-1 overflow-auto p-4">
+      <div class="kiosk-screen bg-muted/30 min-w-0 flex-1 overflow-auto p-2 relative">
         <TooltipProvider>
-
           <div
-          ref="gridEl"
-          class="grid-stack kiosk-canvas"
-          :style="{ height: kiosk.height + 'px', width: kiosk.width + 'px' }"
+            ref="gridEl"
+            class="grid-stack kiosk-canvas"
+            :style="{ height: kiosk.height + 'px', width: kiosk.width + 'px' }"
           />
         </TooltipProvider>
       </div>
@@ -314,9 +332,10 @@ onBeforeUnmount(() => {
 <!-- Not scoped: Gridstack builds tile DOM imperatively, so scoped (data-v) rules
      would not reach it. Class names are kiosk-prefixed to avoid leakage. -->
 <style>
-.grid-stack-item {
-  overflow: hidden;
+.grid-stack-item-content > div {
+  height: 100%;
 }
+
 .kiosk-canvas {
   background-image:
     linear-gradient(
@@ -329,49 +348,18 @@ onBeforeUnmount(() => {
       color-mix(in srgb, var(--border) 60%, transparent) 1px,
       transparent 1px
     );
-  background-size: 160px 80px;
-  outline: 1px dashed var(--border);
+  background-size: v-bind('TILE_SIZE.width') v-bind('TILE_SIZE.height');
+
 }
-.kiosk-tile {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.25rem;
-  height: 100%;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--card);
-  padding: 0.5rem 0.625rem;
-  overflow: hidden;
-}
-.kiosk-tile__info {
-  min-width: 0;
-}
-.kiosk-tile__name {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.kiosk-tile__kind {
-  font-size: 0.6875rem;
-  color: var(--muted-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.kiosk-tile__remove {
-  flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  line-height: 1;
-  border-radius: 0.25rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-.kiosk-tile__remove:hover {
-  background: var(--destructive);
-  color: var(--destructive-foreground, #fff);
+.kiosk-screen::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  border-bottom: 1px dashed red;
+  margin-bottom: -1px;
+  pointer-events: none;
 }
 </style>
