@@ -63,7 +63,7 @@ export const appConfig = {
     startTimeoutMs: int("STREAM_START_TIMEOUT_MS", 10_000),
     // HLS segment length (s) and how many segments to keep in the live window.
     // Short segments = lower latency at the cost of more requests.
-    segmentTime: int("STREAM_SEGMENT_TIME", 1),
+    segmentTime: int("STREAM_SEGMENT_TIME", 2),
     listSize: int("STREAM_LIST_SIZE", 5),
     // Video codec passed to ffmpeg. "copy" remuxes the camera's H.264 with near-
     // zero CPU (the common CCTV case); set to e.g. "libx264" to force a transcode

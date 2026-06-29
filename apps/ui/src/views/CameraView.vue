@@ -76,7 +76,14 @@ function start(id: string): void {
   log.info('starting stream', { cameraId: id, url, hlsJs: Hls.isSupported() })
 
   if (Hls.isSupported()) {
-    hls = new Hls({ liveDurationInfinity: true, lowLatencyMode: true, backBufferLength: 10 })
+    hls = new Hls({
+      liveDurationInfinity: true,
+      // Standard HLS — no lowLatencyMode (that's for LL-HLS with partial segments).
+      // liveSyncDurationCount (default 3) keeps 3 segments of buffer so the player
+      // can run smoothly at 1× without stalling between segment downloads.
+      backBufferLength: 10,
+      maxLiveSyncPlaybackRate: 1.1,
+    })
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       log.debug('manifest parsed', { cameraId: id })
       void play(video, id)
