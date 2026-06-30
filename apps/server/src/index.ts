@@ -37,6 +37,7 @@ import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
 import { InputMapper } from "./input/InputMapper.ts";
 import { OscServer } from "./input/OscServer.ts";
+import { TcpInputServer } from "./input/TcpInputServer.ts";
 import { startApiServer } from "./api/server.ts";
 import { assertValidCommandParams } from "./api/validation.ts";
 
@@ -167,6 +168,24 @@ async function main(): Promise<void> {
     });
   }
 
+  // TCP ingress: a TCP listener that feeds newline-delimited JSON frames through
+  // the same InputMapper. Like OSC, it's optional — a bind failure is logged but
+  // never takes down device control.
+  const tcpInputServer = new TcpInputServer({
+    inputMapper,
+    eventBus,
+    logger,
+    port: appConfig.input.tcpPort,
+  });
+  try {
+    await tcpInputServer.start();
+  } catch (err) {
+    log.error("TCP input server failed to start; TCP ingress disabled", {
+      port: appConfig.input.tcpPort,
+      error: errMsg(err),
+    });
+  }
+
   // HTTP + WebSocket API.
   const apiServer = startApiServer({
     deviceManager,
@@ -200,6 +219,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     log.info(`Shutting down (${signal})`);
     oscServer.stop();
+    tcpInputServer.stop();
     scheduler.stop();
     sceneEngine.stop();
     watchdog.stop();

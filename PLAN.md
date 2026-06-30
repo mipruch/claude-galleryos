@@ -379,11 +379,28 @@ behave identically.
       the bus catalog is closed). Each match yields a `DispatchOutcome`; one signal can
       fire several rules. Failures are caught per-rule (never throw out of `handle`).
 
-### 4.2 `TcpInputServer` `src/input/TcpInputServer.ts`
-> Foundation in place — with `InputMapper.handle()` this is now a thin transport layer.
-- [ ] `Bun.listen` on `TCP_INPUT_PORT` (8766); persistent connections, newline-delimited JSON frames
-- [ ] Per message: emit `input.tcp.received`; normalise to an `InputSignal` and call `InputMapper.handle()`
-- [ ] Wire into `src/index.ts`
+### 4.2 `TcpInputServer` `src/input/TcpInputServer.ts` ✓
+> The TCP sibling of `OscServer` — a thin transport layer over `InputMapper.handle()`.
+- [x] `Bun.listen` on `TCP_INPUT_PORT` (8766); persistent connections, newline-delimited
+      JSON frames (`{ "address": "/x", "args": [..] }`; a bare JSON string is an
+      address-only frame). Per-connection buffer on `socket.data` reassembles frames
+      split across writes; a single un-terminated frame over 64 KiB is dropped (DoS
+      guard). `\r` before `\n` (CRLF) stripped; blank lines (keep-alives) ignored.
+- [x] Per frame: emit `input.tcp.received`; normalise to `{ protocol: "tcp", address,
+      args }` and call `InputMapper.handle()`. A malformed frame (bad JSON / missing
+      `address`) is logged and dropped — a bad sender never breaks the server or its
+      other connections.
+- [x] Wired into `src/index.ts` (started after the InputMapper, stopped on shutdown);
+      a bind failure is logged but does **not** crash the server (TCP is auxiliary).
+- [x] 11 tests: the pure framing/normalization helpers (`extractFrames`/`normalizeFrame`),
+      the server's `receiveFrame()` paths, and a real TCP round-trip that sends two
+      newline-delimited frames (one split across writes) and asserts both arrive in
+      order (`test/input/tcp-server.test.ts`).
+
+> **The UI (admin Mappings page) is already protocol-agnostic** — `PROTOCOL_OPTIONS`
+> in `apps/ui/src/lib/mappings.ts` lists `tcp` alongside `osc`/`http`, so the
+> create/edit form, the rules list, and the `/test` dry-run dialog all drive TCP
+> mappings the same way as OSC with no changes.
 
 ### 4.3 InputMappings REST API `src/api/routes/mappings.ts` ✓
 - [x] `GET    /api/v1/mappings` — `?protocol=` `?enabled=`
@@ -422,8 +439,8 @@ turns incoming OSC into actions.
       `test/input/osc-encode.ts`) and the server's `receive()` + a real UDP round-trip
       (`test/input/osc-server.test.ts`).
 
-> **TcpInputServer (§4.2)** stays open: with `OscServer` proving the pattern, it is now
-> the same ~80-line shape over `Bun.listen` + newline-delimited JSON → `InputMapper.handle`.
+> **TcpInputServer (§4.2)** is now done: the same shape over `Bun.listen` +
+> newline-delimited JSON → `InputMapper.handle`, with per-connection framing.
 
 ---
 
