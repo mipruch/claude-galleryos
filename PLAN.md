@@ -642,12 +642,15 @@ Step 9   InputMapper + TcpInputServer + Mappings API
 These items from the codebase review need a call before anyone starts coding.
 Each is labelled **[DECIDE]** in the original refactor analysis.
 
-### D1 · Manifest reserved fields — keep or remove?
-`CommandDefinition` (`driver-core/src/types.ts`) carries `reversible` and
-`estimatedDurationMs`. Rollback/choreography was dropped (PLAN §2); nothing
-reads these fields today. Every driver manifest fills them for nothing.
-**Options:** remove from the type + all manifests, or add a `// reserved for
-rollback (PLAN §2, not implemented)` comment and leave.
+### D1 · Manifest reserved fields — keep or remove? ✓ RESOLVED — removed
+**Decision: removed.** `CommandDefinition` (`packages/driver-core/src/types.ts`)
+now carries only `command` / `description` / `paramsSchema` — the unused
+`reversible` and `estimatedDurationMs` fields are gone from the type, and no
+driver manifest filled them (verified by grep: the only remaining mentions were
+in the docs). Rollback/choreography was dropped (PLAN §2) so nothing read them.
+The README spec block (`CommandDefinition` interface, the `scene_actions.on_failure`
+comment that listed the dropped `rollback`/`reversible`, and the example manifest)
+was updated to match.
 
 ### C3 · Split ownership of live status (DeviceManager vs Watchdog)
 Both `DeviceManager` and `Watchdog` write `connection:{id}:status` and emit
@@ -658,12 +661,17 @@ open/close); Watchdog owns *liveness re-confirmation* and only emits on a
 real change (no double-emit). Needs explicit sign-off on which module emits
 what, then document it in both files.
 
-### E4 · Single shared WebSocket (currently two connections opened)
-Per README/PLAN the UI uses a single `/ws` connection. Reality: `realtime.ts`
-was introduced to centralise this, but confirm in the network panel that only
-one `/ws` connection is visible when both `useDevicesStore` and
-`useConnectionsStore` are mounted. If two still open, move ownership entirely
-into `useRealtimeStore` and have both stores subscribe to it.
+### E4 · Single shared WebSocket ✓ RESOLVED — one connection, confirmed
+**Decision: already a single connection — no change needed.** `useRealtimeStore`
+(`apps/ui/src/stores/realtime.ts`) owns the one `/ws` socket (a single
+`useWebSocket`); `App.vue` drives its `open()`/`close()` once for the whole app.
+Every store that needs realtime — `devices`, `connections`, `scenes`, `meters` —
+subscribes through `useRealtimeStore().on(...)` and sends via `.send(...)`; none
+opens its own socket. Verified by grep: the only `useWebSocket`/`new WebSocket`
+call site in the whole UI is `realtime.ts`, and the only consumers of
+`realtime.connected` (`AdminLayout.vue`, `ConnectionStatus.vue`) are read-only
+status indicators. So both `useDevicesStore` and `useConnectionsStore` mounting
+together still yields exactly one `/ws` connection.
 
 ### H1 · DALI brightness logic placement — driver or core?
 `redis/state.ts` `shouldPreserveBrightness`/`mergeDeviceState` hardcodes DALI

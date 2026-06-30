@@ -421,8 +421,7 @@ CREATE TABLE scene_actions (
   -- Příkaz pro zařízení (NULL u sub-scén).
   params          JSONB NOT NULL DEFAULT '{}',
   on_failure      VARCHAR(20) NOT NULL DEFAULT 'continue',
-  -- 'abort' | 'continue' | 'rollback'
-  -- Rollback je aplikován pouze na 'reversible' příkazy.
+  -- 'abort' | 'continue' (rollback se neimplementuje — PLAN §2)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT scene_actions_target_chk CHECK (
     (device_id IS NOT NULL AND child_scene_id IS NULL AND command IS NOT NULL)
@@ -678,9 +677,10 @@ export interface CommandDefinition {
   command: string;
   description: string;
   paramsSchema: JSONSchema7;
-  reversible: boolean;       // lze tuto akci vrátit zpět při rollbacku?
-  estimatedDurationMs?: number;
 }
+// Pozn. [DECIDE D1 — vyřešeno]: pole `reversible` a `estimatedDurationMs` byla
+// odstraněna. Rollback/choreografie se neimplementuje (PLAN §2), nic je nečetlo
+// — žádný manifest je už nevyplňuje.
 
 // ────────────────────────────────────────────
 // Runtime typy
@@ -2450,7 +2450,6 @@ export const manifest: DriverManifest = {
         {
           command: 'setLevel',
           description: 'Nastavit úroveň 0..1',
-          reversible: true,
           paramsSchema: {
             type: 'object',
             required: ['level'],
