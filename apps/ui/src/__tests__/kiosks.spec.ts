@@ -52,6 +52,7 @@ describe('tileGridStyle', () => {
     expect(tileGridStyle(tile)).toEqual({
       gridColumn: '3 / span 4',
       gridRow: '4 / span 2',
+      padding: '8px',
     })
   })
 })

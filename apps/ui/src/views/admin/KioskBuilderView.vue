@@ -48,7 +48,7 @@ const devices = useDevicesStore()
 
 const loading = ref(false)
 const kiosk: Ref<KioskDTO | null> = ref(null)
-const error = ref(null)
+const error = ref<string | null>(null)
 
 async function fetchData(id: string): Promise<void> {
   error.value = null
@@ -61,7 +61,7 @@ async function fetchData(id: string): Promise<void> {
       return res.json()
     })
   } catch (err) {
-    error.value = err.toString()
+    error.value = err instanceof Error ? err.message : String(err)
   } finally {
     loading.value = false
   }
