@@ -11,7 +11,8 @@
     "packages/drivers/*"
   ],
   "scripts": {
-    "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
+    "dev": "bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
+    "dev:docker": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
     "dev:ui": "bun run --filter @gallery/ui dev",
     "start": "bun run --filter @gallery/server start",
     "build:ui": "bun run --filter @gallery/ui build",
