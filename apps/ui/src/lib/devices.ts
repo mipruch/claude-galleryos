@@ -26,6 +26,7 @@ export type DeviceKind =
   | 'bssMeter'
   | 'matrixOutput'
   | 'switch'
+  | 'ptzCamera'
   | 'unsupported'
 
 export function deviceKind(device: DeviceRecord): DeviceKind {
@@ -48,6 +49,8 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
       return 'switch'
     case 'extron-matrix.output':
       return 'matrixOutput'
+    case 'visca.camera':
+      return 'ptzCamera'
     default:
       return 'unsupported'
   }

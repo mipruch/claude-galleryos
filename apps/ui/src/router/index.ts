@@ -98,6 +98,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Layout builder', subtitle: 'Arrange device widgets'},
       },
       {
+        path: 'cameras',
+        name: 'admin-cameras',
+        component: () => import('@/views/admin/CamerasView.vue'),
+        meta: { title: 'Cameras', subtitle: 'VISCA PTZ camera control' },
+      },
+      {
         path: 'logs',
         name: 'admin-logs',
         component: () => import('@/views/admin/LogsView.vue'),

@@ -7,6 +7,7 @@ import BssFaderWidget from './BssFaderWidget.vue'
 import BssMeterWidget from './BssMeterWidget.vue'
 import SwitchWidget from './SwitchWidget.vue'
 import MatrixOutputWidget from './MatrixOutputWidget.vue'
+import PtzCameraWidget from './PtzCameraWidget.vue'
 
 const props = defineProps<{ device: DeviceRecord }>()
 
@@ -23,6 +24,8 @@ const widget = computed(() => {
       return SwitchWidget
     case 'matrixOutput':
       return MatrixOutputWidget
+    case 'ptzCamera':
+      return PtzCameraWidget
     default:
       return null
   }

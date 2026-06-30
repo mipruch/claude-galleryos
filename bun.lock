@@ -23,6 +23,7 @@
         "@gallery/driver-netio": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
         "@gallery/driver-tcp-generic": "workspace:*",
+        "@gallery/driver-visca": "workspace:*",
         "@gallery/types": "workspace:*",
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
@@ -138,6 +139,13 @@
     },
     "packages/drivers/driver-template": {
       "name": "@gallery/driver-template",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-visca": {
+      "name": "@gallery/driver-visca",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -359,6 +367,8 @@
     "@gallery/driver-tcp-generic": ["@gallery/driver-tcp-generic@workspace:packages/drivers/driver-tcp-generic"],
 
     "@gallery/driver-template": ["@gallery/driver-template@workspace:packages/drivers/driver-template"],
+
+    "@gallery/driver-visca": ["@gallery/driver-visca@workspace:packages/drivers/driver-visca"],
 
     "@gallery/server": ["@gallery/server@workspace:apps/server"],
 

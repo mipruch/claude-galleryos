@@ -22,6 +22,7 @@
     "@gallery/driver-netio": "workspace:*",
     "@gallery/driver-pjlink": "workspace:*",
     "@gallery/driver-tcp-generic": "workspace:*",
+    "@gallery/driver-visca": "workspace:*",
     "@gallery/types": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",

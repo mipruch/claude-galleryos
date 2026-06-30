@@ -17,6 +17,7 @@ import ExtronMatrixDriver, { manifest as extronMatrixManifest } from "@gallery/d
 import NetioDriver, { manifest as netioManifest } from "@gallery/driver-netio";
 import PjlinkDriver, { manifest as pjlinkManifest } from "@gallery/driver-pjlink";
 import TcpGenericDriver, { manifest as tcpGenericManifest } from "@gallery/driver-tcp-generic";
+import ViscaDriver, { manifest as viscaManifest } from "@gallery/driver-visca";
 
 /** A driver's static manifest paired with its instantiable class. */
 export interface DriverRegistration {
@@ -32,6 +33,7 @@ export const DRIVERS: readonly DriverRegistration[] = [
   { manifest: netioManifest, DriverClass: NetioDriver },
   { manifest: daliFoxtronManifest, DriverClass: DaliFoxtronDriver },
   { manifest: extronMatrixManifest, DriverClass: ExtronMatrixDriver },
+  { manifest: viscaManifest, DriverClass: ViscaDriver },
 ];
 
 /** Look up a driver registration by its manifest id. */
