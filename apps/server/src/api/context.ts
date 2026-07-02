@@ -11,6 +11,7 @@ import type { SceneEngine } from "../core/SceneEngine.ts";
 import type { Scheduler } from "../core/Scheduler.ts";
 import type { InputMapper } from "../input/InputMapper.ts";
 import type {
+  camerasRepo,
   connectionsRepo,
   devicesRepo,
   iframesRepo,
@@ -32,6 +33,7 @@ export interface ApiContext {
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
   iframes: typeof iframesRepo;
+  cameras: typeof camerasRepo;
   kiosks: typeof kiosksRepo;
   logs: typeof logsRepo;
   scenes: typeof scenesRepo;

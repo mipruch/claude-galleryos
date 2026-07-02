@@ -276,6 +276,23 @@ export const iframes = pgTable("iframes", {
 });
 
 // ─────────────────────────────────────────────────────────────
+// cameras — plain CRUD records for camera feeds (no control, no position).
+// Admin stores the feed URL and optional credentials; nothing else in the
+// system reads these rows yet.
+// ─────────────────────────────────────────────────────────────
+export const cameras = pgTable("cameras", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }),
+  url: text("url").notNull(),
+  username: varchar("username", { length: 100 }),
+  password: varchar("password", { length: 255 }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+// ─────────────────────────────────────────────────────────────
 // kiosks — wall-screen / tablet layouts (the "Layouts" admin section)
 // Each row is one fixed-pixel canvas shown chromeless at /kiosk/:name.
 // `name` is unique because it is the lookup key in that URL. The grid

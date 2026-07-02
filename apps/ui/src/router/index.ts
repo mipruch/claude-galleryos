@@ -80,6 +80,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Iframes', subtitle: 'Embedded device UIs' },
       },
       {
+        path: 'cameras',
+        name: 'admin-cameras',
+        component: () => import('@/views/admin/CamerasView.vue'),
+        meta: { title: 'Cameras', subtitle: 'Camera feed references' },
+      },
+      {
         path: 'mappings',
         name: 'admin-mappings',
         component: () => import('@/views/admin/MappingsView.vue'),

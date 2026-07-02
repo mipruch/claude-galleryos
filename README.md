@@ -1786,6 +1786,22 @@ obrazovka se zobrazuje „načisto“ (bez headeru a sidebaru) na route
   (labely, `targetSummary`, `parse/stringifyParamsTemplate`, `parseTestArgs`) —
   unit-testováno; `lib/api.ts` má skupinu `mappings`.
 
+#### Implementováno (Cameras)
+
+Plain CRUD bez řízení kamery a bez pozic/rozmístění — jen záznam o kameře pro
+pozdější použití (žádný stream/PTZ v tomto řezu).
+
+- **`/admin/cameras`** (`views/admin/CamerasView.vue`) — tabulka kamer (název,
+  popis, URL, uživatelské jméno, edit, mazání) + `CameraFormDialog`
+  (vee-validate + Zod): name, description, icon, url, username, password.
+  Žádné pořadí ani reordering (na rozdíl od iframes/rooms) a žádné ovládání —
+  úmyslně nejjednodušší možný CRUD.
+- Datový model: tabulka **`cameras`** (`name`, `description`, `icon`, `url`,
+  `username`, `password`), migrace `0004_cameras`, `camerasRepo`, REST
+  `/api/v1/cameras` (CRUD) analogicky k `/api/v1/iframes`.
+- Nové `useCamerasStore` (CRUD, seznam řazený podle jména) a `api.cameras.*`
+  ve `lib/api.ts`; `AdminSidebar` entry zapnutý.
+
 Zbývající admin stránka (layouts) přidá další řez — viz PLAN §"Priority 5 — UI".
 
 ### Stránky a funkce

@@ -517,6 +517,15 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (`isEmbeddableUrl`, `sortByDisplayOrder`, unit-tested). `lib/api.ts`
           iframe create/update now typed via new `IframeCreateInput` /
           `IframeUpdateInput`; `AdminSidebar` entry enabled.
+    - [x] **`/admin/cameras`** (`views/admin/CamerasView.vue`) — plain CRUD,
+          deliberately no positions/reordering and no camera control: table
+          (name, description, URL, username, edit, delete) + `CameraFormDialog`
+          (vee-validate + Zod; name/description/icon/url/username/password).
+          New `cameras` table (`name`, `description`, `icon`, `url`, `username`,
+          `password`, migration `0004_cameras`), `camerasRepo`, and
+          `/api/v1/cameras` CRUD mirroring the iframe routes. New
+          `useCamerasStore` (CRUD, list sorted by name) and `api.cameras.*`;
+          `AdminSidebar` entry enabled.
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.

@@ -15,6 +15,7 @@ import type { Jsonify } from "./json.ts";
 import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
+  cameras,
   connections,
   devices,
   iframes,
@@ -40,6 +41,8 @@ export type SceneExecution = typeof sceneExecutions.$inferSelect;
 export type LogRow = typeof logs.$inferInsert;
 export type Iframe = typeof iframes.$inferSelect;
 export type NewIframe = typeof iframes.$inferInsert;
+export type Camera = typeof cameras.$inferSelect;
+export type NewCamera = typeof cameras.$inferInsert;
 export type Kiosk = typeof kiosks.$inferSelect;
 export type NewKiosk = typeof kiosks.$inferInsert;
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
@@ -59,6 +62,7 @@ export type SceneActionDTO = Jsonify<SceneAction>;
 export type SceneWithActionsDTO = Jsonify<SceneWithActions>;
 export type LogDTO = Jsonify<typeof logs.$inferSelect>;
 export type IframeDTO = Jsonify<Iframe>;
+export type CameraDTO = Jsonify<Camera>;
 export type KioskDTO = Jsonify<Kiosk>;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 export type InputMappingDTO = Jsonify<InputMapping>;
@@ -135,6 +139,20 @@ export interface IframeCreateInput {
 }
 
 export type IframeUpdateInput = Partial<IframeCreateInput>;
+
+// ── cameras (feed reference — no control, no position) ───────
+
+/** Body accepted by `POST /cameras` — one camera feed reference. */
+export interface CameraCreateInput {
+  name: string;
+  description?: string;
+  icon?: string;
+  url: string;
+  username?: string;
+  password?: string;
+}
+
+export type CameraUpdateInput = Partial<CameraCreateInput>;
 
 // ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
 

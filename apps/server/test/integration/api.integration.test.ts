@@ -14,6 +14,7 @@ import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import { EventBus } from "../../src/core/EventBus.ts";
 import { driverRegistry } from "../../src/core/DriverRegistry.ts";
 import {
+  camerasRepo,
   connectionsRepo,
   dbRepo,
   devicesRepo,
@@ -100,6 +101,7 @@ beforeAll(async () => {
       connections: connectionsRepo,
       devices: devicesRepo,
       iframes: iframesRepo,
+      cameras: camerasRepo,
       kiosks: kiosksRepo,
       logs: logsRepo,
       scenes: scenesRepo,
