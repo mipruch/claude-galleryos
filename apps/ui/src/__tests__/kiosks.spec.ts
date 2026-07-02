@@ -3,6 +3,7 @@ import {
   canvasGridStyle,
   findKioskByName,
   isValidCanvasSize,
+  KIOSK_GAP,
   sortKiosksByName,
   tileGridStyle,
   withTiles,
@@ -11,10 +12,7 @@ import type { KioskTile } from '@/lib/kiosks'
 import { makeKiosk } from './fixtures'
 
 describe('findKioskByName', () => {
-  const list = [
-    makeKiosk({ id: 'a', name: 'Main Hall' }),
-    makeKiosk({ id: 'b', name: 'Foyer' }),
-  ]
+  const list = [makeKiosk({ id: 'a', name: 'Main Hall' }), makeKiosk({ id: 'b', name: 'Foyer' })]
 
   it('matches case- and accent-insensitively, trimming whitespace', () => {
     expect(findKioskByName(list, 'main hall')?.id).toBe('a')
@@ -52,6 +50,7 @@ describe('tileGridStyle', () => {
     expect(tileGridStyle(tile)).toEqual({
       gridColumn: '3 / span 4',
       gridRow: '4 / span 2',
+      padding: `${KIOSK_GAP / 2}px`,
     })
   })
 })

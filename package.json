@@ -1,34 +1,34 @@
 {
-  "name": "galleryos",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "GalleryOS — local control system for multimedia gallery AV devices (Bun)",
-  "workspaces": [
-    "apps/*",
-    "packages/types",
-    "packages/driver-core",
-    "packages/drivers/*"
-  ],
-  "scripts": {
-    "dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
-    "dev:ui": "bun run --filter @gallery/ui dev",
-    "start": "bun run --filter @gallery/server start",
-    "build:ui": "bun run --filter @gallery/ui build",
-    "migrate": "bun run --filter @gallery/server migrate",
-    "test": "bun test",
-    "test:ui": "bun run --filter @gallery/ui test:unit",
-    "typecheck": "tsc --noEmit && bun run typecheck:ui",
-    "typecheck:server": "tsc --noEmit",
-    "typecheck:ui": "bun run --filter @gallery/ui type-check"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^25.9.1",
-    "fallow": "^2.88.2",
-    "typescript": "^5.6.0"
-  },
-  "dependencies": {
-
-  }
+	"name": "galleryos",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "GalleryOS — local control system for multimedia gallery AV devices (Bun)",
+	"workspaces": [
+		"apps/*",
+		"packages/types",
+		"packages/driver-core",
+		"packages/drivers/*"
+	],
+	"scripts": {
+		"dev": "docker compose up -d postgres redis && bun run --cwd apps/server migrate && bun run --filter @gallery/server dev",
+		"dev:ui": "bun run --filter @gallery/ui dev",
+		"start": "bun run --filter @gallery/server start",
+		"build:ui": "bun run --filter @gallery/ui build",
+		"migrate": "bun run --filter @gallery/server migrate",
+		"test": "bun test:non-ui && bun test:ui",
+		"test:non-ui": "bun test",
+		"test:ui": "bun run --filter @gallery/ui test",
+		"typecheck": "tsc --noEmit && bun run typecheck:ui",
+		"typecheck:server": "tsc --noEmit",
+		"typecheck:ui": "bun run --filter @gallery/ui type-check"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"@types/node": "^25.9.1",
+		"fallow": "^2.88.2",
+		"typescript": "^5.6.0",
+		"vitest": "^4.1.9"
+	},
+	"dependencies": {}
 }

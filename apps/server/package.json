@@ -1,35 +1,36 @@
 {
-  "name": "@gallery/server",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "GalleryOS core server (Bun).",
-  "main": "./src/index.ts",
-  "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "migrate": "bun src/db/migrate.ts",
-    "seed": "bun src/db/seed.ts",
-    "db:generate": "bunx drizzle-kit generate",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@gallery/driver-bss": "workspace:*",
-    "@gallery/driver-core": "workspace:*",
-    "@gallery/driver-dali-foxtron": "workspace:*",
-    "@gallery/driver-dali-lunatone": "workspace:*",
-    "@gallery/driver-extron-matrix": "workspace:*",
-    "@gallery/driver-netio": "workspace:*",
-    "@gallery/driver-pjlink": "workspace:*",
-    "@gallery/driver-tcp-generic": "workspace:*",
-    "@gallery/types": "workspace:*",
-    "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1",
-    "drizzle-orm": "^0.45.2",
-    "winston": "^3.19.0",
-    "winston-transport": "^4.9.0"
-  },
-  "devDependencies": {
-    "drizzle-kit": "^0.31.10"
-  }
+	"name": "@gallery/server",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "GalleryOS core server (Bun).",
+	"main": "./src/index.ts",
+	"scripts": {
+		"dev": "bun --watch src/index.ts",
+		"test": "bun test",
+		"start": "bun src/index.ts",
+		"migrate": "bun src/db/migrate.ts",
+		"seed": "bun src/db/seed.ts",
+		"db:generate": "bunx drizzle-kit generate",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@gallery/driver-bss": "workspace:*",
+		"@gallery/driver-core": "workspace:*",
+		"@gallery/driver-dali-foxtron": "workspace:*",
+		"@gallery/driver-dali-lunatone": "workspace:*",
+		"@gallery/driver-extron-matrix": "workspace:*",
+		"@gallery/driver-netio": "workspace:*",
+		"@gallery/driver-pjlink": "workspace:*",
+		"@gallery/driver-tcp-generic": "workspace:*",
+		"@gallery/types": "workspace:*",
+		"ajv": "^8.20.0",
+		"ajv-formats": "^3.0.1",
+		"drizzle-orm": "^0.45.2",
+		"winston": "^3.19.0",
+		"winston-transport": "^4.9.0"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.31.10"
+	}
 }

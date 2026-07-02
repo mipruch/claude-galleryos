@@ -12,5 +12,8 @@
   },
   "dependencies": {
     "@gallery/driver-core": "workspace:*"
-  }
+  },
+  "scripts": {
+		"test": "bun test"
+	}
 }
