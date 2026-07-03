@@ -12,15 +12,18 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
 import { useRealtimeStore } from '@/stores/realtime'
+import { useCamerasStore } from '@/stores/cameras'
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
 const realtime = useRealtimeStore()
+const cameras = useCamerasStore()
 
 onMounted(() => {
   realtime.open()
   store.init()
   scenes.fetchAll()
+  cameras.fetchAll()
 })
 onBeforeUnmount(() => realtime.close())
 </script>

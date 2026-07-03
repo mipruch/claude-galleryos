@@ -8,6 +8,7 @@
 
 import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle-orm";
 import {
+  cameras,
   connections,
   devices,
   iframes,
@@ -24,6 +25,7 @@ import type {
   Connection,
   Device,
   LevelCount,
+  NewCamera,
   NewConnection,
   NewDevice,
   NewIframe,
@@ -88,16 +90,31 @@ export const iframesRepo = {
 // ── kiosks (wall-screen / tablet layouts) ────────────────────
 
 export const kiosksRepo = {
-  list: () => db.select().from(kiosks).orderBy(kiosks.name),
-  get: (id: string) => first(db.select().from(kiosks).where(eq(kiosks.id, id)).limit(1)),
-  /** Lookup by the unique name — the `/kiosk/:name` viewer key. */
-  getByName: (name: string) => first(db.select().from(kiosks).where(eq(kiosks.name, name)).limit(1)),
-  create: (values: NewKiosk) => first(db.insert(kiosks).values(values).returning()),
-  update: (id: string, values: Partial<NewKiosk>) =>
+    list: () => db.select().from(kiosks).orderBy(kiosks.name),
+    get: (id: string) => first(db.select().from(kiosks).where(eq(kiosks.id, id)).limit(1)),
+    /** Lookup by the unique name — the `/kiosk/:name` viewer key. */
+    getByName: (name: string) => first(db.select().from(kiosks).where(eq(kiosks.name, name)).limit(1)),
+    create: (values: NewKiosk) => first(db.insert(kiosks).values(values).returning()),
+    update: (id: string, values: Partial<NewKiosk>) =>
+        first(
+            db.update(kiosks).set({ ...values, updatedAt: new Date() }).where(eq(kiosks.id, id)).returning(),
+        ),
+    remove: (id: string) => first(db.delete(kiosks).where(eq(kiosks.id, id)).returning()),
+}
+// ── cameras (RTSP CCTV sources) ──────────────────────────────
+
+export const camerasRepo = {
+  list: () => db.select().from(cameras).orderBy(cameras.displayOrder),
+  /** Only enabled cameras — what the user UI sidebar shows. */
+  listEnabled: () =>
+    db.select().from(cameras).where(eq(cameras.enabled, true)).orderBy(cameras.displayOrder),
+  get: (id: string) => first(db.select().from(cameras).where(eq(cameras.id, id)).limit(1)),
+  create: (values: NewCamera) => first(db.insert(cameras).values(values).returning()),
+  update: (id: string, values: Partial<NewCamera>) =>
     first(
-      db.update(kiosks).set({ ...values, updatedAt: new Date() }).where(eq(kiosks.id, id)).returning(),
+      db.update(cameras).set({ ...values, updatedAt: new Date() }).where(eq(cameras.id, id)).returning(),
     ),
-  remove: (id: string) => first(db.delete(kiosks).where(eq(kiosks.id, id)).returning()),
+  remove: (id: string) => first(db.delete(cameras).where(eq(cameras.id, id)).returning()),
 };
 
 // ── connections ──────────────────────────────────────────────

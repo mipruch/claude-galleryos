@@ -47,7 +47,11 @@
         "@vueuse/core": "^14.3.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+<<<<<<< HEAD
         "gridstack": "^12.6.0",
+=======
+        "hls.js": "^1.6.16",
+>>>>>>> feature/camera-streams
         "pinia": "^3.0.4",
         "reka-ui": "^2.9.9",
         "tailwind-merge": "^3.6.0",
@@ -847,7 +851,11 @@
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 
+<<<<<<< HEAD
     "gridstack": ["gridstack@12.6.0", "", {}, "sha512-dUrqsormSybFn/2P4Dz8AgprftKD5e/IiV7UmC0XLQU+G+/WtkAeFiCSNLoAGhPDXoJ/O61Xtj3gljY/Ds83yQ=="],
+=======
+    "hls.js": ["hls.js@1.6.16", "", {}, "sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA=="],
+>>>>>>> feature/camera-streams
 
     "hookable": ["hookable@5.5.3", "", {}, "sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ=="],
 

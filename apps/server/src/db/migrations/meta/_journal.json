@@ -27,7 +27,13 @@
       "idx": 3,
       "version": "7",
       "when": 1782000000000,
-      "tag": "0003_kiosks",
+      "tag": "0003_kiosks"
+    },
+      {
+        "idx": 4,
+        "version": "7",
+        "when": 1782432000000,
+      "tag": "0004_cameras",
       "breakpoints": true
     }
   ]

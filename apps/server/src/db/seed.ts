@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { connections, devices, iframes, kiosks, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
+import { cameras, connections, devices, iframes, kiosks, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -722,21 +722,43 @@ const SEED_IFRAMES = [
 // One demo wall kiosk for the Main Hall, shown chromeless at /kiosk/Main%20Hall.
 // Tiles reference existing seed devices; geometry is in grid units (12 columns).
 const SEED_KIOSKS = [
+    {
+        id: "77777777-7777-7777-7777-777777777701",
+        name: "Main Hall",
+        width: 1920,
+        height: 1080,
+        config: {
+            columns: 12,
+            cellHeight: 80,
+            tiles: [
+                { id: "tile-projector", deviceId: DEV_PROJECTOR, x: 0, y: 0, w: 4, h: 2 },
+                { id: "tile-bss-mic1", deviceId: DEV_BSS_MIC1, x: 4, y: 0, w: 4, h: 2 },
+                { id: "tile-dali-spot1", deviceId: DEV_DALI_SPOT1, x: 8, y: 0, w: 4, h: 2 },
+                { id: "tile-netio-sock1", deviceId: DEV_NETIO_SOCK1, x: 0, y: 2, w: 4, h: 2 },
+            ],
+        },
+    }
+];
+// RTSP CCTV cameras — transcoded to HLS on demand (see core/StreamManager). The
+// URL carries NO credentials; username/password are stored separately and
+// injected only when ffmpeg connects. Change the host/path/credentials to match
+// your cameras (typical Hikvision/Dahua path shown).
+const SEED_CAMERAS = [
   {
-    id: "77777777-7777-7777-7777-777777777701",
-    name: "Main Hall",
-    width: 1920,
-    height: 1080,
-    config: {
-      columns: 12,
-      cellHeight: 80,
-      tiles: [
-        { id: "tile-projector", deviceId: DEV_PROJECTOR, x: 0, y: 0, w: 4, h: 2 },
-        { id: "tile-bss-mic1", deviceId: DEV_BSS_MIC1, x: 4, y: 0, w: 4, h: 2 },
-        { id: "tile-dali-spot1", deviceId: DEV_DALI_SPOT1, x: 8, y: 0, w: 4, h: 2 },
-        { id: "tile-netio-sock1", deviceId: DEV_NETIO_SOCK1, x: 0, y: 2, w: 4, h: 2 },
-      ],
-    },
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
+    name: "Hlavní sál (CCTV)",
+    url: "rtsp://192.168.1.200:554/Streaming/Channels/101",
+    username: "admin",
+    password: "change-me",
+    displayOrder: 0,
+  },
+  {
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+    name: "Foyer (CCTV)",
+    url: "rtsp://192.168.1.201:554/Streaming/Channels/101",
+    username: "admin",
+    password: "change-me",
+    displayOrder: 1,
   },
 ];
 
@@ -757,6 +779,7 @@ async function main(): Promise<void> {
   await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
   await db.insert(kiosks).values(SEED_KIOSKS).onConflictDoNothing();
+  await db.insert(cameras).values(SEED_CAMERAS).onConflictDoNothing();
 
   log.info("Seed complete", {
     rooms: SEED_ROOMS.length,
@@ -767,6 +790,7 @@ async function main(): Promise<void> {
     scheduledJobs: SEED_SCHEDULED_JOBS.length,
     iframes: SEED_IFRAMES.length,
     kiosks: SEED_KIOSKS.length,
+    cameras: SEED_CAMERAS.length,
     note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
   });
   await closeDb();

@@ -5,16 +5,19 @@
  * router links — refreshing keeps you on the same page.
  */
 import { computed } from 'vue'
-import { LayoutGridIcon, DoorOpenIcon, CalendarClockIcon } from '@lucide/vue'
+import { LayoutGridIcon, DoorOpenIcon, CalendarClockIcon, VideoIcon } from '@lucide/vue'
 import { useDevicesStore } from '@/stores/devices'
+import { useCamerasStore } from '@/stores/cameras'
 
 const store = useDevicesStore()
+const camerasStore = useCamerasStore()
 
 const rooms = computed(() =>
   [...store.rooms].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)),
 )
 
 const iframes = computed(() => store.iframes)
+const cameras = computed(() => camerasStore.records)
 
 function linkClass(isActive: boolean): string {
   return [
@@ -69,6 +72,26 @@ function linkClass(isActive: boolean): string {
           <span class="text-xs opacity-60">{{ store.roomDeviceCounts[room.id] ?? 0 }}</span>
         </a>
       </RouterLink>
+
+      <template v-if="cameras.length">
+        <p
+          class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
+        >
+          Cameras
+        </p>
+        <RouterLink
+          v-for="camera in cameras"
+          :key="camera.id"
+          :to="`/cameras/${camera.id}`"
+          custom
+          v-slot="{ href, navigate, isActive }"
+        >
+          <a :href="href" :class="linkClass(isActive)" @click="navigate">
+            <VideoIcon class="size-4 shrink-0" />
+            <span class="flex-1 truncate">{{ camera.name }}</span>
+          </a>
+        </RouterLink>
+      </template>
 
       <template v-if="iframes.length">
         <p

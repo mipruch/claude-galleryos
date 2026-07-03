@@ -11,8 +11,7 @@ There are three ways to run it. For day-to-day development use **Option A**.
 ## Prerequisites
 
 - **Bun** ≥ 1.3 — `curl -fsSL https://bun.sh/install | bash`
-- **Docker** (Desktop or colima) with the Compose plugin — used for Postgres +
-  Redis (and, optionally, to run the server itself).
+- **PostgreSQL** and **Redis** — either via Homebrew (Option A) or Docker (Options B/C).
 
 First-time setup:
 
@@ -23,26 +22,64 @@ cp .env.example .env # local configuration (safe defaults; gitignored)
 
 ---
 
-## Option A — Local dev (recommended)
+## Option A — Native dev (recommended)
 
-Server runs on your host with hot reload; only Postgres + Redis run in Docker.
-One command does everything (start infra → migrate → seed → watch):
+Server + backing services all run directly on your Mac. No Docker needed.
+
+### One-time Homebrew setup
+
+```bash
+brew install postgresql@16 redis
+brew services start postgresql@16
+brew services start redis
+
+# Create the gallery DB user and database (run once)
+createuser -s gallery
+psql postgres -c "ALTER USER gallery WITH PASSWORD 'gallery_dev_password';"
+createdb -O gallery gallery
+```
+
+> If you already have Postgres running and get a "role already exists" error,
+> just skip `createuser` and run the `ALTER USER` + `createdb` lines.
+
+### Start dev server
 
 ```bash
 bun run dev
 ```
 
-That runs `docker compose up -d postgres redis`, applies migrations + the
-TimescaleDB setup, seeds sample data, then starts the server with `bun --watch`
+Applies migrations (TimescaleDB hypertable setup is skipped gracefully on
+plain Postgres — no action needed) then starts the server with `bun --watch`
 on **http://localhost:3000**. Edit any file under `apps/server/src` or
 `packages/` and it reloads automatically.
 
-Stop the server with `Ctrl-C`. The Postgres/Redis containers keep running; stop
-them with `docker compose down` (add `-v` to also delete their data volumes).
+Stop with `Ctrl-C`. Postgres and Redis keep running as system services.
 
 `LOG_LEVEL=debug` (the dev default in `.env`) prints the full firehose: every
 HTTP/WS request, every device command + response, and every wire-level message
 to/from each device. Set `LOG_LEVEL=info` for a quieter, production-style log.
+
+### Stop / start services
+
+```bash
+brew services stop postgresql@16 redis   # stop
+brew services start postgresql@16 redis  # start again
+```
+
+---
+
+## Option A-docker — Local dev with Docker infra
+
+Same as Option A but Postgres + Redis run in Docker instead of natively.
+Useful when you can't install services locally or want an isolated DB.
+
+```bash
+bun run dev:docker
+```
+
+That starts the containers, applies migrations, then watches the server.
+Stop the server with `Ctrl-C`. Containers keep running; tear them down with
+`docker compose down` (add `-v` to also wipe data volumes).
 
 ---
 
@@ -158,10 +195,11 @@ bun run --cwd apps/server db:generate               # regenerate migration after
 
 - **`address already in use :3000`** — a previous server is still running:
   `lsof -ti tcp:3000 | xargs kill -9`.
-- **`Cannot connect to the Docker daemon`** — start Docker Desktop (or
-  `colima start`), then retry.
-- **DB/Redis connection errors** — ensure infra is up and healthy:
-  `docker compose ps`. Connection strings live in `.env`
-  (`DATABASE_URL`, `REDIS_URL`).
+- **`Cannot connect to the Docker daemon`** — only relevant for Options A-docker/B/C.
+  Start Docker Desktop (or `colima start`), then retry.
+- **DB/Redis connection errors (native)** — ensure services are running:
+  `brew services list | grep -E 'postgresql|redis'`. Connection strings live
+  in `.env` (`DATABASE_URL`, `REDIS_URL`).
+- **DB/Redis connection errors (Docker)** — `docker compose ps` to check health.
 - **Too much / too little logging** — tune `LOG_LEVEL` in `.env`
   (`debug` | `info` | `warn` | `error`).

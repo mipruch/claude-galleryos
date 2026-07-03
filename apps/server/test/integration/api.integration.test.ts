@@ -14,6 +14,7 @@ import { DeviceManager } from "../../src/core/DeviceManager.ts";
 import { EventBus } from "../../src/core/EventBus.ts";
 import { driverRegistry } from "../../src/core/DriverRegistry.ts";
 import {
+  camerasRepo,
   connectionsRepo,
   dbRepo,
   devicesRepo,
@@ -31,7 +32,9 @@ import { SceneEngine } from "../../src/core/SceneEngine.ts";
 import { MeterService } from "../../src/core/MeterService.ts";
 import { Scheduler } from "../../src/core/Scheduler.ts";
 import { InputMapper } from "../../src/input/InputMapper.ts";
+import { StreamManager } from "../../src/core/StreamManager.ts";
 import { startApiServer } from "../../src/api/server.ts";
+import { appConfig } from "../../src/config.ts";
 import { logger } from "../../src/logger.ts";
 import { startPjlinkMock, type PjlinkMockServer } from "../mocks/mock-devices.ts";
 
@@ -90,6 +93,17 @@ beforeAll(async () => {
     eventBus: bus,
   });
   await inputMapper.start();
+  const streamManager = new StreamManager({
+    logger,
+    ffmpegPath: appConfig.stream.ffmpegPath,
+    baseDir: appConfig.stream.hlsDir,
+    idleTimeoutMs: appConfig.stream.idleTimeoutMs,
+    startTimeoutMs: appConfig.stream.startTimeoutMs,
+    segmentTime: appConfig.stream.segmentTime,
+    listSize: appConfig.stream.listSize,
+    videoCodec: appConfig.stream.videoCodec,
+    rtspTransport: appConfig.stream.rtspTransport,
+  });
   server = startApiServer(
     {
       deviceManager: dm,
@@ -101,6 +115,8 @@ beforeAll(async () => {
       devices: devicesRepo,
       iframes: iframesRepo,
       kiosks: kiosksRepo,
+      cameras: camerasRepo,
+      streamManager,
       logs: logsRepo,
       scenes: scenesRepo,
       sceneExecutions: sceneExecutionsRepo,
