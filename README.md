@@ -2171,6 +2171,17 @@ cyklus řízený sledovaností (jeden ffmpeg proces na *právě sledovanou* kame
   CCTV) s nulovým CPU; pro H.265 kamery lze `STREAM_VIDEO_CODEC=libx264`.
 - Testy: 21 server testů (`StreamManager` lifecycle + credential injection + route
   guard, cameras routes) a 7 FE testů (helpery + store).
+- **`/admin/cameras`** (`views/admin/CamerasView.vue`) — stejná stavba jako
+  `/admin/iframes`: tabulka (přeřazení nahoru/dolů, název, URL, přepínač
+  `enabled`, edit a mazání) + `CameraFormDialog` (vee-validate + Zod, klientský
+  check `isRtspUrl`). Pole `username`/`password` jsou **write-only** — API
+  uložené přihlašovací údaje nikdy nevrací (`CameraDTO` je vyřezává), takže při
+  editaci jsou obě pole prázdná a prázdná hodnota znamená „ponechat beze
+  změny", ne „smazat". `useCamerasStore` (dřív jen pro čtení) přibyl o
+  `create`/`update`/`remove`/`move`; `computeCameraReorder` v `lib/cameras.ts`
+  zrcadlí `computeIframeReorder` (unit-testováno). Backend CRUD, schéma i
+  `lib/api.ts` klient existovaly už dřív. `AdminSidebar.vue` má položku
+  „Cameras".
 
 ### Princip fungování
 

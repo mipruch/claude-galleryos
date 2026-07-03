@@ -11,6 +11,12 @@ import type { CameraDTO } from '@gallery/types'
 
 const API = '/api/v1'
 
+/** A single camera's new display order to persist. */
+export interface CameraOrderChange {
+  id: string
+  displayOrder: number
+}
+
 /** The HLS playlist URL the <video>/hls.js source points at for a camera. */
 export function playlistUrl(cameraId: string): string {
   return `${API}/cameras/${cameraId}/stream.m3u8`
@@ -40,4 +46,34 @@ export function sortByDisplayOrder(list: CameraDTO[]): CameraDTO[] {
   return [...list].sort(
     (a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name),
   )
+}
+
+/**
+ * Move camera `id` by `delta` (-1 up / +1 down) within the sorted list and
+ * renumber to contiguous positions.
+ *
+ * @returns the new ordered list plus the minimal set whose `displayOrder`
+ *   actually changed, or `null` when the move is a no-op.
+ */
+export function computeCameraReorder(
+  cameras: CameraDTO[],
+  id: string,
+  delta: number,
+): { order: CameraDTO[]; changed: CameraOrderChange[] } | null {
+  const sorted = sortByDisplayOrder(cameras)
+  const from = sorted.findIndex((c) => c.id === id)
+  if (from < 0) return null
+  const to = from + delta
+  if (to < 0 || to >= sorted.length) return null
+
+  const order = [...sorted]
+  const [moved] = order.splice(from, 1)
+  if (!moved) return null
+  order.splice(to, 0, moved)
+
+  const changed: CameraOrderChange[] = []
+  order.forEach((camera, index) => {
+    if (camera.displayOrder !== index) changed.push({ id: camera.id, displayOrder: index })
+  })
+  return { order, changed }
 }

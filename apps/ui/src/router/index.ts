@@ -86,6 +86,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Iframes', subtitle: 'Embedded device UIs' },
       },
       {
+        path: 'cameras',
+        name: 'admin-cameras',
+        component: () => import('@/views/admin/CamerasView.vue'),
+        meta: { title: 'Cameras', subtitle: 'RTSP CCTV live-view sources' },
+      },
+      {
         path: 'mappings',
         name: 'admin-mappings',
         component: () => import('@/views/admin/MappingsView.vue'),

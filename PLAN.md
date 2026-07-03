@@ -534,6 +534,17 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (`isEmbeddableUrl`, `sortByDisplayOrder`, unit-tested). `lib/api.ts`
           iframe create/update now typed via new `IframeCreateInput` /
           `IframeUpdateInput`; `AdminSidebar` entry enabled.
+    - [x] **`/admin/cameras`** (`views/admin/CamerasView.vue`) — same shape as
+          `/admin/iframes`: table (up/down display-order controls, name, URL,
+          enabled toggle, edit, delete) + `CameraFormDialog` (vee-validate + Zod,
+          client-side `isRtspUrl` check). `username`/`password` are write-only
+          fields — the API never returns stored credentials (`CameraDTO` strips
+          them), so both start blank on edit and a blank value means "leave
+          unchanged" rather than "clear". `useCamerasStore` (previously
+          read-only) gained `create`/`update`/`remove`/`move`, plus
+          `computeCameraReorder` in `lib/cameras.ts` (mirrors
+          `computeIframeReorder`, unit-tested); server-side CRUD, schema, and
+          `lib/api.ts` client already existed. `AdminSidebar` entry enabled.
   - [x] **Manifest-driven forms (vee-validate + Zod):** the connection/device
         dialogs render dynamic fields from the driver manifest — `connectionSchema`
         for connections, the selected endpoint type's `addressSchema` for devices.
@@ -642,8 +653,9 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         unmount/`pagehide`; no audio, no controls. New `useCamerasStore`,
         `lib/cameras.ts` (tested) and a structured `lib/logger.ts` for FE logging;
         sidebar "Cameras" section. `spawn`/clock injectable → 21 server + 7 FE
-        tests, all hermetic (no real ffmpeg). DB migration `0003_cameras` + seed
-        rows. **No admin page yet** (CRUD lives in `lib/api.ts` for when it lands).
+        tests, all hermetic (no real ffmpeg). DB migration `0004_cameras` + seed
+        rows. Admin CRUD page landed at `/admin/cameras` — see the Admin pages
+        list above.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.
