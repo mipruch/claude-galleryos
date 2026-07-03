@@ -1354,9 +1354,32 @@ matchne `/dim/0.5` a zachytí `level`, a `target_type` rozhodne o akci
 (`scene.execute` → `SceneEngine.startScene`, `device.command` →
 `DeviceManager.execute`, `event.emit` → `input.mapping.triggered`).
 
-#### TcpInputServer — `apps/server/src/input/TcpInputServer.ts`
+#### TcpInputServer — `apps/server/src/input/TcpInputServer.ts` ✓
 
-Jednoduchý TCP server (default port 8766). Očekává newline-delimited JSON nebo konfigurovatelné string příkazy. Stejná logika jako OSC — vyhledá mapping a spustí akci.
+TCP server poslouchající na portu `TCP_INPUT_PORT` (default 8766), postavený na
+`Bun.listen`. **Tenký transport** nad sdíleným `InputMapper` — TCP sourozenec
+`OscServer`u: sám neumí žádný matching ani dispatch, jen převede přijaté rámce na
+neutrální signály a předá je dál.
+
+- **Wire formát** — perzistentní spojení, **newline-delimited JSON rámce**: jeden
+  JSON objekt na řádek ve tvaru `{ "address": "/scene/execute", "args": [..] }`
+  (akceptuje se i holý JSON string jako rámec jen s adresou). Prázdné řádky
+  (keep-alive) se ignorují. `\r` před `\n` (CRLF odesílatelé) se odstraní.
+- **`feed(socket, chunk)`** drží per-connection buffer (`socket.data`): příchozí
+  bajty nabufferuje a rozdělí na kompletní, newline-ukončené rámce — jeden rámec
+  může přijít rozdělený přes víc TCP writeů a víc rámců najednou. Jeden
+  neukončený rámec delší než 64 KiB (klient, který nikdy nepošle `\n`) se zahodí
+  a buffer se resetuje (ochrana proti neomezenému růstu paměti).
+- **`receiveFrame(frame)`** (nezávislé na socketu, proto přímo testovatelné):
+  rámec rozparsuje (`normalizeFrame`), emituje `input.tcp.received` (audit) a
+  předá `{ protocol: "tcp", address, args }` do `InputMapper.handle()`. Vadný
+  rámec (špatný JSON, chybějící `address`) se zaloguje a zahodí — špatný odesílatel
+  nerozbije server ani jeho ostatní spojení.
+- **`start()`** jen nabinduje listener. Selhání bindu (port obsazený) v composition
+  rootu zaloguje, ale **nezhodí** server (TCP ingress je stejně jako OSC doplňkový).
+
+Veškerý matching/templating/dispatch tedy řeší `InputMapper` (viz výše) stejně pro
+TCP jako pro OSC, takže obě cesty se chovají identicky.
 
 -----
 
