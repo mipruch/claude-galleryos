@@ -96,9 +96,12 @@ const jsonInit = (method: string, body?: unknown): RequestInit =>
     : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
 
 const get = <T>(path: string) => fetchJson<T>(`${API}${path}`)
-const post = <T>(path: string, body?: unknown) => fetchJson<T>(`${API}${path}`, jsonInit('POST', body))
-const put = <T>(path: string, body?: unknown) => fetchJson<T>(`${API}${path}`, jsonInit('PUT', body))
-const patch = <T>(path: string, body?: unknown) => fetchJson<T>(`${API}${path}`, jsonInit('PATCH', body))
+const post = <T>(path: string, body?: unknown) =>
+  fetchJson<T>(`${API}${path}`, jsonInit('POST', body))
+const put = <T>(path: string, body?: unknown) =>
+  fetchJson<T>(`${API}${path}`, jsonInit('PUT', body))
+const patch = <T>(path: string, body?: unknown) =>
+  fetchJson<T>(`${API}${path}`, jsonInit('PATCH', body))
 const del = (path: string) => fetchJson<null>(`${API}${path}`, jsonInit('DELETE'))
 
 type QueryValue = string | number | boolean | undefined
@@ -110,7 +113,8 @@ type QueryValue = string | number | boolean | undefined
 function qs(params?: Record<string, QueryValue>): string {
   if (!params) return ''
   const sp = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) if (value !== undefined) sp.set(key, String(value))
+  for (const [key, value] of Object.entries(params))
+    if (value !== undefined) sp.set(key, String(value))
   const s = sp.toString()
   return s ? `?${s}` : ''
 }
@@ -147,7 +151,8 @@ export const api = {
     update: (id: string, patch: Partial<ConnectionDTO>) =>
       put<ConnectionWithRuntime>(`/connections/${id}`, patch),
     remove: (id: string) => del(`/connections/${id}`),
-    connect: (id: string) => post<{ connectionId: string; running: boolean }>(`/connections/${id}/connect`),
+    connect: (id: string) =>
+      post<{ connectionId: string; running: boolean }>(`/connections/${id}/connect`),
     disconnect: (id: string) =>
       post<{ connectionId: string; running: boolean }>(`/connections/${id}/disconnect`),
     status: (id: string) => get<ConnectionStatus>(`/connections/${id}/status`),
@@ -177,6 +182,7 @@ export const api = {
     create: (input: KioskCreateInput) => post<KioskDTO>('/kiosks', input),
     update: (id: string, patch: KioskUpdateInput) => put<KioskDTO>(`/kiosks/${id}`, patch),
     remove: (id: string) => del(`/kiosks/${id}`),
+  },
   cameras: {
     // The list/get/create/update responses omit RTSP credentials (write-only).
     list: () => get<CameraDTO[]>('/cameras'),
@@ -199,9 +205,11 @@ export const api = {
       ),
     get: (id: string) => get<SceneWithActionsDTO>(`/scenes/${id}`),
     create: (input: SceneCreateInput) => post<SceneWithActionsDTO>('/scenes', input),
-    update: (id: string, input: SceneUpdateInput) => put<SceneWithActionsDTO>(`/scenes/${id}`, input),
+    update: (id: string, input: SceneUpdateInput) =>
+      put<SceneWithActionsDTO>(`/scenes/${id}`, input),
     remove: (id: string) => del(`/scenes/${id}`),
-    execute: (id: string, source = 'ui') => post<SceneRunResult>(`/scenes/${id}/execute`, { source }),
+    execute: (id: string, source = 'ui') =>
+      post<SceneRunResult>(`/scenes/${id}/execute`, { source }),
     dryRun: (id: string) => post<unknown>(`/scenes/${id}/execute/dry-run`),
     executions: (id: string) => get<SceneExecutionDTO[]>(`/scenes/${id}/executions`),
     setFavorite: (id: string, isFavorite: boolean) =>
@@ -212,20 +220,25 @@ export const api = {
     list: () => get<ScheduledJobDTO[]>('/schedules'),
     get: (id: string) => get<ScheduledJobDTO>(`/schedules/${id}`),
     create: (input: ScheduleCreateInput) => post<ScheduledJobDTO>('/schedules', input),
-    update: (id: string, input: ScheduleUpdateInput) => put<ScheduledJobDTO>(`/schedules/${id}`, input),
+    update: (id: string, input: ScheduleUpdateInput) =>
+      put<ScheduledJobDTO>(`/schedules/${id}`, input),
     remove: (id: string) => del(`/schedules/${id}`),
     toggle: (id: string, enabled: boolean) =>
       patch<ScheduledJobDTO>(`/schedules/${id}/toggle`, { enabled }),
     /** Preview the next `count` (default 5) UTC fire times of a schedule. */
-    next: (id: string, count?: number) => get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
+    next: (id: string, count?: number) =>
+      get<ScheduleNextRuns>(`/schedules/${id}/next${qs({ count })}`),
   },
 
   mappings: {
     list: (filter?: { protocol?: string; enabled?: boolean }) =>
-      get<InputMappingDTO[]>(`/mappings${qs({ protocol: filter?.protocol, enabled: filter?.enabled })}`),
+      get<InputMappingDTO[]>(
+        `/mappings${qs({ protocol: filter?.protocol, enabled: filter?.enabled })}`,
+      ),
     get: (id: string) => get<InputMappingDTO>(`/mappings/${id}`),
     create: (input: InputMappingCreateInput) => post<InputMappingDTO>('/mappings', input),
-    update: (id: string, input: InputMappingUpdateInput) => put<InputMappingDTO>(`/mappings/${id}`, input),
+    update: (id: string, input: InputMappingUpdateInput) =>
+      put<InputMappingDTO>(`/mappings/${id}`, input),
     remove: (id: string) => del(`/mappings/${id}`),
     toggle: (id: string, enabled: boolean) =>
       patch<InputMappingDTO>(`/mappings/${id}/toggle`, { enabled }),
