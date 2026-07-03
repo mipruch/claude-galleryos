@@ -846,7 +846,7 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 |`netio`        |NETIO chytré zásuvky (PowerBOX/PDU) ✓ |HTTP/JSON   |Ne (poll)             |Ne        |
 |`pjlink`       |PJLink projektory (Class 1) ✓         |TCP/ASCII   |Ano (poll, ~30 s)     |Ne        |
 |`extron-matrix`|Extron matice (DTP CrossPoint 108 4K) ✓|TCP/SIS     |Ne (poll)             |Ne        |
-|`samsung-mdc`  |Samsung displeje / video wall         |TCP/MDC     |Ne (poll)             |Ne        |
+|`samsung-mdc`  |Samsung displeje (zapnutí/vypnutí) ✓  |TCP/MDC binary|Ne                  |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
 |`pixera`       |Pixera media server *(odloženo)*      |TCP/JSON API|Ano                   |Ne        |
@@ -967,6 +967,45 @@ ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
 - **User UI:** widget `MatrixOutputWidget` — jeden `<select>` vstupů na výstup
   (`setInput`); popisky vstupů čte z `connection.config.inputs` přes
   `useConnectionsStore`, fallback „Input N“.
+
+#### `driver-samsung-mdc` — Samsung MDC displeje (implementováno, jen zapnutí/vypnutí)
+
+Balíček `packages/drivers/driver-samsung-mdc` (driver id `samsung-mdc`). Ovládá
+Samsung komerční displeje přes binární **MDC (Multiple Display Control) protokol
+nad TCP 1515**. Protokol byl ověřen proti veřejné MDC Protocol specifikaci
+(kříženo s implementací `vgavro/samsung-mdc` téže specifikace) — v repu není
+přiložený PDF manuál (na rozdíl od ostatních driverů), takže hodnoty v `mdc.ts`
+jsou zdokumentované přímo v hlavičce souboru s odkazem na zdroj.
+
+⚠️ **Rozsah je záměrně úzký** — zadání bylo „jen zapnout a vypnout", takže je
+implementovaný jediný příkaz (Power Control, `0x11`). Výběr vstupu (`0x14`) a
+sloučený stavový dotaz (`0xF9`) zůstávají neimplementované (viz PLAN.md §1.5);
+přidání je aditivní — nový builder v `mdc.ts` + nový `case` v driveru.
+
+- **`src/mdc.ts`** — čistý, samostatně testovaný kodek. Rámec
+  `0xAA │ cmd(1) │ displayId(1) │ len(1) │ data[len] │ checksum(1)`; checksum =
+  `(cmd/0xFF + displayId + len + Σdata) & 0xFF` (hlavička `0xAA` se do součtu
+  nepočítá). Odpověď: `0xAA │ 0xFF │ displayId(1) │ len(1) │ ack(1) │ cmd(1) │
+  data[len-2] │ checksum(1)`, `ack = 0x41`('A') / `nak = 0x4E`('N'). Nulová délka
+  dat = GET (dotaz), 1 byte dat = SET (`0x00` off / `0x01` on / `0x02` reboot).
+  Obsahuje `MdcFrameDecoder` pro inkrementální dekódování rámců bez oddělovače
+  (délka je v hlavičce rámce) — na neplatný byte se resynchronizuje na dalším `0xAA`.
+- **`src/SamsungMdcDriver.ts`** — jeden perzistentní socket na connection sdílený
+  všemi displeji (stejný vzor jako `driver-extron-matrix` / `driver-bss`:
+  reconnect s exponenciálním backoffem, I/O serializováno mutexem). Odpověď se
+  páruje s právě běžícím požadavkem podle `displayId` + ozvěného příkazu, protože
+  víc displejů může sdílet jednu linku (RS232-over-Ethernet brána nebo víc
+  vestavěných LAN portů za jedním připojením).
+  - `on`/`off` → Power Control SET; `readState` → Power Control GET.
+  - NAK (neznámý displayId, nepodporovaný příkaz, …) se promítne jako chyba
+    příkazu (`success: false`, chybová zpráva obsahuje kód z odpovědi).
+- **Endpoint `samsung-mdc.display`**, adresa `{ displayId: 1..255 }` (MDC ID
+  nastavené na displeji: menu → Multi Display Control → ID). Connection config:
+  `{ host, port=1515, responseTimeoutMs, reconnectMs }`. Příkazy: `on`, `off`,
+  `readState`. Capabilities: `subscriptions: false` (displej nic sám neposílá),
+  `bidirectional: true` (GET vrátí aktuální stav), `discovery: false`,
+  `endpointHealth: true` (každý displej se testuje samostatně, i když sdílí
+  connection s ostatními).
 
 #### `driver-pjlink` — PJLink projektory (Class 1, TCP 4352) ✓
 
