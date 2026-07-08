@@ -5,6 +5,7 @@
  * architecture is visible. A link back to the user panel sits at the bottom.
  */
 import type { Component } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   AppWindowIcon,
   ArrowLeftIcon,
@@ -13,12 +14,23 @@ import {
   DoorOpenIcon,
   LayoutDashboardIcon,
   LayoutTemplateIcon,
+  LogOutIcon,
   MonitorSpeakerIcon,
   ScrollTextIcon,
   SettingsIcon,
   SparklesIcon,
+  UsersIcon,
   WaypointsIcon,
 } from '@lucide/vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+function logout(): void {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 
 interface NavItem {
   to: string
@@ -38,6 +50,7 @@ const items: NavItem[] = [
   { to: '/admin/mappings', label: 'Mappings', icon: WaypointsIcon, enabled: true },
   { to: '/admin/layouts', label: 'Layouts', icon: LayoutTemplateIcon, enabled: true },
   { to: '/admin/logs', label: 'Logs', icon: ScrollTextIcon, enabled: true },
+  { to: '/admin/users', label: 'Users', icon: UsersIcon, enabled: true },
   { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, enabled: true },
 ]
 
@@ -91,6 +104,10 @@ function linkClass(isActive: boolean): string {
           <span class="flex-1 truncate">User panel</span>
         </a>
       </RouterLink>
+      <button type="button" :class="linkClass(false)" class="w-full" @click="logout">
+        <LogOutIcon class="size-4 shrink-0" />
+        <span class="flex-1 truncate text-left">Log out{{ auth.user ? ` (${auth.user.username})` : '' }}</span>
+      </button>
     </div>
   </aside>
 </template>

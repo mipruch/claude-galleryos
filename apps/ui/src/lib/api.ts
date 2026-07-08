@@ -35,6 +35,9 @@ import type {
   KioskUpdateInput,
   LevelCount,
   LogDTO,
+  RoleCreateInput,
+  RoleDTO,
+  RoleUpdateInput,
   RoomDTO,
   SceneCreateInput,
   SceneDTO,
@@ -45,6 +48,9 @@ import type {
   ScheduleUpdateInput,
   SceneUpdateInput,
   SceneWithActionsDTO,
+  UserCreateInput,
+  UserDTO,
+  UserUpdateInput,
 } from '@gallery/types'
 import { fetchJson } from './http'
 
@@ -84,6 +90,16 @@ interface SystemStatus {
   uptimeMs: number
   installedDrivers: number
   connections: { running: number; connected: number }
+}
+
+/**
+ * `POST /auth/login` response — a one-shot credential check, not a session
+ * (see PLAN.md "Priority 6"): no cookie is set, this is just enough for the
+ * frontend to decide what to render, remembered locally by `useAuthStore`.
+ */
+interface AuthLoginResult {
+  user: { id: string; username: string; displayName: string | null }
+  role: { id: string; name: string; isAdmin: boolean; deviceIds: string[] }
 }
 
 type SceneExecutionDTO = Jsonify<SceneExecution>
@@ -289,5 +305,34 @@ export const api = {
   system: {
     status: () => get<SystemStatus>('/system/status'),
     drivers: () => get<DriverRuntimeStatus[]>('/system/drivers'),
+  },
+
+  auth: {
+    login: (input: { username: string; password: string }) =>
+      post<AuthLoginResult>('/auth/login', input),
+  },
+
+  users: {
+    list: () => get<UserDTO[]>('/users'),
+    get: (id: string) => get<UserDTO>(`/users/${id}`),
+    create: (input: UserCreateInput) => post<UserDTO>('/users', input),
+    update: (id: string, patch: UserUpdateInput) => put<UserDTO>(`/users/${id}`, patch),
+    remove: (id: string) => del(`/users/${id}`),
+  },
+
+  roles: {
+    list: () => get<RoleDTO[]>('/roles'),
+    get: (id: string) => get<RoleDTO>(`/roles/${id}`),
+    create: (input: RoleCreateInput) => post<RoleDTO>('/roles', input),
+    update: (id: string, patch: RoleUpdateInput) => put<RoleDTO>(`/roles/${id}`, patch),
+    remove: (id: string) => del(`/roles/${id}`),
+  },
+
+  settings: {
+    security: {
+      get: () => get<{ sessionTimeoutMinutes: number }>('/settings/security'),
+      update: (sessionTimeoutMinutes: number) =>
+        put<{ sessionTimeoutMinutes: number }>('/settings/security', { sessionTimeoutMinutes }),
+    },
   },
 }

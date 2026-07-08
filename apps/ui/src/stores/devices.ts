@@ -13,6 +13,7 @@ import { toast } from 'vue-sonner'
 import type { IframeDTO, RoomDTO, ServerMessageData } from '@gallery/types'
 import {
   applyRevert,
+  canSeeDevice,
   deviceKind,
   deviceTypesOf,
   filterByRooms,
@@ -28,10 +29,12 @@ import {
 } from '@/lib/devices'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
+import { useAuthStore } from './auth'
 import { useRealtimeStore } from './realtime'
 
 export const useDevicesStore = defineStore('devices', () => {
   const rt = useRealtimeStore()
+  const auth = useAuthStore()
 
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
@@ -84,9 +87,13 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   // Devices we know how to render, sorted by the admin-defined display order.
+  // Also scoped to what the current role may see (canSeeDevice) — a front-end
+  // gate, not a backend one: GET /devices still returns everything, and the
+  // kiosk viewer never reads this computed at all (it looks up specific
+  // device ids from its own tile list instead), so it's unaffected either way.
   const devices = computed(() =>
     [...records.value]
-      .filter((d) => d.enabled && deviceKind(d) !== 'unsupported')
+      .filter((d) => d.enabled && deviceKind(d) !== 'unsupported' && canSeeDevice(d.id, auth.role))
       .sort((a, b) => a.displayOrder - b.displayOrder),
   )
 
@@ -347,7 +354,8 @@ export const useDevicesStore = defineStore('devices', () => {
 
     return new Promise<boolean>((resolve) => {
       enqueuePending(deviceId, { revert, resolve })
-      rt.send({ event: 'device:command', data: { deviceId, command, params } })
+      // `username` is for server log tracing only (see PLAN.md) — not a permission check.
+      rt.send({ event: 'device:command', data: { deviceId, command, params, username: auth.user?.username } })
     })
   }
 

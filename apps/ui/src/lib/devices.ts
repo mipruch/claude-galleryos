@@ -53,6 +53,21 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
   }
 }
 
+/**
+ * Whether the current role may see (and, per PLAN.md's simplified model,
+ * therefore control) a device. Admins always see everything; everyone else
+ * is scoped to their role's `deviceIds` (the `role_devices` n:n table) — an
+ * empty list means that role sees nothing. `role: null` (not logged in) sees
+ * nothing either.
+ */
+export function canSeeDevice(
+  deviceId: string,
+  role: { isAdmin: boolean; deviceIds: string[] } | null,
+): boolean {
+  if (!role) return false
+  return role.isAdmin || role.deviceIds.includes(deviceId)
+}
+
 // ── live-value readers (tolerant of missing / partial state) ────────────────
 
 /** Read a 0..1 fader/brightness value, defaulting to 0. */

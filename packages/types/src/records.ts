@@ -22,11 +22,13 @@ import {
   inputMappings,
   kiosks,
   logs,
+  roles,
   rooms,
   sceneActions,
   sceneExecutions,
   scenes,
   scheduledJobs,
+  users,
 } from "./schema.ts";
 
 // ── in-memory rows (server side) ─────────────────────────────
@@ -49,6 +51,13 @@ export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 export type InputMapping = typeof inputMappings.$inferSelect;
 export type NewInputMapping = typeof inputMappings.$inferInsert;
+export type Role = typeof roles.$inferSelect;
+export type NewRole = typeof roles.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+/** A role plus the device ids it's allowed to see (joined from `role_devices`). */
+export type RoleWithDevices = Role & { deviceIds: string[] };
 
 /** A scene plus its ordered actions — the shape `scenesRepo.get` returns. */
 export type SceneWithActions = Scene & { actions: SceneAction[] };
@@ -71,6 +80,12 @@ export type KioskDTO = Jsonify<Kiosk>;
 export type CameraDTO = Omit<Jsonify<Camera>, "username" | "password">;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 export type InputMappingDTO = Jsonify<InputMapping>;
+export type RoleDTO = Jsonify<RoleWithDevices>;
+/**
+ * A user as the REST API exposes it: the serialized row with `passwordHash`
+ * stripped — it never crosses the wire, even to the admin who created it.
+ */
+export type UserDTO = Omit<Jsonify<User>, "passwordHash">;
 
 /**
  * A connection as `GET /connections` returns it: the serialized row plus the
@@ -231,9 +246,42 @@ export interface KioskCreateInput {
   height: number;
   /** Grid geometry + placed tiles. Defaults to an empty 12-col grid server-side. */
   config?: KioskConfig;
+  /**
+   * Front-end-only lock PIN (plain digits, not hashed — the browser compares it
+   * locally). Omit or set to null/empty to leave the kiosk unlocked.
+   */
+  pin?: string | null;
 }
 
 export type KioskUpdateInput = Partial<KioskCreateInput>;
+
+// ── roles & users (staff accounts, admin-managed — no self-registration) ──
+
+/**
+ * Body accepted by `POST /roles`. `deviceIds` is the full replacement set of
+ * devices this role may see in the User UI (ignored for `isAdmin` roles,
+ * which always see everything).
+ */
+export interface RoleCreateInput {
+  name: string;
+  isAdmin?: boolean;
+  description?: string;
+  deviceIds?: string[];
+}
+
+export type RoleUpdateInput = Partial<RoleCreateInput>;
+
+/** Body accepted by `POST /users` — admin-created only, no self-registration. */
+export interface UserCreateInput {
+  username: string;
+  password: string;
+  roleId: string;
+  displayName?: string;
+  enabled?: boolean;
+}
+
+/** Same as `UserCreateInput`, but `password` is only sent when actually changing it. */
+export type UserUpdateInput = Partial<Omit<UserCreateInput, "password">> & { password?: string };
 
 /**
  * `GET /schedules/:id/next` preview — upcoming UTC fire times for a job. Times

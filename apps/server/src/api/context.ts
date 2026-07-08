@@ -13,16 +13,19 @@ import type { StreamManager } from "../core/StreamManager.ts";
 import type { InputMapper } from "../input/InputMapper.ts";
 import type {
   camerasRepo,
+  configRepo,
   connectionsRepo,
   devicesRepo,
   iframesRepo,
   inputMappingsRepo,
   kiosksRepo,
   logsRepo,
+  rolesRepo,
   roomsRepo,
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  usersRepo,
 } from "../db/repositories.ts";
 
 export interface ApiContext {
@@ -36,6 +39,9 @@ export interface ApiContext {
   iframes: typeof iframesRepo;
   kiosks: typeof kiosksRepo;
   cameras: typeof camerasRepo;
+  roles: typeof rolesRepo;
+  users: typeof usersRepo;
+  config: typeof configRepo;
   /** On-demand RTSP → HLS transcoder pool for CCTV cameras. */
   streamManager: StreamManager;
   logs: typeof logsRepo;

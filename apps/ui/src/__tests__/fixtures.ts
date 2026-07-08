@@ -13,9 +13,11 @@ import type {
   IframeDTO,
   InputMappingDTO,
   KioskDTO,
+  RoleDTO,
   RoomDTO,
   SceneDTO,
   ScheduledJobDTO,
+  UserDTO,
 } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
@@ -128,6 +130,35 @@ export function makeKiosk(over: Partial<KioskDTO> = {}): KioskDTO {
     width: 1920,
     height: 1080,
     config: { columns: 12, cellHeight: 80, tiles: [] },
+    pin: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `RoleDTO`; pass `over` to override defaults. */
+export function makeRole(over: Partial<RoleDTO> = {}): RoleDTO {
+  return {
+    id: 'role',
+    name: 'Custodian',
+    isAdmin: false,
+    description: null,
+    deviceIds: [],
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `UserDTO`; pass `over` to override defaults. */
+export function makeUser(over: Partial<UserDTO> = {}): UserDTO {
+  return {
+    id: 'u',
+    username: 'jdoe',
+    roleId: 'role',
+    displayName: null,
+    enabled: true,
     createdAt: NOW,
     updatedAt: NOW,
     ...over,

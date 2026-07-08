@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { RoomDTO } from '@gallery/types'
 import {
   applyRevert,
+  canSeeDevice,
   deviceKind,
   deviceTypesOf,
   filterByRooms,
@@ -26,6 +27,26 @@ function dev(id: string, type: string, roomId: string | null = null): DeviceReco
 function room(id: string, name: string, displayOrder: number): RoomDTO {
   return makeRoom({ id, name, displayOrder })
 }
+
+describe('canSeeDevice', () => {
+  it('is false when there is no role (not logged in)', () => {
+    expect(canSeeDevice('d1', null)).toBe(false)
+  })
+
+  it('is true for every device when the role is admin', () => {
+    expect(canSeeDevice('anything', { isAdmin: true, deviceIds: [] })).toBe(true)
+  })
+
+  it('is true only for devices in the role’s deviceIds otherwise', () => {
+    const role = { isAdmin: false, deviceIds: ['d1', 'd2'] }
+    expect(canSeeDevice('d1', role)).toBe(true)
+    expect(canSeeDevice('d3', role)).toBe(false)
+  })
+
+  it('is false for every device when deviceIds is empty', () => {
+    expect(canSeeDevice('d1', { isAdmin: false, deviceIds: [] })).toBe(false)
+  })
+})
 
 describe('snapshotState / applyRevert (optimistic rollback)', () => {
   it('snapshots only the patched keys, marking absent ones undefined', () => {

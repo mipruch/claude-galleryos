@@ -11,15 +11,19 @@
  * Editable server config (ports, watchdog, retention), driver reload and
  * backup/restore are intentionally absent until the backend exposes them.
  */
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import { RefreshCwIcon } from '@lucide/vue'
 import { useThemeStore, type ThemePref } from '@/stores/theme'
 import { useSystemStore } from '@/stores/system'
 import { useDriversStore } from '@/stores/drivers'
 import { formatUptime, capabilityLabels } from '@/lib/system'
+import { api } from '@/lib/api'
+import { errMsg } from '@/lib/http'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -28,10 +32,36 @@ const theme = useThemeStore()
 const system = useSystemStore()
 const drivers = useDriversStore()
 
+const sessionTimeoutMinutes = ref(15)
+const savingTimeout = ref(false)
+
 onMounted(() => {
   void system.refresh()
   void drivers.load()
+  void loadSecurity()
 })
+
+async function loadSecurity(): Promise<void> {
+  try {
+    const security = await api.settings.security.get()
+    if (security) sessionTimeoutMinutes.value = security.sessionTimeoutMinutes
+  } catch (err) {
+    toast.error('Could not load security settings', { description: errMsg(err) })
+  }
+}
+
+async function saveSecurity(): Promise<void> {
+  savingTimeout.value = true
+  try {
+    const updated = await api.settings.security.update(sessionTimeoutMinutes.value)
+    if (updated) sessionTimeoutMinutes.value = updated.sessionTimeoutMinutes
+    toast.success('Security settings saved')
+  } catch (err) {
+    toast.error('Could not save security settings', { description: errMsg(err) })
+  } finally {
+    savingTimeout.value = false
+  }
+}
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -79,6 +109,35 @@ const driverRows = computed(() =>
               </SelectGroup>
             </SelectContent>
           </Select>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Security -->
+    <Card>
+      <CardHeader>
+        <CardTitle>Security</CardTitle>
+        <CardDescription>How long a signed-in session may sit idle before it's logged out.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <Label for="session-timeout">Inactivity timeout (minutes)</Label>
+            <p class="text-muted-foreground text-sm">
+              Applies to the username/password login, not the kiosk PIN.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <Input
+              id="session-timeout"
+              type="number"
+              min="1"
+              max="1440"
+              class="w-24"
+              v-model.number="sessionTimeoutMinutes"
+            />
+            <Button size="sm" :disabled="savingTimeout" @click="saveSecurity">Save</Button>
+          </div>
         </div>
       </CardContent>
     </Card>

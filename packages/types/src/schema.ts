@@ -24,6 +24,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -47,6 +48,44 @@ export const rooms = pgTable("rooms", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+// ─────────────────────────────────────────────────────────────
+// roles — named permission sets. `isAdmin` roles see and do
+// everything; every other role's visible devices are listed in
+// `role_devices` below (an empty set means that role sees nothing).
+// ─────────────────────────────────────────────────────────────
+export const roles = pgTable(
+  "roles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 50 }).notNull(),
+    isAdmin: boolean("is_admin").notNull().default(false),
+    description: text("description"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("idx_roles_name").on(t.name)],
+);
+
+// ─────────────────────────────────────────────────────────────
+// users — staff accounts. Admin-created only, no self-registration.
+// ─────────────────────────────────────────────────────────────
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    username: varchar("username", { length: 100 }).notNull(),
+    passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "restrict" }),
+    displayName: varchar("display_name", { length: 100 }),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("idx_users_username").on(t.username)],
+);
 
 // ─────────────────────────────────────────────────────────────
 // connections — one physical socket / gateway (drives a DriverHost)
@@ -99,6 +138,23 @@ export const devices = pgTable(
     index("idx_devices_connection").on(t.connectionId),
     index("idx_devices_type").on(t.type),
   ],
+);
+
+// ─────────────────────────────────────────────────────────────
+// role_devices — which devices each non-admin role may see in the
+// User UI (n:n). Admin roles bypass this entirely (roles.isAdmin).
+// ─────────────────────────────────────────────────────────────
+export const roleDevices = pgTable(
+  "role_devices",
+  {
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.roleId, t.deviceId] }), index("idx_role_devices_device").on(t.deviceId)],
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -289,6 +345,10 @@ export const kiosks = pgTable(
     width: integer("width").notNull(),
     height: integer("height").notNull(),
     config: jsonb("config").$type<KioskConfig>().notNull().default({ columns: 12, cellHeight: 80, tiles: [] }),
+    // Front-end-only lock: plain digits, compared client-side. Not a
+    // credential, so it isn't hashed — the browser needs the literal
+    // value to check it locally. Null = kiosk opens with no PIN gate.
+    pin: varchar("pin", { length: 10 }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

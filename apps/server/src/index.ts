@@ -15,6 +15,7 @@ import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
 import {
   camerasRepo,
+  configRepo,
   connectionsRepo,
   dbRepo,
   devicesRepo,
@@ -22,10 +23,12 @@ import {
   inputMappingsRepo,
   kiosksRepo,
   logsRepo,
+  rolesRepo,
   roomsRepo,
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  usersRepo,
 } from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "./redis/state.ts";
@@ -214,6 +217,9 @@ async function main(): Promise<void> {
     iframes: iframesRepo,
     kiosks: kiosksRepo,
     cameras: camerasRepo,
+    roles: rolesRepo,
+    users: usersRepo,
+    config: configRepo,
     streamManager,
     logs: logsRepo,
     scenes: scenesRepo,

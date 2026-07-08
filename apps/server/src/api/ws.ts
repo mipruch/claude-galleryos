@@ -158,6 +158,12 @@ async function onDeviceCommand(
 ): Promise<void> {
   const deviceId = String(data.deviceId ?? "");
   const params = { ...((data.params as Record<string, unknown>) ?? {}) };
+  // `username` is caller-supplied, for log tracing only — not an auth check.
+  log.info("device command", {
+    deviceId,
+    command: data.command,
+    username: data.username ? String(data.username) : undefined,
+  });
   try {
     const result = await ctx.deviceManager.execute(deviceId, String(data.command ?? ""), params);
     ws.send(envelope("device:command:ack", { deviceId, ...result }));

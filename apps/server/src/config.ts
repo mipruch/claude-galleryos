@@ -89,4 +89,13 @@ export const appConfig = {
     // but reachable device is never reported as a false IPC timeout.
     commandTimeoutMs: int("DRIVER_COMMAND_TIMEOUT_MS", 5_000),
   },
+
+  // Front-end login gate (see PLAN.md "Priority 6"). No session/cookie lives
+  // server-side — these only seed the bootstrap admin account and the
+  // default inactivity timeout shown before an admin sets one in Settings.
+  auth: {
+    adminUsername: str("ADMIN_USERNAME", "admin"),
+    adminPassword: str("ADMIN_PASSWORD", "admin"),
+    defaultSessionTimeoutMinutes: int("SESSION_TIMEOUT_MINUTES", 15),
+  },
 } as const;

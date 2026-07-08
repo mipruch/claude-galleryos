@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { RoomDTO } from '@gallery/types'
+import { useAuthStore } from '@/stores/auth'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 import { makeDevice, makeRoom } from './fixtures'
@@ -16,7 +17,12 @@ beforeAll(() => {
   globalThis.fetch = vi.fn<() => Promise<unknown>>().mockResolvedValue({ ok: true, json: async () => [] }) as unknown as typeof fetch
 })
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => {
+  setActivePinia(createPinia())
+  // This suite is about room-scoping, not role visibility — log in as an
+  // admin (sees everything) so it isn't coupled to the visibility feature.
+  useAuthStore().role = { id: 'r', name: 'Admin', isAdmin: true, deviceIds: [] }
+})
 
 function dev(id: string, roomId: string | null, type = 'light'): DeviceRecord {
   return makeDevice({ id, name: id, roomId, type, subtype: 'dali.fixture' })

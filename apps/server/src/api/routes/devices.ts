@@ -22,7 +22,10 @@ import {
   route,
   type RouteMap,
 } from "../http.ts";
+import { logger } from "../../logger.ts";
 import { assertValidDeviceAddress } from "../validation.ts";
+
+const log = logger.child("api.devices");
 
 /**
  * Defines HTTP route handlers for device management operations.
@@ -150,7 +153,14 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
         const body = await readJson(req);
         requireFields(body, ["command"]);
         const params = body.params ? asObject(body.params, "params") : {};
-        const result = await ctx.deviceManager.execute(paramId(req), String(body.command), params);
+        const deviceId = paramId(req);
+        // `username` is caller-supplied, for log tracing only — not an auth check.
+        log.info("device command", {
+          deviceId,
+          command: body.command,
+          username: body.username ? String(body.username) : undefined,
+        });
+        const result = await ctx.deviceManager.execute(deviceId, String(body.command), params);
         return json(result);
       }),
     },

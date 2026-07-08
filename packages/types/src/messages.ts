@@ -70,7 +70,13 @@ export type SceneExecuteAck =
 export type ClientMessage =
   | WsEnvelope<
       "device:command",
-      { deviceId: string; command: string; params?: Record<string, unknown> }
+      {
+        deviceId: string;
+        command: string;
+        params?: Record<string, unknown>;
+        /** Caller-supplied, for server log tracing only — not a permission check. */
+        username?: string;
+      }
     >
   | WsEnvelope<"device:state:patch", { deviceId: string; state: DeviceState }>
   | WsEnvelope<"scene:execute", { sceneId: string; source?: string }>

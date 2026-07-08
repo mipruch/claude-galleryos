@@ -65,6 +65,19 @@ function parseKioskConfig(value: unknown): KioskConfig {
   return { columns, cellHeight, tiles };
 }
 
+/**
+ * Validate an optional kiosk PIN — a front-end-only lock, so this is plain
+ * digits, not a hash. Empty/null clears it (the kiosk opens with no PIN gate).
+ */
+function parsePin(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const pin = String(value);
+  if (!/^\d{4,10}$/.test(pin)) {
+    throw new HttpError(400, "BAD_REQUEST", "field 'pin' must be 4-10 digits");
+  }
+  return pin;
+}
+
 /** Map a Postgres unique-name violation to a clean 409 instead of a raw 500. */
 function rethrowNameConflict(err: unknown): never {
   const msg = err instanceof Error ? err.message : String(err);
@@ -92,6 +105,7 @@ export function kiosksRoutes(ctx: ApiContext): RouteMap {
             width: posInt(body.width, "width", 1, 20000),
             height: posInt(body.height, "height", 1, 20000),
             config: parseKioskConfig(body.config),
+            pin: parsePin(body.pin),
           });
           return json(created, 201);
         } catch (err) {
@@ -121,6 +135,7 @@ export function kiosksRoutes(ctx: ApiContext): RouteMap {
             width: body.width === undefined ? undefined : posInt(body.width, "width", 1, 20000),
             height: body.height === undefined ? undefined : posInt(body.height, "height", 1, 20000),
             config: body.config === undefined ? undefined : parseKioskConfig(body.config),
+            pin: body.pin === undefined ? undefined : parsePin(body.pin),
           });
           if (!updated) throw new HttpError(404, "NOT_FOUND", "kiosk not found");
           return json(updated);

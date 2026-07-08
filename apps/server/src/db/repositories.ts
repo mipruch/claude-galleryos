@@ -9,17 +9,21 @@
 import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle-orm";
 import {
   cameras,
+  config,
   connections,
   devices,
   iframes,
   inputMappings,
   kiosks,
   logs,
+  roleDevices,
+  roles,
   rooms,
   sceneActions,
   sceneExecutions,
   scenes,
   scheduledJobs,
+  users,
 } from "@gallery/types/schema";
 import type {
   Connection,
@@ -31,7 +35,10 @@ import type {
   NewIframe,
   NewInputMapping,
   NewKiosk,
+  NewRole,
   NewScheduledJob,
+  NewUser,
+  RoleWithDevices,
   SceneActionInput,
   SceneCreateInput,
   SceneUpdateInput,
@@ -72,6 +79,86 @@ export const roomsRepo = {
   update: (id: string, values: Partial<typeof rooms.$inferInsert>) =>
     first(db.update(rooms).set({ ...values, updatedAt: new Date() }).where(eq(rooms.id, id)).returning()),
   remove: (id: string) => first(db.delete(rooms).where(eq(rooms.id, id)).returning()),
+};
+
+// ── roles (n:n with devices via role_devices) ────────────────
+
+async function withDeviceIds(role: typeof roles.$inferSelect): Promise<RoleWithDevices> {
+  const rows = await db.select({ deviceId: roleDevices.deviceId }).from(roleDevices).where(eq(roleDevices.roleId, role.id));
+  return { ...role, deviceIds: rows.map((r) => r.deviceId) };
+}
+
+export const rolesRepo = {
+  async list(): Promise<RoleWithDevices[]> {
+    const rows = await db.select().from(roles).orderBy(roles.name);
+    return Promise.all(rows.map(withDeviceIds));
+  },
+
+  async get(id: string): Promise<RoleWithDevices | undefined> {
+    const role = await first(db.select().from(roles).where(eq(roles.id, id)).limit(1));
+    return role ? withDeviceIds(role) : undefined;
+  },
+
+  async create(values: NewRole, deviceIds: string[] = []): Promise<RoleWithDevices> {
+    const role = await first(db.insert(roles).values(values).returning());
+    if (!role) throw new Error("failed to create role");
+    if (deviceIds.length) await this.setDevices(role.id, deviceIds);
+    return this.get(role.id) as Promise<RoleWithDevices>;
+  },
+
+  async update(
+    id: string,
+    values: Partial<NewRole>,
+    deviceIds?: string[],
+  ): Promise<RoleWithDevices | undefined> {
+    const updated = await first(
+      db.update(roles).set({ ...values, updatedAt: new Date() }).where(eq(roles.id, id)).returning(),
+    );
+    if (!updated) return undefined;
+    if (deviceIds !== undefined) await this.setDevices(id, deviceIds);
+    return this.get(id);
+  },
+
+  remove: (id: string) => first(db.delete(roles).where(eq(roles.id, id)).returning()),
+
+  /** How many users currently hold this role — blocks deletion when > 0. */
+  async userCount(roleId: string): Promise<number> {
+    const rows = await db.select({ n: count() }).from(users).where(eq(users.roleId, roleId));
+    return rows[0]?.n ?? 0;
+  },
+
+  /** Replace the full set of devices a role may see (delete + insert). */
+  async setDevices(roleId: string, deviceIds: string[]): Promise<void> {
+    await db.delete(roleDevices).where(eq(roleDevices.roleId, roleId));
+    if (deviceIds.length) {
+      await db.insert(roleDevices).values(deviceIds.map((deviceId) => ({ roleId, deviceId })));
+    }
+  },
+};
+
+// ── users (staff accounts, admin-managed) ────────────────────
+
+export const usersRepo = {
+  list: () => db.select().from(users).orderBy(users.username),
+  get: (id: string) => first(db.select().from(users).where(eq(users.id, id)).limit(1)),
+  getByUsername: (username: string) =>
+    first(db.select().from(users).where(eq(users.username, username)).limit(1)),
+  create: (values: NewUser) => first(db.insert(users).values(values).returning()),
+  update: (id: string, values: Partial<NewUser>) =>
+    first(db.update(users).set({ ...values, updatedAt: new Date() }).where(eq(users.id, id)).returning()),
+  remove: (id: string) => first(db.delete(users).where(eq(users.id, id)).returning()),
+};
+
+// ── config (runtime key/value settings) ──────────────────────
+
+export const configRepo = {
+  get: (key: string) => first(db.select().from(config).where(eq(config.key, key)).limit(1)),
+  async set(key: string, value: unknown): Promise<void> {
+    await db
+      .insert(config)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: config.key, set: { value, updatedAt: new Date() } });
+  },
 };
 
 // ── iframes ──────────────────────────────────────────────────
