@@ -211,20 +211,46 @@ unsolicited front-panel ties refresh the cache and surface on the next poll.
 - [x] **User UI:** `matrixOutput` widget — one input `<select>` per output (`setInput`);
       labels read from the connection's `config.inputs` via `useConnectionsStore`
 
-### 1.5 `driver-samsung-mdc` — Samsung MDC (TCP 1515)
+### 1.5 `driver-samsung-mdc` — Samsung MDC (TCP 1515) ✓ (power on/off only)
 
-**Protocol** (binary):
-- Frame: `0xAA | cmd(1) | displayId(1) | len(1) | data[len] | checksum(1)`
-- `0x11` — power on/off
-- `0x14` — input source select
-- `0xF9` — status query (power + input in one response)
+**Protocol** (binary), verified against the public MDC Protocol reference
+(cross-checked with the `vgavro/samsung-mdc` implementation of the same spec):
+- Frame: `0xAA | cmd(1) | displayId(1) | len(1) | data[len] | checksum(1)`,
+  `checksum = (cmd/0xFF + displayId + len + sum(data)) & 0xFF`
+- Response: `0xAA | 0xFF | displayId(1) | len(1) | ack(1) | cmd(1) | data[len-2] | checksum(1)`,
+  ack = `0x41`('A') / nak = `0x4E`('N')
+- `0x11` — Power Control (implemented): 0-length data = GET, 1-byte data = SET
+  (`0x00` off / `0x01` on / `0x02` reboot)
+- Deferred (not implemented): `0x14` input source select, `0xF9` combined status query
+
+**Scope note:** only power on/off was requested, so this is intentionally a
+thin slice — one command (0x11), no input select, no video wall. Extending it
+later is additive (new command builders in `mdc.ts` + cases in the driver).
+
+**Connection + endpoint model:** one persistent TCP socket per gateway (built-in
+display LAN port, or an RS232-over-Ethernet bridge for a daisy-chain), shared by
+every display endpoint — mirrors the `driver-extron-matrix` / `driver-bss`
+persistent-socket + mutex-serialised request/response pattern. Each display is
+addressed by its MDC display ID; responses are matched to the in-flight request
+by displayId + echoed command.
 
 **Endpoint type:** `samsung-mdc.display`  
 **Address:** `{ displayId: 1..255 }`  
-**Commands:** `on`, `off`, `setInput { input: "HDMI1"|"HDMI2"|"DVI"|"DP"|"VGA" }`, `readState`
+**Connection config:** `{ host, port?=1515, responseTimeoutMs?, reconnectMs? }`  
+**Commands:** `on`, `off`, `readState` (power only)  
+**Capabilities:** `subscriptions: false` (no unsolicited push), `bidirectional: true`
+(power read back via GET), `discovery: false`, `endpointHealth: true` (each display
+probed independently since several can share one connection)
 
-- [ ] `SamsungMdcDriver.ts`
-- [ ] Register in registry
+- [x] `src/mdc.ts` — pure MDC codec (frame encode, length-prefixed incremental
+      decoder, checksum, ACK/NAK parsing), unit-tested
+- [x] `SamsungMdcDriver.ts` — persistent socket, reconnect/backoff, mutex-serialised
+      request/response matched by displayId + command
+- [x] Mock MDC device for tests (`test/mock-device.ts`) — multiple display ids on
+      one connection, GET/SET, NAK for unknown display id/command
+- [x] Register in `apps/server/src/drivers/registry.ts` (id `samsung-mdc`, pkg
+      `@gallery/driver-samsung-mdc`)
+- [ ] `setInput` (0x14) and combined status query (0xF9) — deferred, not requested yet
 
 ### 1.6 `driver-vmix` — vMix (TCP 8099)
 

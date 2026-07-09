@@ -16,6 +16,7 @@ import DaliLunatoneDriver, { manifest as daliLunatoneManifest } from "@gallery/d
 import ExtronMatrixDriver, { manifest as extronMatrixManifest } from "@gallery/driver-extron-matrix";
 import NetioDriver, { manifest as netioManifest } from "@gallery/driver-netio";
 import PjlinkDriver, { manifest as pjlinkManifest } from "@gallery/driver-pjlink";
+import SamsungMdcDriver, { manifest as samsungMdcManifest } from "@gallery/driver-samsung-mdc";
 import TcpGenericDriver, { manifest as tcpGenericManifest } from "@gallery/driver-tcp-generic";
 
 /** A driver's static manifest paired with its instantiable class. */
@@ -32,6 +33,7 @@ export const DRIVERS: readonly DriverRegistration[] = [
   { manifest: netioManifest, DriverClass: NetioDriver },
   { manifest: daliFoxtronManifest, DriverClass: DaliFoxtronDriver },
   { manifest: extronMatrixManifest, DriverClass: ExtronMatrixDriver },
+  { manifest: samsungMdcManifest, DriverClass: SamsungMdcDriver },
 ];
 
 /** Look up a driver registration by its manifest id. */

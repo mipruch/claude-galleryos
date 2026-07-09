@@ -22,6 +22,7 @@
         "@gallery/driver-extron-matrix": "workspace:*",
         "@gallery/driver-netio": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
+        "@gallery/driver-samsung-mdc": "workspace:*",
         "@gallery/driver-tcp-generic": "workspace:*",
         "@gallery/types": "workspace:*",
         "ajv": "^8.20.0",
@@ -125,6 +126,13 @@
     },
     "packages/drivers/driver-pjlink": {
       "name": "@gallery/driver-pjlink",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-samsung-mdc": {
+      "name": "@gallery/driver-samsung-mdc",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -356,6 +364,8 @@
     "@gallery/driver-netio": ["@gallery/driver-netio@workspace:packages/drivers/driver-netio"],
 
     "@gallery/driver-pjlink": ["@gallery/driver-pjlink@workspace:packages/drivers/driver-pjlink"],
+
+    "@gallery/driver-samsung-mdc": ["@gallery/driver-samsung-mdc@workspace:packages/drivers/driver-samsung-mdc"],
 
     "@gallery/driver-tcp-generic": ["@gallery/driver-tcp-generic@workspace:packages/drivers/driver-tcp-generic"],
 
