@@ -45,6 +45,7 @@ export function deviceKind(device: DeviceRecord): DeviceKind {
       return 'lightFader'
     case 'netio.socket':
     case 'pjlink.projector':
+    case 'samsung-mdc.display':
       return 'switch'
     case 'extron-matrix.output':
       return 'matrixOutput'

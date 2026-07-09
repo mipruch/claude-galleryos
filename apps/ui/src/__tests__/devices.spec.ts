@@ -185,6 +185,10 @@ describe('deviceKind — driver subtype → widget', () => {
     expect(deviceKind(makeDevice({ subtype: 'extron-matrix.output' }))).toBe('matrixOutput')
   })
 
+  it('maps a Samsung MDC display to the switch widget (on/off only)', () => {
+    expect(deviceKind(makeDevice({ subtype: 'samsung-mdc.display' }))).toBe('switch')
+  })
+
   it('falls back to unsupported for unknown subtypes', () => {
     expect(deviceKind(makeDevice({ subtype: 'something.else' }))).toBe('unsupported')
   })
