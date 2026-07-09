@@ -43,6 +43,18 @@ import {
 /** Endpoint type of the live-meter widget (not auto-subscribed like faders). */
 const METER_WIDGET_TYPE = "bss-soundweb.meter-widget";
 
+/**
+ * Endpoint type of a matrix crosspoint — same Gain/Mute block as a fader, but
+ * exposed to the core as `on`/`off`/`power` instead of `setMute`/`muted`. Every
+ * bit of that translation is local to this file (see {@link Field}); the manifest
+ * and the UI only ever see the canonical `on`/`off`/`power` vocabulary.
+ */
+const MATRIX_ENDPOINT_TYPE = "bss-soundweb.matrix";
+
+function isMatrixEndpoint(endpointType: string): boolean {
+  return endpointType === MATRIX_ENDPOINT_TYPE;
+}
+
 /** Parsed `bss-soundweb.fader` endpoint address. */
 interface FaderAddress {
   node: number;
@@ -81,10 +93,14 @@ interface MeterSub {
   echo: Record<string, unknown>;
 }
 
-/** Which field an inbound parameter maps to. */
-type Field = "level" | "muted";
+/**
+ * Which field an inbound parameter maps to. The mute parameter maps to `muted`
+ * for a regular fader and `power` for a matrix crosspoint (same wire parameter,
+ * different endpoint-type vocabulary — see {@link MATRIX_ENDPOINT_TYPE}).
+ */
+type Field = "level" | "muted" | "power";
 
-type FaderState = { level?: number; muted?: boolean };
+type FaderState = { level?: number; muted?: boolean; power?: boolean };
 
 export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   readonly manifest = manifest;
@@ -185,14 +201,14 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     const start = Date.now();
 
     if (this.ctx.dryRun) {
-      const state = this.applyDryRun(endpoint.id, command, params);
+      const state = this.applyDryRun(endpoint.id, command, params, endpoint.type);
       this.ctx.logger.info("bss dry-run command", { command, params });
       return { success: true, durationMs: Date.now() - start, state };
     }
 
     try {
       const addr = parseAddress(endpoint);
-      const state = this.runCommand(addr, command, params);
+      const state = this.runCommand(addr, command, params, endpoint.type);
       this.mergeState(endpoint.id, state);
       this.emit("state", { endpointId: endpoint.id, state, source: "echo", timestamp: new Date() });
       return { success: true, durationMs: Date.now() - start, state };
@@ -208,39 +224,63 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     addr: FaderAddress,
     command: string,
     params: Record<string, unknown>,
+    endpointType: string,
   ): FaderState {
+    const matrix = isMatrixEndpoint(endpointType);
     switch (command) {
-      case "setLevel": {
-        if (isNaN(Number(params.level))) {
-          throw new Error(`invalid level: expected a number (got ${params.level})`);
-        }
-        const level = clamp01(Number(params.level));
-        this.send(
-          encodeAddressMessage(MsgType.SET_PERCENT, paramAddr(addr, addr.gainParam), levelToPercentRaw(level)),
-        );
-        return { level };
-      }
-      case "setMute": {
-        if (typeof params.muted !== "boolean") {
-          throw new Error(`invalid muted: expected a boolean (got ${params.muted})`);
-        }
-        const muted = Boolean(params.muted);
-        this.send(encodeAddressMessage(MsgType.SET, paramAddr(addr, addr.muteParam), muted ? 1 : 0));
-        return { muted };
-      }
+      case "setLevel":
+        return this.runSetLevel(addr, params);
+      case "setMute":
+        return this.runSetMute(addr, params, matrix);
+      case "on":
+      case "off":
+        return this.runPower(addr, command, matrix);
       default:
         throw new Error(`unknown command: ${command}`);
     }
+  }
+
+  private runSetLevel(addr: FaderAddress, params: Record<string, unknown>): FaderState {
+    if (isNaN(Number(params.level))) {
+      throw new Error(`invalid level: expected a number (got ${params.level})`);
+    }
+    const level = clamp01(Number(params.level));
+    this.send(
+      encodeAddressMessage(MsgType.SET_PERCENT, paramAddr(addr, addr.gainParam), levelToPercentRaw(level)),
+    );
+    return { level };
+  }
+
+  /** A matrix endpoint exposes this same wire parameter as on/off instead. */
+  private runSetMute(addr: FaderAddress, params: Record<string, unknown>, matrix: boolean): FaderState {
+    if (matrix) throw new Error("unknown command: setMute");
+    if (typeof params.muted !== "boolean") {
+      throw new Error(`invalid muted: expected a boolean (got ${params.muted})`);
+    }
+    const muted = Boolean(params.muted);
+    this.send(encodeAddressMessage(MsgType.SET, paramAddr(addr, addr.muteParam), muted ? 1 : 0));
+    return { muted };
+  }
+
+  /** Only a matrix crosspoint declares on/off; a regular fader uses setMute. */
+  private runPower(addr: FaderAddress, command: "on" | "off", matrix: boolean): FaderState {
+    if (!matrix) throw new Error(`unknown command: ${command}`);
+    const active = command === "on";
+    this.send(encodeAddressMessage(MsgType.SET, paramAddr(addr, addr.muteParam), active ? 1 : 0));
+    return { power: active };
   }
 
   private applyDryRun(
     id: string,
     command: string,
     params: Record<string, unknown>,
+    endpointType: string,
   ): FaderState {
+    const matrix = isMatrixEndpoint(endpointType);
     const sim = this.simState.get(id) ?? {};
     if (command === "setLevel") sim.level = clamp01(Number(params.level));
-    else if (command === "setMute") sim.muted = Boolean(params.muted);
+    else if (command === "setMute" && !matrix) sim.muted = Boolean(params.muted);
+    else if ((command === "on" || command === "off") && matrix) sim.power = command === "on";
     else throw new Error(`unknown command: ${command}`);
     this.simState.set(id, sim);
     return { ...sim };
@@ -256,11 +296,12 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
   async readState(endpoint: EndpointDescriptor): Promise<Record<string, unknown>> {
     if (this.ctx.dryRun) return { ...(this.simState.get(endpoint.id) ?? {}) };
 
+    const boolField = isMatrixEndpoint(endpoint.type) ? "power" : "muted";
     await this.subscribeToEndpoint(endpoint);
     // Give the device a moment to push both values back after SUBSCRIBE.
     await this.waitFor(() => {
       const s = this.stateCache.get(endpoint.id);
-      return s !== undefined && s.level !== undefined && s.muted !== undefined;
+      return s !== undefined && s.level !== undefined && s[boolField] !== undefined;
     }, this.responseTimeoutMs);
 
     const state = { ...(this.stateCache.get(endpoint.id) ?? {}) };
@@ -282,7 +323,8 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     });
     this.routes.set(routeKey(addr.node, addr.virtualDevice, addr.object, addr.muteParam), {
       endpointId: endpoint.id,
-      field: "muted",
+      // Same wire parameter, different label depending on endpoint type.
+      field: isMatrixEndpoint(endpoint.type) ? "power" : "muted",
     });
     if (this.online) this.sendSubscribe(addr);
   }
@@ -424,7 +466,7 @@ export class BssSoundwebDriver extends EventEmitter implements IDeviceDriver {
     const patch: FaderState =
       route.field === "level"
         ? { level: percentRawToLevel(msg.value) }
-        : { muted: msg.value !== 0 };
+        : { [route.field]: msg.value !== 0 };
 
     this.mergeState(route.endpointId, patch);
     this.emit("state", {

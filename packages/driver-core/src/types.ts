@@ -69,6 +69,86 @@ export interface CommandDefinition {
   paramsSchema: JsonSchema;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Widget bindings — how a generic UI control maps onto this endpoint's
+// commands and state. The core UI ships one predefined component per
+// {@link WidgetKind}; a manifest only ever *names* which commands/params/state
+// keys to wire it to. Any actual translation (inverting a boolean, merging a
+// preserved value, deriving an option list from connection config, …) is real
+// TypeScript inside the driver — the binding itself carries no behaviour, only
+// names, so the UI never needs to know which vendor it's talking to.
+// ─────────────────────────────────────────────────────────────
+
+/** The generic controls the core UI knows how to render. */
+export type WidgetKind = "power" | "mute" | "fader" | "select";
+
+/**
+ * A boolean widget (`power` or `mute`) driven by two zero-arg commands, e.g.
+ * `on()` / `off()`. `stateKey` is read as truthy for `true` and the strings
+ * `"on"` / `"warming"` (so a driver may keep a richer status enum, e.g.
+ * PJLink's `power: "off"|"on"|"cooling"|"warming"`).
+ */
+export interface CommandsBoolWidgetBinding {
+  kind: "power" | "mute";
+  trigger: "commands";
+  /** Command to call (no params) when the user switches this on. */
+  onCommand: string;
+  /** Command to call (no params) when the user switches this off. */
+  offCommand: string;
+  stateKey: string;
+}
+
+/**
+ * A boolean widget (`power` or `mute`) driven by one command taking a boolean
+ * param, e.g. `setMute({ muted })`.
+ */
+export interface ParamBoolWidgetBinding {
+  kind: "power" | "mute";
+  trigger: "param";
+  /** Command to call with `{ [paramKey]: boolean }`. */
+  command: string;
+  paramKey: string;
+  stateKey: string;
+}
+
+export type BoolWidgetBinding = CommandsBoolWidgetBinding | ParamBoolWidgetBinding;
+
+/** A continuous 0..1 level control (audio fader, light brightness, …). */
+export interface FaderWidgetBinding {
+  kind: "fader";
+  /** Command to call with `{ [paramKey]: number }` (0..1). */
+  command: string;
+  paramKey: string;
+  /** State key holding the current 0..1 level. */
+  stateKey: string;
+}
+
+export interface WidgetSelectOption {
+  value: number | string;
+  label: string;
+}
+
+/** An enumerated choice (matrix input, scene recall, …). */
+export interface SelectWidgetBinding {
+  kind: "select";
+  /** Command to call with `{ [paramKey]: value }`. */
+  command: string;
+  paramKey: string;
+  /** State key holding the currently selected value. */
+  stateKey: string;
+  /** Static option list, when it's known at manifest-authoring time. */
+  options?: WidgetSelectOption[];
+  /**
+   * State key holding a dynamic `{value,label}[]` option list, when the
+   * driver computes it at runtime (e.g. Extron input labels, which live on
+   * the owning connection, not the endpoint) and stamps it onto every state
+   * it emits. Takes priority over `options` when both are present.
+   */
+  optionsKey?: string;
+}
+
+export type WidgetBinding = BoolWidgetBinding | FaderWidgetBinding | SelectWidgetBinding;
+
 /** A kind of addressable endpoint that can live under a connection. */
 export interface EndpointTypeDefinition {
   /** Globally unique within the driver, formatted as `driver-id.type`. */
@@ -80,6 +160,14 @@ export interface EndpointTypeDefinition {
   /** JSON Schema describing the shape of `state` the driver emits. */
   stateSchema: JsonSchema;
   commands: CommandDefinition[];
+  /**
+   * Generic UI controls this endpoint type supports. The core UI composes one
+   * predefined widget component per binding — a new driver needs zero UI code,
+   * only this list. An endpoint type that needs a genuinely bespoke UI (e.g.
+   * the BSS live-meter panel) omits `widgets` entirely; the UI matches those by
+   * `type` as a deliberate, narrow exception instead of trying to generalize.
+   */
+  widgets?: WidgetBinding[];
 }
 
 /** What a driver can do — drives optional behaviour in the core. */

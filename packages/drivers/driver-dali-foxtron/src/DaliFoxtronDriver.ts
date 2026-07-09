@@ -170,9 +170,13 @@ export class DaliFoxtronDriver extends EventEmitter implements IDeviceDriver {
         return { success: true, durationMs: Date.now() - start, state };
       }
 
-      const { frame, state } = this.buildCommand(target, command, params);
+      const { frame, state: rawState } = this.buildCommand(target, command, params);
       await this.serialized(() => this.sendAndClose(frame));
       this.online = true;
+      // `recall`'s brightness is a guess (scene levels are fixture-defined) — pass
+      // it through untouched rather than remembering or overriding it.
+      const state =
+        command === "recall" ? rawState : await this.withPreservedBrightness(targetKey(target), rawState);
       this.stateCache.set(targetKey(target), state);
       this.emit("state", {
         endpointId: endpoint.id,
@@ -229,7 +233,7 @@ export class DaliFoxtronDriver extends EventEmitter implements IDeviceDriver {
 
     const on = dapc !== null && dapc > 0;
     const brightness = dapc !== null ? dapcToLevel(dapc) : 0;
-    const state: FixtureState = { on, brightness };
+    const state = await this.withPreservedBrightness(key, { on, brightness });
     this.stateCache.set(key, state);
     this.emit("state", {
       endpointId: endpoint.id,
@@ -238,6 +242,31 @@ export class DaliFoxtronDriver extends EventEmitter implements IDeviceDriver {
       timestamp: new Date(),
     });
     return state;
+  }
+
+  /**
+   * A DALI fixture reports `brightness: 0` (and therefore `on: false`, per this
+   * driver's model) whenever it's physically off — real, but not what the UI
+   * wants: a fader should stay at the last intended level while off and restore
+   * it on `on`. A real non-zero brightness is remembered as it's seen; a zeroed
+   * one is replaced by whatever was last remembered, if anything.
+   */
+  private async withPreservedBrightness(key: string, state: FixtureState): Promise<FixtureState> {
+    if (state.brightness > 0) {
+      void this.rememberBrightness(key, state.brightness);
+      return state;
+    }
+    if (state.on) return state; // on at a genuine 0% — leave it alone
+    const remembered = await this.recallBrightness(key);
+    return remembered !== undefined ? { on: state.on, brightness: remembered } : state;
+  }
+
+  private rememberBrightness(key: string, level: number): Promise<void> {
+    return this.ctx.storage.set(lastBrightnessKey(key), level);
+  }
+
+  private async recallBrightness(key: string): Promise<number | undefined> {
+    return this.ctx.storage.get<number>(lastBrightnessKey(key));
   }
 
   // ── command builder ────────────────────────────────────────
@@ -507,4 +536,9 @@ function parseTarget(endpoint: EndpointDescriptor): DaliTarget {
     default:
       throw new Error(`invalid addressMode: ${a.addressMode} (expected address|group|broadcast)`);
   }
+}
+
+/** Per-driver KV key for a target's last known non-zero brightness. */
+function lastBrightnessKey(targetKeyStr: string): string {
+  return `lastBrightness:${targetKeyStr}`;
 }

@@ -28,6 +28,7 @@ import {
   type EndpointDescriptor,
   type HealthStatus,
   type IDeviceDriver,
+  type WidgetSelectOption,
 } from "@gallery/driver-core";
 import { manifest } from "./manifest.ts";
 import {
@@ -42,6 +43,8 @@ import {
 type OutputState = {
   input?: number;
   audioInput?: number;
+  /** {value,label} choices for the generic select widget — stamped on by mergeState/applyDryRun. */
+  options?: WidgetSelectOption[];
 };
 
 /** A pending request awaiting its response line, correlated by output number. */
@@ -64,6 +67,12 @@ export class ExtronMatrixDriver extends EventEmitter implements IDeviceDriver {
   private outputCount = 8;
   private responseTimeoutMs = 2000;
   private reconnectMs = 2000;
+  /**
+   * {value,label} choices for every output's select widget, computed once from
+   * the connection's own config (input labels live on the matrix, named once,
+   * not duplicated per output) and stamped onto every state this driver emits.
+   */
+  private options: WidgetSelectOption[] = [{ value: 0, label: "None" }];
 
   // ── runtime ────────────────────────────────────────────────
   private ctx!: DriverContext;
@@ -97,6 +106,7 @@ export class ExtronMatrixDriver extends EventEmitter implements IDeviceDriver {
     this.outputCount = Number(config.config.outputCount ?? 8);
     this.responseTimeoutMs = Number(config.config.responseTimeoutMs ?? 2000);
     this.reconnectMs = Number(config.config.reconnectMs ?? 2000);
+    this.options = computeOptions(config.config.inputs, this.inputCount);
 
     ctx.signal.addEventListener("abort", () => {
       this.destroyed = true;
@@ -183,9 +193,9 @@ export class ExtronMatrixDriver extends EventEmitter implements IDeviceDriver {
 
     try {
       const output = parseOutput(endpoint, this.outputCount);
-      const state = await this.runCommand(output, command, params);
+      const patch = await this.runCommand(output, command, params);
       this.online = true;
-      this.mergeState(output, state);
+      const state = this.mergeState(output, patch);
       this.emit("state", { endpointId: endpoint.id, state, source: "echo", timestamp: new Date() });
       return { success: true, durationMs: Date.now() - start, state };
     } catch (err) {
@@ -236,25 +246,26 @@ export class ExtronMatrixDriver extends EventEmitter implements IDeviceDriver {
     const input = Number(params.input);
     if (type === "audio") sim.audioInput = input;
     else sim.input = input;
-    this.simState.set(output, sim);
-    return { ...sim };
+    const withOptions: OutputState = { ...sim, options: this.options };
+    this.simState.set(output, withOptions);
+    return withOptions;
   }
 
   // ── readState ──────────────────────────────────────────────
 
   async readState(endpoint: EndpointDescriptor): Promise<Record<string, unknown>> {
-    if (this.ctx.dryRun) return { ...(this.simState.get(parseOutput(endpoint, this.outputCount)) ?? {}) };
-
     const output = parseOutput(endpoint, this.outputCount);
+    if (this.ctx.dryRun) return { ...(this.simState.get(output) ?? {}), options: this.options };
+
     const input = await this.queryInput(output, "video");
     const audioInput = await this.queryInput(output, "audio");
 
-    const state: OutputState = { input };
-    if (audioInput !== undefined) state.audioInput = audioInput;
-    this.mergeState(output, state);
+    const patch: OutputState = { input };
+    if (audioInput !== undefined) patch.audioInput = audioInput;
     this.online = true;
+    const state = this.mergeState(output, patch);
     this.emit("state", { endpointId: endpoint.id, state, source: "poll", timestamp: new Date() });
-    return { ...(this.stateCache.get(output) ?? {}) };
+    return state;
   }
 
   /** Query the input tied to an output on one plane; undefined if unanswered. */
@@ -443,8 +454,11 @@ export class ExtronMatrixDriver extends EventEmitter implements IDeviceDriver {
 
   // ── helpers ────────────────────────────────────────────────
 
-  private mergeState(output: number, patch: OutputState): void {
-    this.stateCache.set(output, { ...(this.stateCache.get(output) ?? {}), ...patch });
+  /** Merge a patch into the cache, always stamping the current option list, and return the result. */
+  private mergeState(output: number, patch: OutputState): OutputState {
+    const merged: OutputState = { ...(this.stateCache.get(output) ?? {}), ...patch, options: this.options };
+    this.stateCache.set(output, merged);
+    return merged;
   }
 }
 
@@ -457,4 +471,22 @@ function parseOutput(endpoint: EndpointDescriptor, outputCount: number): number 
     throw new Error(`invalid address: output must be 1..${outputCount} (got ${endpoint.address.output})`);
   }
   return output;
+}
+
+/**
+ * Build the {value,label} choices for the select widget from the connection's
+ * own `inputs` labels (index 0 = input 1) and `inputCount`, always prepending a
+ * `None` (0 = untie) option. Mirrors what used to be the UI's own `matrixInputs`
+ * helper — the driver computes it once so the UI never reaches into connection
+ * config for this.
+ */
+function computeOptions(rawLabels: unknown, inputCount: number): WidgetSelectOption[] {
+  const labels = Array.isArray(rawLabels) ? rawLabels : [];
+  const options: WidgetSelectOption[] = [{ value: 0, label: "None" }];
+  for (let i = 1; i <= inputCount; i++) {
+    const label =
+      typeof labels[i - 1] === "string" && labels[i - 1] !== "" ? `${i}. ${labels[i - 1] as string}` : `Input ${i}`;
+    options.push({ value: i, label });
+  }
+  return options;
 }

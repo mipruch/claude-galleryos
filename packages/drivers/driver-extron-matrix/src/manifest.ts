@@ -176,6 +176,13 @@ export const manifest: DriverManifest = {
           },
         },
       ],
+
+      // The option list is dynamic (per-connection input labels), so the driver
+      // computes it from its own config and stamps it onto every state it emits
+      // under `optionsKey` — the UI never reaches into the connection itself.
+      widgets: [
+        { kind: "select", command: "setInput", paramKey: "input", stateKey: "input", optionsKey: "options" },
+      ],
     },
   ],
 };

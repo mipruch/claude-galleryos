@@ -22,12 +22,16 @@ import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useCamerasStore } from '@/stores/cameras'
+import { useDriversStore } from '@/stores/drivers'
+import { useConnectionsStore } from '@/stores/connections'
 
 const auth = useAuthStore()
 const store = useDevicesStore()
 const scenes = useScenesStore()
 const realtime = useRealtimeStore()
 const cameras = useCamerasStore()
+const drivers = useDriversStore()
+const connections = useConnectionsStore()
 const router = useRouter()
 
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 15
@@ -46,6 +50,10 @@ watch(
     store.init()
     scenes.fetchAll()
     cameras.fetchAll()
+    // Needed to resolve each device's generic widgets (driver manifest +
+    // connection → driver id) — see composables/useDeviceWidgets.ts.
+    drivers.load()
+    connections.init()
     const security = await api.settings.security.get()
     stopInactivityWatch = useInactivityLogout(
       security?.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,

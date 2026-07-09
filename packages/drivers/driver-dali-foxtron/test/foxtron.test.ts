@@ -28,10 +28,27 @@ function broadcastEp(): EndpointDescriptor {
   return { id: "bc", type: "dali-foxtron.fixture", address: { addressMode: "broadcast" }, name: "All fixtures" };
 }
 
-function testContext(dryRun = false): DriverContext {
+/** A real (in-memory) KV store — stands in for the Redis-backed one in production. */
+function memoryStore(): DriverContext["storage"] {
+  const map = new Map<string, unknown>();
+  return {
+    async get<T>(key: string): Promise<T | undefined> {
+      return map.get(key) as T | undefined;
+    },
+    async set(key: string, value: unknown): Promise<void> {
+      map.set(key, value);
+    },
+    async delete(key: string): Promise<void> {
+      map.delete(key);
+    },
+  };
+}
+
+/** Fresh context per call — a real per-driver storage backend, not a no-op stub, since the driver now depends on it for brightness preservation. */
+function testContext(dryRun = false, storage: DriverContext["storage"] = memoryStore()): DriverContext {
   return {
     logger: { debug() {}, info() {}, warn() {}, error() {} },
-    storage: { async get() { return undefined; }, async set() {}, async delete() {} },
+    storage,
     dryRun,
     signal: new AbortController().signal,
   };
@@ -79,12 +96,13 @@ describe("DaliFoxtronDriver", () => {
     await waitFor(() => mock.getLevel(5) === 254);
     expect(mock.getLevel(5)).toBe(254);
 
-    // off → Off
+    // off → Off. Brightness is preserved from the prior `on` (1.0), not zeroed —
+    // see the dedicated "brightness preservation" tests below.
     r = await d.executeCommand(ep(5), "off", {});
     expect(r.success).toBe(true);
-    expect(r.state).toMatchObject({ on: false, brightness: 0 });
+    expect(r.state).toMatchObject({ on: false, brightness: 1 });
     await waitFor(() => mock.getLevel(5) === 0);
-    expect(mock.getLevel(5)).toBe(0);
+    expect(mock.getLevel(5)).toBe(0); // hardware is genuinely off — the wire frame is unaffected
 
     // setBrightness → DAPC
     r = await d.executeCommand(ep(5), "setBrightness", { level: 0.5 });
@@ -362,5 +380,75 @@ describe("DaliFoxtronDriver", () => {
     expect(r.error).toContain("group");
 
     await d.destroy();
+  });
+
+  // ── brightness preservation while off (persisted via the KV store) ─────
+  // Real hardware reports level 0 whenever a fixture is off; the driver must
+  // remember the last non-zero level so a fader stays put across an off/on
+  // cycle instead of collapsing to 0 (this used to be a server-core special
+  // case — see PLAN.md H1 — now it's the driver's own, testable behaviour).
+
+  describe("brightness preservation", () => {
+    test("off preserves the last known non-zero brightness instead of zeroing it", async () => {
+      const d = new DaliFoxtronDriver();
+      await d.init(connConfig(mock.port), testContext());
+      await d.connect();
+
+      await d.executeCommand(ep(6), "setBrightness", { level: 0.8 });
+      const r = await d.executeCommand(ep(6), "off", {});
+      expect(r.state).toEqual({ on: false, brightness: 0.8 });
+      // The physical fixture is still genuinely off — only the reported state differs.
+      await waitFor(() => mock.getLevel(6) === 0);
+      expect(mock.getLevel(6)).toBe(0);
+
+      await d.destroy();
+    });
+
+    test("readState substitutes the last known brightness when hardware reports 0", async () => {
+      const d = new DaliFoxtronDriver();
+      await d.init(connConfig(mock.port), testContext());
+      await d.connect();
+
+      await d.executeCommand(ep(9), "setBrightness", { level: 0.33 });
+      await waitFor(() => mock.getLevel(9) > 0); // let the fire-and-forget frame actually land
+      mock.setLevel(9, 0); // switched off some other way (front panel, a scene, …)
+
+      const state = await d.readState(ep(9));
+      expect(state).toEqual({ on: false, brightness: 0.33 });
+
+      await d.destroy();
+    });
+
+    test("no remembered brightness — off / readState simply report 0, nothing invented", async () => {
+      const d = new DaliFoxtronDriver();
+      await d.init(connConfig(mock.port), testContext());
+      await d.connect();
+
+      const r = await d.executeCommand(ep(11), "off", {});
+      expect(r.state).toEqual({ on: false, brightness: 0 });
+
+      await d.destroy();
+    });
+
+    test("survives a driver restart — persisted via the per-connection KV store", async () => {
+      const sharedStorage = memoryStore();
+
+      const first = new DaliFoxtronDriver();
+      await first.init(connConfig(mock.port), testContext(false, sharedStorage));
+      await first.connect();
+      await first.executeCommand(ep(12), "setBrightness", { level: 0.6 });
+      await waitFor(() => mock.getLevel(12) > 0); // let the fire-and-forget frame actually land
+      await first.destroy();
+
+      mock.setLevel(12, 0); // off before the "restart"
+
+      const second = new DaliFoxtronDriver();
+      await second.init(connConfig(mock.port), testContext(false, sharedStorage));
+      await second.connect();
+      const state = await second.readState(ep(12));
+      expect(state).toEqual({ on: false, brightness: 0.6 });
+
+      await second.destroy();
+    });
   });
 });

@@ -588,13 +588,56 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
   - [x] **User panel — device control slice:** brightness fader, BSS fader +
         mute, on/off switch, **live BSS meters** (`BssMeterWidget` — bars that
         grow/shrink, subscribe on mount / unsubscribe on unmount). Each in a shared
-        `DeviceCard` (title + description tooltip + online dot). Widget chosen by
-        driver `subtype`. Array-of-object address fields (the meter list) edited via
-        `ArrayObjectField`.
-        **Extron matrix output input-select**. Widget
-        chosen by driver `subtype` (`matrixOutput` → `MatrixOutputWidget`, a
-        single input `<select>` per output sending `setInput`; input labels come
-        from the connection's `config.inputs`, named once per matrix).
+        `DeviceCard` (title + description tooltip + online dot). Array-of-object
+        address fields (the meter list) edited via `ArrayObjectField`.
+        **Extron matrix output input-select**, a single input `<select>` per
+        output sending `setInput`.
+        **Superseded by "Driver-agnostic widgets" below** — widget selection is
+        no longer a `subtype` switch; see that entry for the current design.
+  - [x] **Driver-agnostic widgets:** replaced the `subtype` switch
+        (`deviceKind()` in `lib/devices.ts` → one of five bespoke widget
+        components) with a manifest-declared, driver-agnostic system — adding a
+        new driver never touches the UI again.
+        - **`EndpointTypeDefinition.widgets?: WidgetBinding[]`** (new,
+          `packages/driver-core/src/types.ts`) — a manifest names, per endpoint
+          type, which of four generic widget kinds it supports and which
+          command/param/state key each is wired to (`power`/`mute`: two zero-arg
+          commands or one boolean-param command; `fader`: a 0..1 level command;
+          `select`: an enumerated choice, options either static in the manifest
+          or a driver-computed list stamped onto state via `optionsKey`). A
+          binding only ever *names* things — it carries no behaviour.
+        - **All real translation moved into driver code**, not a declarative
+          rules engine: `driver-bss` gained a first-class `bss-soundweb.matrix`
+          endpoint type with canonical `on`/`off` commands and a `power` state
+          key (replacing the `type==='matrix'` + inverted-`setMute` hack);
+          `driver-dali-lunatone`/`driver-dali-foxtron` remember/restore a
+          fixture's last brightness themselves (resolves H1, see below);
+          `driver-extron-matrix` computes its per-connection input-label list
+          once and stamps `options` onto every state it emits, so the UI never
+          reaches into connection config for this anymore.
+        - **UI composes, never special-cases:** `DeviceWidget.vue` resolves a
+          device's `WidgetBinding[]` (`composables/useDeviceWidgets.ts`, joining
+          the connection → driver → manifest, same pattern as
+          `useDeviceCommands`) and stacks one generic component
+          (`PowerWidget`/`FaderWidget`/`SelectWidget`, dispatched by
+          `GenericWidget.vue`) per binding inside one `DeviceCard` — a device
+          declaring `[fader, mute]` gets both, automatically. A fader
+          auto-dims (and, next to a *power* companion, routes a drag-commit to
+          `patchDeviceState` instead of a live command) while its sibling
+          power/mute binding is off/muted — pure composition, no driver
+          involved. The **one deliberate exception** is the BSS live-meter
+          panel (a whole panel of bars fits no generic kind) — matched by
+          endpoint type via `lib/widgets.ts#isCustomWidgetType`, same as it
+          would need to be even in a fully declarative system.
+        - The command palette (`lib/commands.ts`) lost its
+          `subtype === 'extron-matrix.output'` special case; a select binding's
+          options now generate quick actions for any driver's select widget.
+        - `bss-soundweb.matrix` promotion needed a real data migration (there
+          are live devices, not just the seed) —
+          `0006_bss_matrix_endpoint_type.sql` backfills
+          `subtype='bss-soundweb.fader' AND type='matrix'` rows, idempotent
+          (verified against a real Postgres instance, including a no-op
+          re-run).
   - [x] **Routing + room sidebar (`vue-router`, `AppSidebar`):** `/` = all
         devices, `/rooms/:roomId` = that room (URL is the source of truth; a
         refresh stays put, unknown paths → `/`). The store carries a `roomScope`
@@ -814,14 +857,16 @@ one `/ws` connection is visible when both `useDevicesStore` and
 `useConnectionsStore` are mounted. If two still open, move ownership entirely
 into `useRealtimeStore` and have both stores subscribe to it.
 
-### H1 · DALI brightness logic placement — driver or core?
-`redis/state.ts` `shouldPreserveBrightness`/`mergeDeviceState` hardcodes DALI
-semantics ("brightness 0 when off → keep last level") into the generic live-
-state store. That's driver behaviour leaking into core.
-**Options:** (a) move logic into the DALI drivers (emit the intended state so
-the core store never needs to know); (b) express it as a per-endpoint-type
-state-merge policy the store looks up. Either is valid; needs a call so the
-DALI drivers are updated consistently.
+### H1 · DALI brightness logic placement — driver or core? ✓ RESOLVED
+Decided **(a)**: moved into the DALI drivers, as part of the driver-agnostic
+widget rewrite (see "Driver-agnostic widgets" under Priority 5). Each DALI
+driver (`DaliLunatoneDriver`/`DaliFoxtronDriver`) now remembers a fixture's
+last known non-zero brightness itself via its per-connection KV store
+(`ctx.storage`) and substitutes it in `readState`/command echoes whenever the
+fixture reports off — `redis/state.ts`'s `mergeDeviceState` is back to a plain
+shallow spread with no vendor-specific rules. Covered by each driver's own
+tests (`test/lunatone.test.ts`, `test/foxtron.test.ts`), including survival
+across a driver restart.
 
 ### G7 · apps/ui vs packages/ui — resolve before building admin UI
 README §3 depicts a shared `packages/ui` component library. Reality is a

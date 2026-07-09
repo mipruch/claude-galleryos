@@ -3,7 +3,7 @@
  *
  * One connection = one TCP socket to a Soundweb processor (port 1023). Many
  * fader endpoints share that socket; each endpoint addresses one Gain object's
- * level + mute parameters. Fader endpoint is compatible with matrix Gain/Mute block also.
+ * level + mute parameters.
  *
  * Addressing follows the London DI hierarchy (see london-di.ts):
  *   node (device) → virtualDevice (Audio=3) → object (the Gain block) →
@@ -13,6 +13,14 @@
  * (a single parameter). A real fader needs *two* parameters — gain and mute —
  * so the address carries `gainParam` and `muteParam` instead. Param ids come
  * from Audio Architect's Venue Explorer for the specific object.
+ *
+ * `bss-soundweb.matrix` addresses the identical Gain/Mute block shape but with
+ * power semantics instead of audio mute (a matrix crosspoint's "mute" parameter
+ * is really a route *enable*: 1 = crosspoint active). Rather than exposing that
+ * quirk to the UI, the matrix endpoint type declares its own canonical `on`/`off`
+ * commands and a `power` state key — BssSoundwebDriver.ts maps them onto the same
+ * wire parameter as the fader's `setMute`, entirely on its own (see the `Field`
+ * routing in that file). The UI never learns BSS exists.
  */
 
 import type { DriverManifest } from "@gallery/driver-core";
@@ -141,6 +149,102 @@ export const manifest: DriverManifest = {
             properties: { muted: { type: "boolean", title: "Muted" } },
           },
         },
+      ],
+
+      widgets: [
+        { kind: "fader", command: "setLevel", paramKey: "level", stateKey: "level" },
+        { kind: "mute", trigger: "param", command: "setMute", paramKey: "muted", stateKey: "muted" },
+      ],
+    },
+
+    {
+      type: "bss-soundweb.matrix",
+      name: "Matrix crosspoint (Gain/Mute block)",
+      description:
+        "A matrix routing crosspoint: the same Gain/Mute processing block as a fader, " +
+        "but the mute parameter is a route enable, so this endpoint type exposes it as " +
+        "power (on/off) instead of mute.",
+
+      // Identical shape to bss-soundweb.fader — same Gain block, same two params.
+      addressSchema: {
+        type: "object",
+        required: ["node", "object"],
+        properties: {
+          node: {
+            type: "integer",
+            title: "Node address",
+            description: "Physical device id (Venue Explorer).",
+            minimum: 1,
+            maximum: 65534,
+          },
+          virtualDevice: {
+            type: "integer",
+            title: "Virtual device",
+            description: "Object category — Audio = 3, Logic = 2.",
+            default: 3,
+            minimum: 0,
+            maximum: 255,
+          },
+          object: {
+            type: "integer",
+            title: "Object id",
+            description: "24-bit Processing Object id (the Gain block).",
+            minimum: 0,
+            maximum: 16777215,
+          },
+          gainParam: {
+            type: "integer",
+            title: "Gain parameter id",
+            description: "Parameter id for the crosspoint's gain/trim value.",
+            default: 0,
+            minimum: 0,
+            maximum: 65535,
+          },
+          muteParam: {
+            type: "integer",
+            title: "Enable parameter id",
+            description: "Parameter id for the route-enable switch (BSS calls it \"mute\").",
+            default: 1,
+            minimum: 0,
+            maximum: 65535,
+          },
+        },
+        additionalProperties: false,
+      },
+
+      stateSchema: {
+        type: "object",
+        properties: {
+          level: { type: "number", minimum: 0, maximum: 1, description: "Crosspoint gain 0..1." },
+          power: { type: "boolean", description: "Whether the route is active." },
+        },
+      },
+
+      commands: [
+        {
+          command: "setLevel",
+          description: "Set the crosspoint gain (0..1) via SET PERCENT.",
+          paramsSchema: {
+            type: "object",
+            required: ["level"],
+            properties: { level: { type: "number", title: "Level", minimum: 0, maximum: 1 } },
+          },
+        },
+        {
+          command: "on",
+          description: "Activate the route (crosspoint enable).",
+          paramsSchema: { type: "object", properties: {} },
+        },
+        {
+          command: "off",
+          description: "Deactivate the route (crosspoint disable).",
+          paramsSchema: { type: "object", properties: {} },
+        },
+      ],
+
+      widgets: [
+        { kind: "fader", command: "setLevel", paramKey: "level", stateKey: "level" },
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power" },
       ],
     },
 

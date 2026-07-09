@@ -874,6 +874,13 @@ a ověřeného skriptu `manuals/bss.js`.
   - `setLevel (0..1)` → SET PERCENT (0x8D), `setMute (bool)` → SET (0x88).
 - **Endpoint `bss-soundweb.fader`**, adresa `{ node, object, virtualDevice?=3, gainParam?=0,
   muteParam?=1 }` — fader potřebuje dva parametry (gain + mute), proto adresa nese oba.
+- **Endpoint `bss-soundweb.matrix`** — stejná adresa i Gain/Mute blok jako fader
+  (matice může mít i gain trim), ale příkazy `setLevel` + **`on`/`off`** místo
+  `setMute` a state klíč `power` místo `muted` — matice mute parametr je ve
+  skutečnosti route-enable (1 = crosspoint aktivní), takže driver mu dá vlastní,
+  správně pojmenovaný endpoint typ místo aby UI muselo znát a invertovat BSS
+  konvenci (dřív `type==='matrix'` hack na `bss-soundweb.fader`; viz §11
+  "Driver-agnostic widgets").
 - **Endpoint `bss-soundweb.meter-widget`** — virtuální zařízení s panelem **živých
   metrů** (rostoucí/klesající sloupce, bez ticků a čísel). Adresa nese `{ node,
   virtualDevice?=3, minDb?=-80, maxDb?=40, meters: [{ label, object, param?=0 }] }` —
@@ -964,9 +971,11 @@ ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
   inputs?: string[], responseTimeoutMs, reconnectMs }`. Příkazy: `setInput` (AV),
   `setVideoInput`, `setAudioInput`, `readState`. Capabilities: `subscriptions: false`
   (poll, ale emituje `state` na echo), `bidirectional: true`, `discovery: false`.
-- **User UI:** widget `MatrixOutputWidget` — jeden `<select>` vstupů na výstup
-  (`setInput`); popisky vstupů čte z `connection.config.inputs` přes
-  `useConnectionsStore`, fallback „Input N“.
+- **User UI:** generický `select` widget — jeden `<select>` vstupů na výstup
+  (`setInput`). Driver si sám při `init()` spočítá `options` (`{value,label}[]`,
+  fallback „Input N”) z vlastního configu a vloží je do každého stavu, který
+  vydá (`mergeState`) — UI je čte přes `optionsKey`, žádné čtení
+  `connection.config` z FE (viz §11 “Driver-agnostic widgets”).
 
 #### `driver-samsung-mdc` — Samsung MDC displeje (implementováno, jen zapnutí/vypnutí)
 
@@ -1063,8 +1072,9 @@ označen jako offline. To je ta „Online/Offline lež“.
   pollIntervalMs=30000, erstIntervalMs=60000 }`. Endpoint `pjlink.projector` (jeden na connection,
   bez adresy). Capabilities: `subscriptions: true` (poll-emulovaný push),
   `bidirectional: true`, `discovery: false`.
-- **User UI:** `SwitchWidget` (on/off); `readOn` bere `power` `"on"` i přechodové
-  `"warming"` jako zapnuto, `"off"`/`"cooling"` jako vypnuto.
+- **User UI:** generický `power` widget (on/off) + `mute` widget (`setMute`) —
+  viz §11 "Driver-agnostic widgets". `power` čte `state.power`; `"on"` i
+  přechodové `"warming"` se berou jako zapnuto, `"off"`/`"cooling"` jako vypnuto.
 - Globální IPC default `DRIVER_COMMAND_TIMEOUT_MS` zvednut **2000 → 5000 ms**, aby
   pomalé-ale-dostupné zařízení nikdy nehlásilo falešný IPC timeout (krátkožijící
   session = connect + banner + response).
@@ -1980,22 +1990,23 @@ První funkční řez User UI: jedna obrazovka, která zobrazí všechna zaříz
 ovládací karty (zatím **bez routingu, filtrů, dashboardu a logů**). Slouží jako
 demo, že datová cesta funguje od Redisu přes HTTP/WebSocket až do komponent.
 
-- **Tři typy widgetů, modulárně poskládané ze sdílených dílů:**
-  - **Brightness fader** (`LightFaderWidget`) — DALI svítidla (`dali.fixture`,
-    `dali-foxtron.fixture`), posílá `setBrightness { level }` (0..1).
-  - **Fader + mute** (`BssFaderWidget`) — BSS fadery (`bss-soundweb.fader`),
-    `setLevel { level }` + `setMute { muted }`.
-  - **On/off switch** (`SwitchWidget`) — zásuvky a projektory (`netio.socket`,
-    `pjlink.projector`), příkazy `on` / `off`.
+- **Tři generické typy widgetů + jedna schválená výjimka** (viz "Driver-agnostic
+  widgets" níže pro plný design — tady jen mapování na tehdejší první řez):
+  - **Brightness fader** — dnes generický `fader` widget; DALI svítidla
+    (`dali.fixture`, `dali-foxtron.fixture`) posílají `setBrightness { level }` (0..1).
+  - **Fader + mute** — dnes `fader` + `mute` widget; BSS fadery
+    (`bss-soundweb.fader`), `setLevel { level }` + `setMute { muted }`.
+  - **On/off switch** — dnes generický `power` widget; zásuvky a projektory
+    (`netio.socket`, `pjlink.projector`), příkazy `on` / `off`.
   - **Live metry** (`BssMeterWidget`) — panel sloupcových metrů
-    (`bss-soundweb.meter-widget`). Při **mountu** pošle `meter:subscribe { deviceId }`,
+    (`bss-soundweb.meter-widget`). Jediná schválená výjimka z generického systému
+    (`lib/widgets.ts#isCustomWidgetType`) — panel živých sloupců nesedí do žádného
+    generického typu. Při **mountu** pošle `meter:subscribe { deviceId }`,
     při **unmountu** (změna routy / skrytí filtrem) `meter:unsubscribe`. Sloupce čte ze
     `stores/meters.ts` (klíč `node:object:param`), které jsou ref-countované per zařízení
     a re-subscribují se po reconnectu. Admin formulář pro pole `meters` (array of objects)
     používá `ArrayObjectField` — generický editor řízený `items` schématem (scalar
     `SchemaFields` arraye/objekty záměrně přeskakuje).
-  - Mapování `subtype → widget` je na jednom místě (`lib/devices.ts` →
-    `deviceKind()`); přidání driveru = jeden řádek.
 - **Sdílené, neopakované díly:** `DeviceCard` (karta s názvem zařízení, online
   tečkou a **popisem zařízení jako tooltip on hover**) a `FaderControl`
   (znovupoužitelný slider s procentuálním odečtem), použité oběma fadery.
@@ -2047,6 +2058,64 @@ popover se seznamem všech connectionů.
   (dávkový snapshot `{ [id]: ConnectionStatus }` z Redisu, obdoba `/devices/live`),
   poté live updaty přes `/ws` události `connection:connected` /
   `connection:disconnected` / `driver:error` (které doplní `lastError`).
+
+#### Implementováno (driver-agnostic widgets)
+
+Kompletní přepis toho, jak User UI vybírá ovládací widget pro zařízení. Předtím
+`lib/devices.ts → deviceKind()` přepínal na `device.subtype` (řetězec
+specifický pro driver) a vracel jeden z pěti napevno napsaných widgetů
+(`BssFaderWidget`, `LightFaderWidget`, `SwitchWidget`, `MatrixOutputWidget`,
+`BssMeterWidget`) — přidání nového driveru (např. nová značka projektoru)
+znamenalo zásah do UI kódu, přesně proti principu „driver = samostatný balíček,
+core se nemění" z §6. BSS matice navíc byla detekována kombinací
+`subtype==='bss-soundweb.fader'` **a** `device.type==='matrix'`, s invertovanou
+`setMute` sémantikou schovanou přímo ve widgetu.
+
+- **Manifest deklaruje, co podporuje** — nové pole
+  `EndpointTypeDefinition.widgets?: WidgetBinding[]`
+  (`packages/driver-core/src/types.ts`). Čtyři generické druhy:
+  `power`/`mute` (buď dva bezparametrické příkazy `onCommand`/`offCommand`, nebo
+  jeden příkaz s boolean parametrem — `trigger: 'commands' | 'param'`),
+  `fader` (0..1 úroveň, jeden příkaz s číselným parametrem) a `select`
+  (výčet možností — buď statický seznam v manifestu, nebo `optionsKey` čtený ze
+  `state`, když je seznam dynamický). Binding nese **jen jména** — command,
+  param key, state key — žádnou logiku.
+- **Veškerý překlad zůstává v driveru, ne v deklarativních pravidlech.**
+  `driver-bss` dostal plnohodnotný endpoint typ `bss-soundweb.matrix` s
+  kanonickými příkazy `on`/`off` a state klíčem `power` (nahrazuje starý hack);
+  `BssSoundwebDriver.ts` sám rozhoduje, že jde o stejný drátový parametr jako
+  fader's `setMute`, jen jinak pojmenovaný — UI o BSS neví vůbec nic.
+  `driver-dali-lunatone`/`driver-dali-foxtron` si samy pamatují a obnovují
+  poslední nenulový jas (řeší H1 z PLAN.md — dřív to dělal
+  `redis/state.ts#shouldPreserveBrightness`, teď je `mergeDeviceState` zpátky
+  prostý shallow merge). `driver-extron-matrix` si jednou spočítá seznam
+  vstupů z configu connection a vloží ho jako `options` do každého stavu, který
+  pošle — UI se už nikdy nedívá do configu connection.
+- **UI skládá, nikdy nespecializuje** — `DeviceWidget.vue` přes
+  `composables/useDeviceWidgets.ts` (stejný vzor jako `useDeviceCommands`)
+  zjistí `WidgetBinding[]` zařízení a naskládá jeden generický komponent
+  (`PowerWidget` / `FaderWidget` / `SelectWidget`, přes dispatch komponentu
+  `GenericWidget.vue`) na binding, vše v jedné `DeviceCard`. Fader se sám
+  ztlumí (a vedle *power* companion přesměruje potvrzení tahu na
+  `patchDeviceState` misto živého příkazu), když sourozenecký power/mute
+  binding hlásí off/muted — čistě kompoziční pravidlo v `DeviceWidget.vue`,
+  žádný driver o něm neví. **Jediná schválená výjimka** zůstává BSS live-metr
+  panel (`lib/widgets.ts#isCustomWidgetType`) — párování podle endpoint typu,
+  přesně jak by to vyžadoval i plně deklarativní systém.
+- **Command paleta** (`lib/commands.ts`) ztratila `device.subtype ===
+  'extron-matrix.output'` speciální případ — akce pro `select` binding se teď
+  generují z libovolného driveru se `select` widgetem.
+- **Migrace na reálná data:** povýšení BSS matice na vlastní endpoint typ je
+  změna dat, ne jen kódu — `apps/server/src/db/migrations/0006_bss_matrix_endpoint_type.sql`
+  přepíše `subtype='bss-soundweb.fader' AND type='matrix'` na
+  `subtype='bss-soundweb.matrix'` (+ opraví `capabilities`), idempotentně
+  (ověřeno proti reálné Postgres instanci včetně no-op re-run).
+- Testy: `packages/drivers/driver-bss/test/bss.test.ts` (matrix on/off, state
+  routing bez inverze), nové `packages/drivers/driver-dali-lunatone/test/`
+  (dřív žádné testy neexistovaly) a rozšířené `driver-dali-foxtron`/
+  `driver-extron-matrix` testy (jas napříč restartem driveru přes KV store,
+  `options` v každém stavu), plus `apps/ui/src/__tests__/widgets.spec.ts` a
+  přepsané `devices.spec.ts` / `commands.spec.ts`.
 
 #### Implementováno (seskupování, podskupiny a filtry)
 

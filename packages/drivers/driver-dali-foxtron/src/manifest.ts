@@ -152,6 +152,11 @@ export const manifest: DriverManifest = {
           },
         },
       ],
+
+      widgets: [
+        { kind: "fader", command: "setBrightness", paramKey: "level", stateKey: "brightness" },
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "on" },
+      ],
     },
   ],
 };

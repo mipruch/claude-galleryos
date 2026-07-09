@@ -25,8 +25,10 @@ import { useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
 import type { KioskDTO } from '@gallery/types'
 import { canvasGridStyle, tileGridStyle } from '@/lib/kiosks'
-import { deviceKind } from '@/lib/devices'
+import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
 import { useDevicesStore } from '@/stores/devices'
+import { useDriversStore } from '@/stores/drivers'
+import { useConnectionsStore } from '@/stores/connections'
 import { useRealtimeStore } from '@/stores/realtime'
 import { api } from '@/lib/api'
 import { errMsg } from '@/lib/http'
@@ -35,7 +37,10 @@ import KioskPinPad from '@/components/kiosk/KioskPinPad.vue'
 
 const route = useRoute()
 const devices = useDevicesStore()
+const drivers = useDriversStore()
+const connections = useConnectionsStore()
 const realtime = useRealtimeStore()
+const { isRenderable: isWidgetRenderable } = useDeviceWidgets()
 
 const UNLOCK_STORAGE_PREFIX = 'galleryos-kiosk-unlocked:'
 
@@ -61,11 +66,19 @@ function rememberUnlocked(kioskId: string): void {
   }
 }
 
-/** Opens the shared socket + hydrates devices — App.vue never does this for a
- * kiosk-only session, since it never sets `auth.user`. */
+/**
+ * Opens the shared socket + hydrates devices, driver manifests, and
+ * connections — App.vue never does this for a kiosk-only session, since it
+ * never sets `auth.user`. Manifests + connections are needed to resolve each
+ * device's generic widgets, same as the authenticated user panel.
+ */
 async function hydrate(): Promise<void> {
   realtime.open()
-  if (!devices.records.length) await devices.fetchAll()
+  await Promise.all([
+    devices.records.length ? Promise.resolve() : devices.fetchAll(),
+    drivers.load(),
+    connections.init(),
+  ])
 }
 
 async function load(name: string): Promise<void> {
@@ -111,7 +124,7 @@ watch(
 const deviceFor = (deviceId: string) => devices.records.find((d) => d.id === deviceId)
 const isRenderable = (deviceId: string): boolean => {
   const d = deviceFor(deviceId)
-  return !!d && deviceKind(d) !== 'unsupported'
+  return !!d && isWidgetRenderable(d)
 }
 
 const tiles = computed(() => kiosk.value?.config.tiles ?? [])

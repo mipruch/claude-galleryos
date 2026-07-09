@@ -126,6 +126,26 @@ export const manifest: DriverManifest = {
         },
         // TODO: add the rest of your commands here.
       ],
+
+      // ── Widgets ────────────────────────────────────────────────────────
+      // Generic UI controls this endpoint type supports. This is the whole
+      // point: the core UI ships ONE fader component and ONE power-switch
+      // component, and composes whatever a device declares here — you write
+      // zero UI code. Each entry only *names* a command/param/state key; if
+      // your device needs real translation (inverting a boolean, remembering a
+      // value while off, deriving a dynamic option list, …), do that inside
+      // this driver's own executeCommand/state emission, not here — see
+      // driver-bss's `bss-soundweb.matrix` endpoint type or driver-dali-*'s
+      // brightness preservation for worked examples.
+      //
+      // TODO: keep only the widgets your device actually has, matching the
+      // commands/stateSchema above. Delete this whole block if your endpoint
+      // type needs a genuinely bespoke UI (rare — see the BSS live-meter panel
+      // for when that's the right call instead).
+      widgets: [
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power" },
+        { kind: "fader", command: "setLevel", paramKey: "level", stateKey: "level" },
+      ],
     },
   ],
 };

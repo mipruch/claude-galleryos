@@ -1,14 +1,18 @@
 /**
- * Quick keyboard actions for a device, derived from its `capabilities`.
+ * Quick keyboard actions for a device, derived from its `capabilities` plus
+ * (for an enumerated choice) its resolved `select` widget binding.
  *
  * These power the command palette: param-less or simple commands a user can fire
- * with one keypress (Turn on/off, Mute, level presets…). Commands that need rich
- * input (setInput, recall, send) are intentionally omitted. The `command` /
- * `params` / `optimistic` shapes mirror what the device widgets send, so palette
- * actions behave identically to the on-screen controls.
+ * with one keypress (Turn on/off, Mute, level presets, a matrix input…). Commands
+ * that need free-form input (recall, send) are intentionally omitted. The
+ * `command` / `params` / `optimistic` shapes mirror what the device widgets send,
+ * so palette actions behave identically to the on-screen controls — and, same as
+ * the widgets, this stays driver-agnostic: no subtype ever appears here.
  */
 
-import { type DeviceRecord, type DeviceState, matrixInputs } from './devices'
+import type { WidgetBinding } from '@gallery/driver-core'
+import { type DeviceRecord, type DeviceState } from './devices'
+import { selectOptions } from './widgets'
 
 export interface DeviceAction {
   /** Stable id within a device (used as the list key). */
@@ -25,7 +29,8 @@ const LEVEL_PRESETS = [100, 50, 0] as const
 
 export function deviceActions(
   device: DeviceRecord,
-  connectionConfig?: Record<string, unknown>,
+  state: DeviceState,
+  widgets: WidgetBinding[],
 ): DeviceAction[] {
   const caps = new Set(device.capabilities)
   const actions: DeviceAction[] = []
@@ -65,15 +70,18 @@ export function deviceActions(
     actions.push({ id: 'shortOff', label: 'Pulse off', command: 'shortOff', params: {} })
   }
 
-  // Extron matrix output: generate an action per available input.
-  if (device.subtype === 'extron-matrix.output') {
-    for (const input of matrixInputs(connectionConfig)) {
+  // A select-kind widget (e.g. a matrix output's input picker): one quick
+  // action per available option. Generic — works for any driver's select
+  // widget, not just a matrix.
+  const select = widgets.find((w): w is Extract<WidgetBinding, { kind: 'select' }> => w.kind === 'select')
+  if (select) {
+    for (const option of selectOptions(select, state)) {
       actions.push({
-        id: `setInput-${input.value}`,
-        label: `Route: ${input.label}`,
-        command: 'setInput',
-        params: { input: input.value },
-        optimistic: { input: input.value },
+        id: `${select.command}-${option.value}`,
+        label: option.label,
+        command: select.command,
+        params: { [select.paramKey]: option.value },
+        optimistic: { [select.stateKey]: option.value },
       })
     }
   }

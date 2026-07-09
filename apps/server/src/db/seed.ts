@@ -50,6 +50,7 @@ const DEV_BSS_MIC2    = "55555555-5555-5555-5555-555555555602"; // Mic input 2
 const DEV_BSS_MAIN_L  = "55555555-5555-5555-5555-555555555603"; // Main bus L
 const DEV_BSS_MAIN_R  = "55555555-5555-5555-5555-555555555604"; // Main bus R
 const DEV_BSS_AUX     = "55555555-5555-5555-5555-555555555605"; // Aux send
+const DEV_BSS_MATRIX_1 = "55555555-5555-5555-5555-555555555606"; // Matrix crosspoint (route on/off)
 // DALI fixtures (deviceId = gateway's identifying number from a bus scan)
 const DEV_DALI_SPOT1  = "55555555-5555-5555-5555-555555555701"; // Spot 1 (DALI addr 0)
 const DEV_DALI_SPOT2  = "55555555-5555-5555-5555-555555555702"; // Spot 2 (DALI addr 1)
@@ -372,6 +373,28 @@ export const SEED_DEVICES = [
     capabilities: ["setLevel", "setMute"],
     icon: "headphones",
     displayOrder: 30,
+  },
+  {
+    id: DEV_BSS_MATRIX_1,
+    connectionId: CONN_BSS,
+    roomId: ROOM_HALL,
+    name: "BSS Matrix XPT 1",
+    description: "Matrix crosspoint (routing on/off) — BLU-100 sál",
+    type: "matrix",
+    // Same Gain/Mute processing block as a fader, but addressed as
+    // bss-soundweb.matrix so the driver exposes it as on/off/power instead of
+    // setMute/muted — see packages/drivers/driver-bss/src/manifest.ts.
+    subtype: "bss-soundweb.matrix",
+    address: {
+      node: 0x1dfe,
+      virtualDevice: 3,
+      object: 0x000400,
+      gainParam: 0x0060,
+      muteParam: 0x0061,
+    },
+    capabilities: ["setLevel", "on", "off"],
+    icon: "route",
+    displayOrder: 40,
   },
 
   // ── DALI fixtures ───────────────────────────────────────────

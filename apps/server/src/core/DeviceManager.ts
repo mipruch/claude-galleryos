@@ -235,7 +235,9 @@ export class DeviceManager {
 
     host.on("state", (event) => {
       // Write first, then read back the full merged state so the broadcast
-      // always includes the complete picture (e.g. preserved brightness).
+      // always includes the complete picture (e.g. a field from an earlier
+      // patch that this event didn't touch, like a matrix output's audioInput
+      // when only its video input changed).
       void this.opts.state.setDeviceState(event.endpointId, event.state).then(async () => {
         const full = (await this.opts.state.getDeviceState(event.endpointId)) ?? event.state;
         this.opts.eventBus.emit({

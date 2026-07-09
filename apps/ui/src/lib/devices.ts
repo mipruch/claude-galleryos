@@ -6,6 +6,10 @@
  * `DeviceRecord` is the serialized row returned by `GET /api/v1/devices`, while
  * the live values (fader level, mute, on/off) live separately in `DeviceState`,
  * hydrated from Redis on load and kept fresh by WebSocket `device:state` pushes.
+ *
+ * Which control widget(s) a device renders is no longer decided here — see
+ * `lib/widgets.ts` / `composables/useDeviceWidgets.ts`, which resolve that
+ * generically from the device's driver manifest instead of a subtype switch.
  */
 
 import type { DeviceDTO as DeviceRecord, DeviceState, RoomDTO } from '@gallery/types'
@@ -14,109 +18,6 @@ import { matchesAllTerms, normalize, searchTerms } from './text'
 // Re-exported under the UI's historical names so widgets keep importing from
 // `@/lib/devices`. `DeviceDTO` is the JSON-wire shape of a `devices` row.
 export type { DeviceDTO as DeviceRecord, DeviceState, DeviceStatus } from '@gallery/types'
-
-/**
- * Which control widget a device maps to. Derived from the driver endpoint
- * type (`subtype`). Adding a new driver = one line here.
- */
-export type DeviceKind =
-  | 'lightFader'
-  | 'bssFader'
-  | 'bssMatrix'
-  | 'bssMeter'
-  | 'matrixOutput'
-  | 'switch'
-  | 'unsupported'
-
-export function deviceKind(device: DeviceRecord): DeviceKind {
-  switch (device.subtype) {
-    case 'bss-soundweb.fader':
-      // Matrix routing cross-points share the same driver endpoint but use
-      // power (on/off) semantics instead of audio mute. Detect via either the
-      // dedicated subtype *or* the device's generic type field so existing
-      // devices don't need a subtype change — just set type='matrix' in the DB.
-      return device.type === 'matrix' ? 'bssMatrix' : 'bssFader'
-    case 'bss-soundweb.matrix':
-      return 'bssMatrix'
-    case 'bss-soundweb.meter-widget':
-      return 'bssMeter'
-    case 'dali.fixture':
-    case 'dali-foxtron.fixture':
-      return 'lightFader'
-    case 'netio.socket':
-    case 'pjlink.projector':
-      return 'switch'
-    case 'extron-matrix.output':
-      return 'matrixOutput'
-    default:
-      return 'unsupported'
-  }
-}
-
-// ── live-value readers (tolerant of missing / partial state) ────────────────
-
-/** Read a 0..1 fader/brightness value, defaulting to 0. */
-export function readLevel(state: DeviceState | undefined, ...keys: string[]): number {
-  for (const key of keys) {
-    const v = state?.[key]
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.min(1, Math.max(0, v))
-  }
-  return 0
-}
-
-/**
- * Read a boolean on/off value. Tolerates PJLink's string `power`: `"on"` and the
- * transitional `"warming"` count as on (the projector is lit / lighting up);
- * `"off"` and `"cooling"` count as off.
- */
-export function readOn(state: DeviceState | undefined, ...keys: string[]): boolean {
-  for (const key of keys) {
-    const v = state?.[key]
-    if (v === true) return true
-    if (typeof v === 'string') return v === 'on' || v === 'warming'
-    // boolean false: keep looking — a later key may carry an authoritative "on"
-  }
-  return false
-}
-
-/** Read an integer value (e.g. a matrix input number), defaulting to 0. */
-export function readInt(state: DeviceState | undefined, ...keys: string[]): number {
-  for (const key of keys) {
-    const v = state?.[key]
-    if (typeof v === 'number' && Number.isInteger(v)) return v
-  }
-  return 0
-}
-
-/** A selectable matrix input: its switch number and a human label. */
-export interface MatrixInput {
-  value: number
-  label: string
-}
-
-/**
- * Build the list of inputs a matrix output can select. Input labels are a
- * property of the *matrix*, so they're read from the **connection** config —
- * `config.inputs` (`string[]`, index 0 = input 1), named once and shared by
- * every output — not from the per-output device. Falls back to "Input N" up to
- * `config.inputCount` (default 10) for any unnamed input. Always prepends a
- * `None` (0 = untie) option.
- */
-export function matrixInputs(connectionConfig: Record<string, unknown> | undefined): MatrixInput[] {
-  const config = connectionConfig ?? {}
-  const labels = Array.isArray(config.inputs) ? (config.inputs as unknown[]) : []
-  const count = typeof config.inputCount === 'number' && config.inputCount > 0
-    ? config.inputCount
-    : labels.length || 10
-  const inputs: MatrixInput[] = [{ value: 0, label: 'None' }]
-  for (let i = 1; i <= count; i++) {
-    const label = typeof labels[i - 1] === 'string' && labels[i - 1] !== ''
-      ? `${i}. ${labels[i - 1] as string}`
-      : `Input ${i}`
-    inputs.push({ value: i, label })
-  }
-  return inputs
-}
 
 // ── optimistic-update helpers (snapshot + revert for command rollback) ───────
 

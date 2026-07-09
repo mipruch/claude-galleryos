@@ -13,7 +13,6 @@ import { toast } from 'vue-sonner'
 import type { IframeDTO, RoomDTO, ServerMessageData } from '@gallery/types'
 import {
   applyRevert,
-  deviceKind,
   deviceTypesOf,
   filterByRooms,
   filterByTypes,
@@ -28,12 +27,14 @@ import {
 } from '@/lib/devices'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
+import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
 import { useAuthStore } from './auth'
 import { useRealtimeStore } from './realtime'
 
 export const useDevicesStore = defineStore('devices', () => {
   const rt = useRealtimeStore()
   const auth = useAuthStore()
+  const { isRenderable } = useDeviceWidgets()
 
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
@@ -91,7 +92,7 @@ export const useDevicesStore = defineStore('devices', () => {
   // the current role can't see, so there's nothing to filter again here.
   const devices = computed(() =>
     [...records.value]
-      .filter((d) => d.enabled && deviceKind(d) !== 'unsupported')
+      .filter((d) => d.enabled && isRenderable(d))
       .sort((a, b) => a.displayOrder - b.displayOrder),
   )
 

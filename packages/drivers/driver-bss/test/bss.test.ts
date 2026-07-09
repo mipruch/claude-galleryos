@@ -224,6 +224,95 @@ describe("BssSoundwebDriver", () => {
     await driver.destroy();
   });
 
+  // ── matrix crosspoint (on/off instead of setMute) ──────────
+  // Same Gain/Mute block as the fader above, but addressed as a matrix — the
+  // driver must expose it as on/off/power, never muted.
+  const matrixAddr = { node: 1, virtualDevice: 3, object: 0x300, gainParam: 0, muteParam: 1 };
+  const matrixEndpoint: EndpointDescriptor = {
+    id: "matrix-1",
+    type: "bss-soundweb.matrix",
+    address: matrixAddr,
+    name: "Crosspoint 1",
+  };
+  const matrixMuteAddr = { node: 1, virtualDevice: 3, object: 0x300, param: 1 };
+
+  test("matrix — on/off send the same wire SET as setMute, but state comes back as power", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    const on = await driver.executeCommand(matrixEndpoint, "on", {});
+    expect(on.success).toBe(true);
+    expect(on.state).toEqual({ power: true });
+    await waitFor(() => mock.getValue(matrixMuteAddr) !== undefined);
+    expect(mock.getValue(matrixMuteAddr)).toBe(1);
+
+    const off = await driver.executeCommand(matrixEndpoint, "off", {});
+    expect(off.success).toBe(true);
+    expect(off.state).toEqual({ power: false });
+    await waitFor(() => mock.getValue(matrixMuteAddr) === 0);
+
+    await driver.destroy();
+  });
+
+  test("matrix — rejects setMute; a regular fader rejects on/off", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    const badMute = await driver.executeCommand(matrixEndpoint, "setMute", { muted: true });
+    expect(badMute.success).toBe(false);
+    expect(badMute.error).toContain("unknown command");
+
+    const badOn = await driver.executeCommand(endpoint, "on", {});
+    expect(badOn.success).toBe(false);
+    expect(badOn.error).toContain("unknown command");
+
+    await driver.destroy();
+  });
+
+  test("matrix — readState waits for power (not muted), subscription pushes emit power", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext());
+    await driver.connect();
+
+    const events: StateChangeEvent[] = [];
+    driver.on("state", (e: StateChangeEvent) => events.push(e));
+
+    await driver.executeCommand(matrixEndpoint, "setLevel", { level: 0.6 });
+    await driver.executeCommand(matrixEndpoint, "on", {});
+
+    const state = await driver.readState(matrixEndpoint);
+    expect(state).toMatchObject({ level: 0.6, power: true });
+    expect(state).not.toHaveProperty("muted");
+
+    // readState can return as soon as the optimistic echo satisfies its wait
+    // predicate, before the mock has actually processed the SUBSCRIBE — wait
+    // for that explicitly so the injected change below is guaranteed to push.
+    await waitFor(() => mock.received().includes(0x89));
+
+    // External change (front panel) — pushed as a subscription event, labelled power.
+    mock.setValue(matrixMuteAddr, 0, false);
+    await waitFor(() =>
+      events.some((e) => e.source === "subscription" && (e.state as { power?: boolean }).power === false),
+    );
+
+    await driver.destroy();
+  });
+
+  test("matrix — dry-run simulates power, never muted", async () => {
+    const driver = new BssSoundwebDriver();
+    await driver.init(connConfig(mock.port), testContext(true));
+    await driver.connect();
+
+    const result = await driver.executeCommand(matrixEndpoint, "on", {});
+    expect(result.success).toBe(true);
+    expect(result.state).toEqual({ power: true });
+    expect(mock.getValue(matrixMuteAddr)).toBeUndefined();
+
+    await driver.destroy();
+  });
+
   test("re-subscribe — endpoints subscribed before connect are subscribed on connect", async () => {
     const driver = new BssSoundwebDriver();
     await driver.init(connConfig(mock.port), testContext());

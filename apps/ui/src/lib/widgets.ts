@@ -1,0 +1,72 @@
+/**
+ * Pure helpers for resolving and reading generic device-control widgets.
+ *
+ * A device's `WidgetBinding[]` comes from its driver manifest's endpoint type
+ * (`@gallery/driver-core`) — this is the driver-agnostic replacement for the
+ * old `deviceKind()` subtype switch and the five bespoke widget components it
+ * fed. The UI ships one small Vue component per `WidgetBinding['kind']` and
+ * composes whatever a device's endpoint type declares (see `DeviceWidget.vue`);
+ * a new driver needs zero UI code, only manifest entries.
+ *
+ * Any real translation (inverting a boolean, remembering a value while off,
+ * deriving a dynamic option list, …) is deliberately NOT expressible here — it
+ * lives in the driver itself (see driver-bss's `bss-soundweb.matrix` endpoint
+ * type or driver-dali-*'s brightness preservation). A binding only ever names
+ * commands/params/state keys; reading it is a dumb lookup.
+ */
+import type { SelectWidgetBinding, WidgetBinding } from '@gallery/driver-core'
+
+/**
+ * Endpoint types with a bespoke, hand-written widget instead of a generic one —
+ * a deliberate, narrow exception (the BSS live-meter panel needs a whole panel
+ * of live bars, not a control), not a pattern to grow.
+ */
+const CUSTOM_WIDGET_TYPES = new Set<string>(['bss-soundweb.meter-widget'])
+
+export function isCustomWidgetType(endpointType: string | null | undefined): boolean {
+  return !!endpointType && CUSTOM_WIDGET_TYPES.has(endpointType)
+}
+
+/** Whether the UI can render *something* for this endpoint type — generic widgets or a named exception. */
+export function isRenderableType(
+  endpointType: string | null | undefined,
+  widgets: WidgetBinding[],
+): boolean {
+  return isCustomWidgetType(endpointType) || widgets.length > 0
+}
+
+/**
+ * Interpret a widget's raw state value as boolean. Tolerates a richer status
+ * string some drivers keep (e.g. PJLink's `power: "off"|"on"|"cooling"|"warming"`) —
+ * `"on"` and the transitional `"warming"` read as on.
+ */
+export function readBoolLike(value: unknown): boolean {
+  if (value === true) return true
+  if (typeof value === 'string') return value === 'on' || value === 'warming'
+  return false
+}
+
+/** Read a 0..1 numeric level, clamped, defaulting to 0. */
+export function readLevel(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+/** Read a select widget's currently selected value, defaulting to 0. */
+export function readSelected(value: unknown): number | string {
+  return typeof value === 'number' || typeof value === 'string' ? value : 0
+}
+
+/**
+ * Resolve a select widget's option list: a dynamic list the driver stamped
+ * onto state (`optionsKey`, e.g. Extron's per-connection input labels) wins
+ * over a static one declared directly in the manifest.
+ */
+export function selectOptions(
+  binding: SelectWidgetBinding,
+  state: Record<string, unknown> | undefined,
+): { value: number | string; label: string }[] {
+  const dynamic = binding.optionsKey ? state?.[binding.optionsKey] : undefined
+  if (Array.isArray(dynamic)) return dynamic as { value: number | string; label: string }[]
+  return binding.options ?? []
+}

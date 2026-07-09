@@ -23,23 +23,14 @@ async function writeJson(key: string, value: unknown): Promise<void> {
 }
 
 /**
- * True when a state merge would silently erase a known non-zero brightness.
+ * Merges a state patch into the existing device state.
  *
- * DALI drivers report `brightness: 0` whenever the light is physically off,
- * but we want to remember the last intended level so:
- *   - sliders stay at the correct position across all UIs while off, and
- *   - turning back on restores that level without needing to re-set the fader.
- */
-export function shouldPreserveBrightness(
-  existing: Record<string, unknown>,
-  merged: Record<string, unknown>,
-): boolean {
-  const turningOff = merged.on === false || merged.power === false;
-  return turningOff && !merged.brightness && !!existing.brightness;
-}
-
-/**
- * Merges a state patch into the existing device state, preserving the previous brightness value when turning off the device unless the patch specifies a new brightness.
+ * A plain shallow merge. Core deliberately carries no vendor-specific rules
+ * here — a driver is responsible for reporting state that's already correct
+ * (e.g. the DALI drivers remember and restore the fixture's last known
+ * brightness themselves, via their own per-connection KV store, instead of
+ * ever reporting a misleading `brightness: 0` while off; see
+ * DaliLunatoneDriver/DaliFoxtronDriver's `withPreservedBrightness`).
  *
  * @param existing - The current stored device state
  * @param patch - The state values to merge
@@ -49,9 +40,7 @@ export function mergeDeviceState(
   existing: Record<string, unknown>,
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged = { ...existing, ...patch };
-  if (shouldPreserveBrightness(existing, merged)) merged.brightness = existing.brightness;
-  return merged;
+  return { ...existing, ...patch };
 }
 
 /** Live state/status store backed by Redis. */

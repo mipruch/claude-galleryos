@@ -164,6 +164,10 @@ export const manifest: DriverManifest = {
           },
         },
       ],
+
+      widgets: [
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "on" },
+      ],
     },
   ],
 };

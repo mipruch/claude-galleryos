@@ -5,6 +5,17 @@ import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 import { makeDevice, makeRoom } from './fixtures'
 
+// This file is about room-scoping/counting, not widget resolution — stub it so
+// fixture devices don't need a matching connection + driver manifest set up
+// just to count as "renderable" (see __tests__/widgets.spec.ts for that).
+vi.mock('@/composables/useDeviceWidgets', () => ({
+  useDeviceWidgets: () => ({
+    widgetsFor: () => [],
+    isRenderable: () => true,
+    isCustomWidgetType: () => false,
+  }),
+}))
+
 beforeAll(() => {
   // The store opens a WebSocket lazily; stub the global so setup never throws.
   globalThis.WebSocket = class {

@@ -14,12 +14,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { SearchIcon, ChevronRightIcon, CornerDownLeftIcon } from '@lucide/vue'
 import { toast } from 'vue-sonner'
-import { deviceKind, searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
+import { searchDevices, typeLabel, type DeviceRecord } from '@/lib/devices'
+import { isCustomWidgetType } from '@/lib/widgets'
 import { searchScenes, sceneIcon, type SceneRecord } from '@/lib/scenes'
 import { deviceActions, type DeviceAction } from '@/lib/commands'
 import { useDevicesStore } from '@/stores/devices'
 import { useScenesStore } from '@/stores/scenes'
-import { useConnectionsStore } from '@/stores/connections'
+import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 interface PaletteItem {
@@ -33,7 +34,7 @@ interface PaletteItem {
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
-const connections = useConnectionsStore()
+const { widgetsFor } = useDeviceWidgets()
 const { open, close, toggle } = useCommandPalette()
 
 const query = ref('')
@@ -60,8 +61,7 @@ const results = computed<PaletteItem[]>(() => {
   if (view.value === 'device' && activeDevice.value) {
     const device = activeDevice.value
     const q = query.value.trim().toLowerCase()
-    const connConfig = connections.configOf(device.connectionId)
-    return deviceActions(device, connConfig)
+    return deviceActions(device, store.stateOf(device.id), widgetsFor(device))
       .filter((a) => !q || a.label.toLowerCase().includes(q))
       .map((a) => ({
         id: a.id,
@@ -83,7 +83,7 @@ const results = computed<PaletteItem[]>(() => {
     onSelect: () => runScene(s),
   }))
   const deviceItems: PaletteItem[] = searchDevices(store.devices, query.value, store.rooms)
-    .filter((d) => deviceKind(d) !== 'bssMeter')
+    .filter((d) => !isCustomWidgetType(d.subtype)) // the live-meter panel has no commands
     .map(
     (d) => ({
       id: d.id,

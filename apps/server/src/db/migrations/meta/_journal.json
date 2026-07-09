@@ -42,6 +42,13 @@
       "when": 1783502832457,
       "tag": "0005_fat_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0006_bss_matrix_endpoint_type",
+      "breakpoints": true
     }
   ]
 }

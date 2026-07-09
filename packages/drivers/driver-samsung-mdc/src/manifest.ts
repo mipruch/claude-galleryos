@@ -98,6 +98,10 @@ export const manifest: DriverManifest = {
           paramsSchema: { type: "object", properties: {} },
         },
       ],
+
+      widgets: [
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power" },
+      ],
     },
   ],
 };

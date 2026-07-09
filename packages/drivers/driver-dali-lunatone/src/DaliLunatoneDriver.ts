@@ -138,6 +138,9 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
       this.online = true;
       // `state` is undefined for stateless commands (e.g. scene recall).
       if (state) {
+        if (typeof state.brightness === "number" && state.brightness > 0) {
+          void this.rememberBrightness(endpoint.id, state.brightness);
+        }
         this.emit("state", {
           endpointId: endpoint.id,
           state,
@@ -159,9 +162,36 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
 
     const device = (await this.api("GET", `/device/${deviceId}`)) as DaliDevice;
     this.online = true;
-    const state = deviceState(device);
+    const state = await this.withPreservedBrightness(endpoint.id, deviceState(device));
     this.emit("state", { endpointId: endpoint.id, state, source: "poll", timestamp: new Date() });
     return state;
+  }
+
+  /**
+   * The gateway reports `brightness: 0` whenever a fixture is physically off —
+   * that's correct for the wire, but the UI wants the last *intended* level so
+   * a fader stays put while off and turning back on restores it. A genuine 0%
+   * while still on is left alone (that's a real state, not "off").
+   */
+  private async withPreservedBrightness(
+    endpointId: string,
+    state: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (typeof state.brightness === "number" && state.brightness > 0) {
+      void this.rememberBrightness(endpointId, state.brightness);
+      return state;
+    }
+    if (state.power !== false) return state;
+    const remembered = await this.recallBrightness(endpointId);
+    return remembered !== undefined ? { ...state, brightness: remembered } : state;
+  }
+
+  private rememberBrightness(endpointId: string, level: number): Promise<void> {
+    return this.ctx.storage.set(lastBrightnessKey(endpointId), level);
+  }
+
+  private async recallBrightness(endpointId: string): Promise<number | undefined> {
+    return this.ctx.storage.get<number>(lastBrightnessKey(endpointId));
   }
 
   // ── discovery ──────────────────────────────────────────────
@@ -307,4 +337,9 @@ function deviceState(device: DaliDevice): Record<string, unknown> {
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(1, Math.max(0, n));
+}
+
+/** Per-driver KV key for a fixture's last known non-zero brightness. */
+function lastBrightnessKey(endpointId: string): string {
+  return `lastBrightness:${endpointId}`;
 }

@@ -141,6 +141,11 @@ export const manifest: DriverManifest = {
           },
         },
       ],
+
+      widgets: [
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power" },
+        { kind: "mute", trigger: "param", command: "setMute", paramKey: "muted", stateKey: "muted" },
+      ],
     },
   ],
 };
