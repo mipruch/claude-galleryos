@@ -725,6 +725,29 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         tests, all hermetic (no real ffmpeg). DB migration `0004_cameras` + seed
         rows. Admin CRUD page landed at `/admin/cameras` — see the Admin pages
         list above.
+  - [x] **`driver-generic-trigger` — TCP/UDP/OSC "send a message" without writing
+        a driver:** the requested shortcut for one-off protocol messages (e.g. an
+        OSC cue to QLab) that don't warrant a bespoke driver package. One
+        connection (`host`/`port`, optional `txDelimiter`/`responseTimeoutMs` for
+        TCP) and any number of **buttons**, each firing one predefined message;
+        TCP opens a socket, writes, closes, UDP/OSC just sends a datagram — no
+        subscriptions, no discovery, no persistent connection to probe (so
+        `connect`/`healthCheck` always report online rather than lie about UDP).
+        Three endpoint types (`generic-trigger.tcp`/`.udp`/`.osc`) share the fifth
+        generic `WidgetBinding` kind, **`buttons`** (see "Driver-agnostic widgets"
+        above) — proof that the widget system scales to a new driver with zero UI
+        changes. The button list is per-device address data
+        (`address.buttons[]`, edited via the existing `ArrayObjectField`), not a
+        manifest property, so e.g. "QLab Jingles" and "QLab Alarms" can share one
+        connection with entirely different button sets, exactly as requested.
+        OSC args are free text, auto-typed per token (int/float/bool/string —
+        `parseOscArgs`); the OSC encoder was promoted from
+        `apps/server/test/input/osc-encode.ts` into `@gallery/driver-core/src/osc.ts`
+        so it sits next to the existing OSC *decoder* (`input/osc.ts`) instead of
+        being duplicated. 15 driver tests (in-process mock TCP/UDP servers) + 9
+        `driver-core` OSC tests + 4 new `buttonsFor` UI tests. Seed example: one
+        `generic-trigger` UDP connection ("QLab (sál)") with two devices sharing
+        it, "Qlab Jingles" and "Qlab Alarms".
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.

@@ -1,0 +1,19 @@
+{
+	"name": "@gallery/driver-generic-trigger",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Fire-and-forget message buttons over TCP, UDP, or OSC-over-UDP — for simple integrations that don't need a full driver.",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@gallery/driver-core": "workspace:*"
+	},
+	"scripts": {
+		"test": "bun test"
+	}
+}

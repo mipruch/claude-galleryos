@@ -20,6 +20,7 @@
         "@gallery/driver-dali-foxtron": "workspace:*",
         "@gallery/driver-dali-lunatone": "workspace:*",
         "@gallery/driver-extron-matrix": "workspace:*",
+        "@gallery/driver-generic-trigger": "workspace:*",
         "@gallery/driver-netio": "workspace:*",
         "@gallery/driver-pjlink": "workspace:*",
         "@gallery/driver-samsung-mdc": "workspace:*",
@@ -112,6 +113,13 @@
     },
     "packages/drivers/driver-extron-matrix": {
       "name": "@gallery/driver-extron-matrix",
+      "version": "0.1.0",
+      "dependencies": {
+        "@gallery/driver-core": "workspace:*",
+      },
+    },
+    "packages/drivers/driver-generic-trigger": {
+      "name": "@gallery/driver-generic-trigger",
       "version": "0.1.0",
       "dependencies": {
         "@gallery/driver-core": "workspace:*",
@@ -360,6 +368,8 @@
     "@gallery/driver-dali-lunatone": ["@gallery/driver-dali-lunatone@workspace:packages/drivers/driver-dali-lunatone"],
 
     "@gallery/driver-extron-matrix": ["@gallery/driver-extron-matrix@workspace:packages/drivers/driver-extron-matrix"],
+
+    "@gallery/driver-generic-trigger": ["@gallery/driver-generic-trigger@workspace:packages/drivers/driver-generic-trigger"],
 
     "@gallery/driver-netio": ["@gallery/driver-netio@workspace:packages/drivers/driver-netio"],
 

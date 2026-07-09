@@ -40,6 +40,7 @@ const CONN_DALI   = "22222222-2222-2222-2222-222222222255"; // Lunatone DALI-2 I
 const CONN_NETIO  = "22222222-2222-2222-2222-222222222266"; // NETIO PowerBOX 4Kx
 const CONN_DALI_FOX   = "22222222-2222-2222-2222-222222222277"; // Foxtron DALI gateway
 const CONN_EXTRON     = "22222222-2222-2222-2222-222222222288"; // Extron DTP CrossPoint 108 4K
+const CONN_QLAB       = "22222222-2222-2222-2222-222222222299"; // QLab (generic-trigger, OSC-over-UDP)
 
 // Devices
 const DEV_PROJECTOR   = "44444444-4444-4444-4444-444444444444";
@@ -67,6 +68,9 @@ const DEV_NETIO_SOCK3   = "55555555-5555-5555-5555-555555555803"; // Socket 3
 const DEV_NETIO_SOCK4   = "55555555-5555-5555-5555-555555555804"; // Socket 4
 // Extron matrix outputs (one device per output; address = { output })
 const DEV_EXTRON_OUT = (n: number): string => `55555555-5555-5555-5555-5555555559${String(n).padStart(2, "0")}`;
+// QLab OSC buttons — two devices sharing one connection, each its own button list.
+const DEV_QLAB_JINGLES = "55555555-5555-5555-5555-555555556101";
+const DEV_QLAB_ALARMS  = "55555555-5555-5555-5555-555555556102";
 
 // Scenes
 const SCENE_LIGHTS_ON    = "77777777-7777-7777-7777-777777777701";
@@ -207,6 +211,20 @@ export const SEED_CONNECTIONS = [
       password: "netio",
       responseTimeoutMs: 3000,
     },
+  },
+  {
+    id: CONN_QLAB,
+    name: "QLab (sál)",
+    // No dedicated QLab driver — driver-generic-trigger just fires OSC messages
+    // at QLab's built-in OSC listener (default port 53000). One connection per
+    // QLab workspace; any number of "button list" devices can share it (see
+    // DEV_QLAB_JINGLES / DEV_QLAB_ALARMS below).
+    driverId: "generic-trigger",
+    // ↓ Change to the Mac running QLab. Default OSC listen port is 53000.
+    host: "192.168.1.110",
+    port: 53000,
+    protocol: "udp",
+    config: {},
   },
 ];
 
@@ -571,6 +589,49 @@ export const SEED_DEVICES = [
   // 10 inputs; the input *labels* live on the connection (`config.inputs`),
   // named once for the whole matrix, so outputs carry no input metadata.
   ...EXTRON_OUTPUTS,
+
+  // ── QLab OSC buttons ─────────────────────────────────────────
+  // Two devices sharing one connection (CONN_QLAB) — no dedicated QLab driver,
+  // just driver-generic-trigger's OSC endpoint type. Each device's `buttons`
+  // are entirely its own; only the destination (host:port) is shared.
+  {
+    id: DEV_QLAB_JINGLES,
+    connectionId: CONN_QLAB,
+    roomId: ROOM_HALL,
+    name: "Qlab Jingles",
+    description: "One-tap show cues — each button fires one OSC message, no driver needed",
+    type: "control",
+    subtype: "generic-trigger.osc",
+    address: {
+      buttons: [
+        { label: "Fanfare", address: "/cue/1/start" },
+        { label: "Applause", address: "/cue/2/start" },
+        { label: "Drumroll", address: "/cue/3/start" },
+      ],
+    },
+    capabilities: ["send"],
+    icon: "music",
+    displayOrder: 70,
+  },
+  {
+    id: DEV_QLAB_ALARMS,
+    connectionId: CONN_QLAB,
+    roomId: ROOM_HALL,
+    name: "Qlab Alarms",
+    description: "Emergency cues on the same QLab workspace as Qlab Jingles, different buttons",
+    type: "control",
+    subtype: "generic-trigger.osc",
+    address: {
+      buttons: [
+        { label: "Fire Alarm", address: "/cue/10/start" },
+        { label: "All Clear", address: "/cue/11/start" },
+        { label: "STOP ALL", address: "/panic" },
+      ],
+    },
+    capabilities: ["send"],
+    icon: "siren",
+    displayOrder: 71,
+  },
 ];
 
 const SEED_SCENES = [

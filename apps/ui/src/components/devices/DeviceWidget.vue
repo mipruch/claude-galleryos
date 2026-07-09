@@ -51,7 +51,9 @@ const entries = computed<RenderEntry[]>(() =>
   widgets.value.map((binding, key) => {
     if (binding.kind !== 'fader') return { key, binding, dimmed: false, blockCommit: false }
 
-    const companion = widgets.value.find((w) => w.kind === 'power' || w.kind === 'mute')
+    const companion = widgets.value.find(
+      (w): w is Extract<WidgetBinding, { kind: 'power' | 'mute' }> => w.kind === 'power' || w.kind === 'mute',
+    )
     if (!companion) return { key, binding, dimmed: false, blockCommit: false }
 
     const raw = readBoolLike(store.stateOf(props.device.id)[companion.stateKey])

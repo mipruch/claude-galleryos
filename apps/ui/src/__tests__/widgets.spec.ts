@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SelectWidgetBinding } from '@gallery/driver-core'
 import {
+  buttonsFor,
   isCustomWidgetType,
   isRenderableType,
   readBoolLike,
@@ -88,5 +89,52 @@ describe('selectOptions', () => {
   it('returns an empty list when neither is present', () => {
     const bare: SelectWidgetBinding = { kind: 'select', command: 'setInput', paramKey: 'input', stateKey: 'input' }
     expect(selectOptions(bare, {})).toEqual([])
+  })
+})
+
+describe('buttonsFor', () => {
+  it('splits each entry into its label and the rest as command params', () => {
+    const device = {
+      address: {
+        buttons: [
+          { label: 'Go', address: '/go' },
+          { label: 'Level 80%', address: '/cue/1/level', args: '0.8' },
+        ],
+      },
+    }
+    expect(buttonsFor(device)).toEqual([
+      { label: 'Go', params: { address: '/go' } },
+      { label: 'Level 80%', params: { address: '/cue/1/level', args: '0.8' } },
+    ])
+  })
+
+  it('two devices sharing one connection can have entirely different buttons', () => {
+    const jingles = { address: { buttons: [{ label: 'Fanfare', payload: '/jingle/1' }] } }
+    const alarms = { address: { buttons: [{ label: 'Fire', payload: '/alarm/fire' }, { label: 'Evac', payload: '/alarm/evac' }] } }
+    expect(buttonsFor(jingles)).toEqual([{ label: 'Fanfare', params: { payload: '/jingle/1' } }])
+    expect(buttonsFor(alarms)).toEqual([
+      { label: 'Fire', params: { payload: '/alarm/fire' } },
+      { label: 'Evac', params: { payload: '/alarm/evac' } },
+    ])
+  })
+
+  it('returns an empty list when buttons is missing or not an array', () => {
+    expect(buttonsFor({ address: {} })).toEqual([])
+    expect(buttonsFor({ address: { buttons: 'nope' } })).toEqual([])
+  })
+
+  it('skips malformed entries (no label, or not an object) instead of throwing', () => {
+    const device = {
+      address: {
+        buttons: [
+          { label: 'Good', payload: 'x' },
+          { payload: 'no label' },
+          { label: '', payload: 'blank label' },
+          'not an object',
+          null,
+        ],
+      },
+    }
+    expect(buttonsFor(device)).toEqual([{ label: 'Good', params: { payload: 'x' } }])
   })
 })

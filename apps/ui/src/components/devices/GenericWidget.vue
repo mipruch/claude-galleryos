@@ -8,6 +8,7 @@ import type { WidgetBinding } from '@gallery/driver-core'
 import PowerWidget from './PowerWidget.vue'
 import FaderWidget from './FaderWidget.vue'
 import SelectWidget from './SelectWidget.vue'
+import ButtonsWidget from './ButtonsWidget.vue'
 import type { DeviceRecord } from '@/lib/devices'
 
 withDefaults(
@@ -36,4 +37,5 @@ withDefaults(
     :binding="binding"
   />
   <SelectWidget v-else-if="binding.kind === 'select'" :device="device" :binding="binding" />
+  <ButtonsWidget v-else-if="binding.kind === 'buttons'" :device="device" :binding="binding" />
 </template>

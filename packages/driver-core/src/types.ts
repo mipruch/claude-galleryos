@@ -80,7 +80,7 @@ export interface CommandDefinition {
 // ─────────────────────────────────────────────────────────────
 
 /** The generic controls the core UI knows how to render. */
-export type WidgetKind = "power" | "mute" | "fader" | "select";
+export type WidgetKind = "power" | "mute" | "fader" | "select" | "buttons";
 
 /**
  * A boolean widget (`power` or `mute`) driven by two zero-arg commands, e.g.
@@ -147,7 +147,24 @@ export interface SelectWidgetBinding {
   optionsKey?: string;
 }
 
-export type WidgetBinding = BoolWidgetBinding | FaderWidgetBinding | SelectWidgetBinding;
+/**
+ * A row of momentary trigger buttons — each fires one predefined, fire-and-
+ * forget command and tracks no state (there's no "current" button, unlike
+ * `select`). The button list itself is per-*device* data, not a manifest-wide
+ * constant: each device's own `address.buttons` (validated by that endpoint
+ * type's `addressSchema`, e.g. `[{ label, payload }]` or
+ * `[{ label, address, args }]`) supplies both the labels and the exact params
+ * for each click — so "Qlab Jingles" and "Qlab Alarms" can be two devices
+ * sharing one connection with entirely different buttons. See
+ * driver-generic-trigger for a worked example.
+ */
+export interface ButtonsWidgetBinding {
+  kind: "buttons";
+  /** Command to call for every button; each button's own address fields (minus `label`) become its params. */
+  command: string;
+}
+
+export type WidgetBinding = BoolWidgetBinding | FaderWidgetBinding | SelectWidgetBinding | ButtonsWidgetBinding;
 
 /** A kind of addressable endpoint that can live under a connection. */
 export interface EndpointTypeDefinition {

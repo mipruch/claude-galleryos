@@ -70,3 +70,38 @@ export function selectOptions(
   if (Array.isArray(dynamic)) return dynamic as { value: number | string; label: string }[]
   return binding.options ?? []
 }
+
+/** One momentary trigger button, resolved from a device's own `address.buttons`. */
+export interface ButtonDefinition {
+  label: string
+  /** Every other field of the button entry, sent verbatim as the command's params. */
+  params: Record<string, unknown>
+}
+
+/**
+ * Read a `buttons` widget's button list from `device.address.buttons` — unlike
+ * every other widget kind, this one is per-*device* data (an admin-configured
+ * array, validated server-side by that endpoint type's addressSchema), not a
+ * manifest-wide constant: "Qlab Jingles" and "Qlab Alarms" are two devices
+ * sharing one connection with entirely different buttons. Each entry's `label`
+ * is split out for display; everything else becomes that button's command
+ * params verbatim (matching whatever shape the driver's `send` command
+ * expects — e.g. `{payload}` or `{address, args}`).
+ *
+ * Malformed entries are skipped rather than thrown on — the address already
+ * passed Ajv validation server-side, but a stale cached record shouldn't crash
+ * the widget.
+ */
+export function buttonsFor(device: { address: Record<string, unknown> }): ButtonDefinition[] {
+  const raw = device.address?.buttons
+  if (!Array.isArray(raw)) return []
+
+  const buttons: ButtonDefinition[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const { label, ...params } = entry as Record<string, unknown>
+    if (typeof label !== 'string' || label === '') continue
+    buttons.push({ label, params })
+  }
+  return buttons
+}

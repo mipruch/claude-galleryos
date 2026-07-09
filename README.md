@@ -180,6 +180,7 @@ gallery-control/
         ├── driver-pixera/
         ├── driver-vmix/
         ├── driver-tcp-generic/     # Konfigurovatelný TCP driver pro jednoduché zařízení
+        ├── driver-generic-trigger/ # TCP/UDP/OSC "pošli zprávu" bez psaní driveru
         └── driver-template/        # Šablona pro nový driver
 ```
 
@@ -849,6 +850,7 @@ Manifest každého driveru je staticky exportovaný z balíčku (`packages/drive
 |`samsung-mdc`  |Samsung displeje (zapnutí/vypnutí) ✓  |TCP/MDC binary|Ne                  |Ne        |
 |`vmix`         |vMix video mixer                      |TCP         |Ano (XML subscription)|Ne        |
 |`tcp-generic`  |Jednoduchá TCP zařízení (závěsy, relé)|TCP         |Ne                    |Ne        |
+|`generic-trigger`|TCP/UDP/OSC "pošli zprávu" (QLab apod.) ✓|TCP, UDP, OSC/UDP|Ne              |Ne        |
 |`pixera`       |Pixera media server *(odloženo)*      |TCP/JSON API|Ano                   |Ne        |
 
 #### `driver-bss` — BSS Soundweb London (implementováno)
@@ -1083,6 +1085,57 @@ označen jako offline. To je ta „Online/Offline lež“.
   cachovaný healthCheck, „ERR drží online“, offline na výpadku spojení,
   on/off/setInput/setMute, neplatný vstup bez I/O, auth (správné/špatné heslo),
   dry-run.
+
+#### `driver-generic-trigger` — TCP / UDP / OSC „pošli zprávu" bez psaní driveru ✓
+
+Balíček `packages/drivers/driver-generic-trigger` (driver id `generic-trigger`).
+Odpověď na potřebu *„chci poslat OSC zprávu do QLabu, aniž bych pro něj psal
+celý driver"* — jedna connection (host/port) a libovolný počet **tlačítek**,
+každé s vlastní předdefinovanou zprávou. Kliknutí otevře spojení (u TCP),
+pošle payload a spojení zavře; u UDP/OSC je to fire-and-forget datagram. Bez
+subscriptions, bez discovery — jen jednosměrné „pošli a zapomeň".
+
+- **Tři endpoint typy sdílející jeden `buttons` widget** (§11 "Driver-agnostic
+  widgets"): `generic-trigger.tcp`, `generic-trigger.udp` a `generic-trigger.osc`.
+  Adresa každého je `{ buttons: [...] }` — pole objektů editovaných
+  `ArrayObjectField.vue` (stejný generický mechanismus jako BSS metrů seznam),
+  **ne** vlastnost manifestu, takže dvě různá zařízení (např. „QLab Jingles" a
+  „QLab Alarms") mohou sdílet jednu connection s úplně jinými sadami tlačítek.
+  - TCP/UDP tlačítko: `{ label, payload }` — syrový text (TCP navíc
+    `appendDelimiter`, výchozí `true`, viz `txDelimiter` níže).
+  - OSC tlačítko: `{ label, address, args? }` — `address` je OSC adresní vzor
+    (`^/`, např. `/cue/1/start`), `args` je volný text, kde se **každý token
+    samostatně typuje**: jen číslice → int, desetinná tečka → float,
+    `true`/`false` → bool, jinak string (`parseOscArgs` v `@gallery/driver-core`).
+  - Všechny položky tlačítka jsou **jen řetězce/čísla** — `ArrayObjectField.vue`
+    neumí boolean vstup, takže by se boolean serializoval jako text a spadl na
+    Ajv validaci; `appendDelimiter` proto zůstal jen volitelný **command
+    parametr** s výchozí hodnotou v driveru, nikdy pole tlačítka.
+- **OSC encoder povýšen do `@gallery/driver-core`** (`src/osc.ts`) —
+  `encodeOscMessage`/`encodeOscBundle`/`oscString`/`parseOscArgs`, čistě
+  postavené vedle existujícího OSC **dekodéru** v `apps/server/src/input/osc.ts`
+  (vstupní OSC server). `apps/server/test/input/osc-encode.ts` je teď jen
+  re-export ze sdíleného balíčku, aby nevznikl duplicitní kodek.
+- **`GenericTriggerDriver.ts`** — `connect`/`healthCheck`/`isConnected` vždy
+  hlásí online (žádné TCP/UDP spojení není udržované mezi příkazy, takže
+  probe by u UDP/OSC nutně lhala). `executeCommand` validuje parametry přes
+  manifestový JSON Schema, v dry-run módu neposílá žádný paket, jinak otevře
+  krátkožijící TCP socket (`TcpClient`, connect → write → close) nebo UDP
+  datagram (`Bun.udpSocket({ connect: { hostname, port } })`) a pošle payload.
+- **Connection config:** `{ host, port, txDelimiter='\r\n' (jen TCP),
+  responseTimeoutMs=2000 (jen TCP, connect timeout) }`. Capabilities:
+  `discovery: false`, `subscriptions: false`, `bidirectional: false`.
+- Testy: in-process mock TCP/UDP servery (`test/mock-tcp-server.ts`,
+  `test/mock-udp-server.ts`) + 15 testů (`test/generic-trigger.test.ts`):
+  vždy-online connect/health, TCP odeslání (výchozí/vlastní delimiter,
+  `appendDelimiter:false`, nedostupný host), syrové UDP odeslání, OSC (nulový
+  počet argumentů, typované argumenty, neplatná adresa odmítnuta validací),
+  dry-run (žádný skutečný provoz pro TCP ani UDP/OSC). Plus 9 testů pro
+  `packages/driver-core/src/osc.ts` samotný.
+- **Příklad v seed datech:** connection „QLab (sál)" (`generic-trigger`, UDP,
+  port 53000) se dvěma zařízeními — „Qlab Jingles" (Fanfare/Applause/Drumroll)
+  a „Qlab Alarms" (Fire Alarm/All Clear/STOP ALL) — obě sdílející jednu
+  connection přesně dle původního požadavku.
 
 -----
 
@@ -2293,6 +2346,34 @@ cyklus řízený sledovaností (jeden ffmpeg proces na *právě sledovanou* kame
   zrcadlí `computeIframeReorder` (unit-testováno). Backend CRUD, schéma i
   `lib/api.ts` klient existovaly už dřív. `AdminSidebar.vue` má položku
   „Cameras".
+
+#### Implementováno (generic-trigger — pátý generický widget: `buttons`)
+
+Ověření, že „driver-agnostic widgets" (výše) doopravdy škáluje na nový driver
+**beze změny UI kódu**: `driver-generic-trigger` (§6) přidal pátý
+`WidgetBinding` druh, `buttons`, a nedotkl se přitom `DeviceWidget.vue`,
+`SchemaFields.vue` ani `ArrayObjectField.vue` — jen manifest + jedna nová
+generická komponenta.
+
+- **`ButtonsWidgetBinding = { kind: 'buttons', command: string }`**
+  (`packages/driver-core/src/types.ts`) — na rozdíl od `power`/`fader`/`select`
+  nenese `stateKey` (tlačítka nemají „aktuální stav", jen odpálí příkaz a
+  skončí), což si vyžádalo explicitní type-guard v `DeviceWidget.vue`'s
+  fader/power párování (`Extract<WidgetBinding, {kind:'power'|'mute'}>`), aby
+  TypeScript správně zúžil typ i bez společného pole.
+- **Seznam tlačítek je per-zařízení data** (`device.address.buttons[]`), ne
+  vlastnost manifestu — stejný vzor jako BSS metr widgetu `meters[]`. Dvě
+  zařízení na jedné connection (`generic-trigger.osc`) tak mají naprosto
+  odlišné sady tlačítek; `lib/widgets.ts#buttonsFor(device)` rozdělí každou
+  položku na `{ label, params }` (`params` = zbytek objektu bez `label`).
+- **`ButtonsWidget.vue`** — řádek `outline` tlačítek; per-tlačítko (ne
+  per-widget) `pending` flag zamkne jen právě kliknuté tlačítko, takže odpálení
+  dvou různých cue rychle po sobě zůstává plynulé, ale dvojklik na **stejné**
+  tlačítko ho nemůže odpálit dvakrát. Bez optimistického stavu — tlačítka jsou
+  bezstavová (`store.sendCommand`, žádný `patchDeviceState`).
+- Testy: `apps/ui/src/__tests__/widgets.spec.ts` (`buttonsFor` — rozdělení
+  label/params, dvě zařízení s různými tlačítky na jedné connection,
+  chybějící/neplatné pole, přeskočení poškozených položek).
 
 ### Princip fungování
 
