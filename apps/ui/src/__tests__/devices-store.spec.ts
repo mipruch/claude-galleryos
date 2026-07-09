@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { RoomDTO } from '@gallery/types'
-import { useAuthStore } from '@/stores/auth'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 import { makeDevice, makeRoom } from './fixtures'
@@ -19,9 +18,6 @@ beforeAll(() => {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // This suite is about room-scoping, not role visibility — log in as an
-  // admin (sees everything) so it isn't coupled to the visibility feature.
-  useAuthStore().role = { id: 'r', name: 'Admin', isAdmin: true, deviceIds: [] }
 })
 
 function dev(id: string, roomId: string | null, type = 'light'): DeviceRecord {

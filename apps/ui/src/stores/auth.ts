@@ -2,10 +2,14 @@
  * Auth store — a front-end-only login gate (see PLAN.md "Priority 6").
  *
  * There is no server-side session: the backend checks the password once and
- * returns the user + role, and this store just remembers that locally to
- * decide what to render (which admin sections are reachable, which devices
- * show up). Persisted to sessionStorage so a page refresh doesn't force a
- * re-login, but closing the tab does.
+ * returns the user + role, and this store just remembers that locally (in
+ * sessionStorage, so a page refresh doesn't force a re-login but closing the
+ * tab does) to decide what to render — which admin sections are reachable.
+ *
+ * It deliberately does not cache which devices the role may see: every
+ * device fetch passes `role.id` and the server decides what comes back (see
+ * `stores/devices.ts`), so a plain reload always reflects the current
+ * permissions with nothing here to go stale.
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -22,7 +26,6 @@ interface AuthRole {
   id: string
   name: string
   isAdmin: boolean
-  deviceIds: string[]
 }
 
 const STORAGE_KEY = 'galleryos-auth'

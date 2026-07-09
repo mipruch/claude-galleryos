@@ -4,7 +4,9 @@ import { useAuthStore } from '@/stores/auth'
 
 // Mock the REST client so the store test never hits the network.
 vi.mock('@/lib/api', () => ({
-  api: { auth: { login: vi.fn() } },
+  api: {
+    auth: { login: vi.fn() },
+  },
 }))
 
 import { api } from '@/lib/api'
@@ -27,7 +29,7 @@ describe('useAuthStore', () => {
   it('login stores the user/role and derives isAdmin from the role', async () => {
     vi.mocked(api.auth.login).mockResolvedValue({
       user: { id: 'u1', username: 'admin', displayName: 'Administrator' },
-      role: { id: 'r1', name: 'Admin', isAdmin: true, deviceIds: [] },
+      role: { id: 'r1', name: 'Admin', isAdmin: true },
     })
     const auth = useAuthStore()
     const ok = await auth.login('admin', 'secret123')
@@ -49,7 +51,7 @@ describe('useAuthStore', () => {
   it('restores a previous login from sessionStorage via init()', async () => {
     vi.mocked(api.auth.login).mockResolvedValue({
       user: { id: 'u1', username: 'custodian', displayName: null },
-      role: { id: 'r2', name: 'Custodian', isAdmin: false, deviceIds: ['d1'] },
+      role: { id: 'r2', name: 'Custodian', isAdmin: false },
     })
     const auth = useAuthStore()
     await auth.login('custodian', 'secret123')
@@ -61,13 +63,13 @@ describe('useAuthStore', () => {
     restored.init()
     expect(restored.isAuthenticated).toBe(true)
     expect(restored.user?.username).toBe('custodian')
-    expect(restored.role?.deviceIds).toEqual(['d1'])
+    expect(restored.role?.name).toBe('Custodian')
   })
 
   it('logout clears the user/role and sessionStorage', async () => {
     vi.mocked(api.auth.login).mockResolvedValue({
       user: { id: 'u1', username: 'admin', displayName: null },
-      role: { id: 'r1', name: 'Admin', isAdmin: true, deviceIds: [] },
+      role: { id: 'r1', name: 'Admin', isAdmin: true },
     })
     const auth = useAuthStore()
     await auth.login('admin', 'secret123')

@@ -669,14 +669,14 @@ unlocked — not a hardened security boundary. So:
       User UI. Empty = sees nothing; admin roles bypass it entirely.
 - [x] **`POST /api/v1/auth/login`** — a one-shot credential check
       (`apps/server/src/api/routes/auth.ts`). Returns the user + role
-      (including `deviceIds`) on success. **No cookie, no token, no
-      server-side session** — the frontend just remembers this locally
-      (`useAuthStore`, persisted to `sessionStorage`) to decide what to
-      render. The HTTP API and `/ws` stay exactly as open as every other
-      route in this codebase — the same trust level already accepted for
-      OSC/TCP ingress. This is a front-end convenience gate, not a hardened
-      auth boundary; documenting that plainly here so it's a design
-      decision, not a hidden gap.
+      (`id`/`name`/`isAdmin`, no `deviceIds`) on success. **No cookie, no
+      token, no server-side session** — the frontend just remembers this
+      locally (`useAuthStore`, persisted to `sessionStorage`) to decide what
+      to render (which admin sections are reachable). The HTTP API and
+      `/ws` stay exactly as open as every other route in this codebase —
+      the same trust level already accepted for OSC/TCP ingress. This is a
+      front-end convenience gate, not a hardened auth boundary; documenting
+      that plainly here so it's a design decision, not a hidden gap.
 - [x] **Users/Roles CRUD** (`api/routes/users.ts`, `roles.ts`) — admin-only
       by convention (nothing enforces it server-side, matching the point
       above); no self-registration, admin creates every account.
@@ -684,12 +684,22 @@ unlocked — not a hardened security boundary. So:
       pure/unit-tested) — every route except `/login` and the kiosk viewer
       requires a logged-in user (checked against the local `useAuthStore`
       state); `meta.admin` routes additionally require `role.isAdmin`.
-- [x] **Device visibility** — `useDevicesStore`'s `devices` computed adds
-      `canSeeDevice(id, role)` (`lib/devices.ts`, pure/unit-tested) to its
-      existing `enabled`/`deviceKind` filter. The backend `GET /devices`
-      stays unfiltered; the WS broadcast is untouched too (still one shared
-      topic to everyone) — a device the frontend never kept a record for is
-      simply a no-op when its `device:state` update arrives.
+- [x] **Device visibility, decided server-side** — `GET /devices` and `GET
+      /devices/live` accept `?role_id=`; `filterByRole`
+      (`api/routes/devices.ts`) scopes the returned list to that role's
+      `role_devices` (admin or no `role_id` → everything, unchanged).
+      `useDevicesStore.fetchAll()` passes `auth.role?.id` on every fetch, so
+      the server — not a client-side cache — decides what comes back. This
+      replaced an earlier client-side `canSeeDevice` filter plus a
+      `refresh()`/polling mechanism: that design cached the role's
+      `deviceIds` in `useAuthStore` at login time, which went stale the
+      moment an admin edited the role afterwards (a real reported bug — a
+      barista granted devices mid-session saw nothing until an explicit
+      logout/login). Filtering server-side on every fetch instead means a
+      plain page reload is always correct, with nothing cached to go stale
+      and no timer to maintain. The WS broadcast is still untouched (one
+      shared topic to everyone) — a device the frontend never kept a record
+      for is simply a no-op when its `device:state` update arrives.
 - [x] **Inactivity auto-logout** — client-side only (`useIdle` from
       `@vueuse/core`, first real use of it here), timeout minutes
       admin-configurable from Settings → Security, persisted through the

@@ -96,10 +96,12 @@ interface SystemStatus {
  * `POST /auth/login` response — a one-shot credential check, not a session
  * (see PLAN.md "Priority 6"): no cookie is set, this is just enough for the
  * frontend to decide what to render, remembered locally by `useAuthStore`.
+ * Device visibility isn't part of this shape — it's decided fresh by the
+ * server on every device fetch (`?role_id=`), not cached from login.
  */
 interface AuthLoginResult {
   user: { id: string; username: string; displayName: string | null }
-  role: { id: string; name: string; isAdmin: boolean; deviceIds: string[] }
+  role: { id: string; name: string; isAdmin: boolean }
 }
 
 type SceneExecutionDTO = Jsonify<SceneExecution>
@@ -139,16 +141,23 @@ function qs(params?: Record<string, QueryValue>): string {
 
 export const api = {
   devices: {
-    list: (filter?: { roomId?: string; type?: string; enabled?: boolean; connectionId?: string }) =>
+    list: (filter?: {
+      roomId?: string
+      type?: string
+      enabled?: boolean
+      connectionId?: string
+      roleId?: string
+    }) =>
       get<DeviceDTO[]>(
         `/devices${qs({
           room_id: filter?.roomId,
           type: filter?.type,
           enabled: filter?.enabled,
           connection_id: filter?.connectionId,
+          role_id: filter?.roleId,
         })}`,
       ),
-    live: () => get<DeviceLiveMap>('/devices/live'),
+    live: (roleId?: string) => get<DeviceLiveMap>(`/devices/live${qs({ role_id: roleId })}`),
     get: (id: string) => get<DeviceDTO>(`/devices/${id}`),
     create: (input: Partial<DeviceDTO>) => post<DeviceDTO>('/devices', input),
     update: (id: string, patch: Partial<DeviceDTO>) => put<DeviceDTO>(`/devices/${id}`, patch),

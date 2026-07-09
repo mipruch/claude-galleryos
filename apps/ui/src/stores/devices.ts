@@ -13,7 +13,6 @@ import { toast } from 'vue-sonner'
 import type { IframeDTO, RoomDTO, ServerMessageData } from '@gallery/types'
 import {
   applyRevert,
-  canSeeDevice,
   deviceKind,
   deviceTypesOf,
   filterByRooms,
@@ -87,13 +86,12 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   // Devices we know how to render, sorted by the admin-defined display order.
-  // Also scoped to what the current role may see (canSeeDevice) — a front-end
-  // gate, not a backend one: GET /devices still returns everything, and the
-  // kiosk viewer never reads this computed at all (it looks up specific
-  // device ids from its own tile list instead), so it's unaffected either way.
+  // Role-based visibility is already applied server-side (fetchAll passes
+  // `role_id`, see api.devices.list/live) — records never contains a device
+  // the current role can't see, so there's nothing to filter again here.
   const devices = computed(() =>
     [...records.value]
-      .filter((d) => d.enabled && deviceKind(d) !== 'unsupported' && canSeeDevice(d.id, auth.role))
+      .filter((d) => d.enabled && deviceKind(d) !== 'unsupported')
       .sort((a, b) => a.displayOrder - b.displayOrder),
   )
 
@@ -250,10 +248,13 @@ export const useDevicesStore = defineStore('devices', () => {
     try {
       // The device list + one batched live snapshot ({ [id]: { state, status } })
       // + rooms (for the "group by room" headings), instead of 2×N per-device
-      // fetches.
+      // fetches. `role_id` lets the server scope the list to what the current
+      // role may see — omitted (kiosk sessions have no `auth.role`) or an admin
+      // role returns everything, unchanged.
+      const roleId = auth.role?.id
       const [list, live, roomList, iframeList] = await Promise.all([
-        api.devices.list(),
-        api.devices.live(),
+        api.devices.list({ roleId }),
+        api.devices.live(roleId),
         api.rooms.list(),
         api.iframes.list(),
       ])

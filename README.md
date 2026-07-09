@@ -2908,20 +2908,30 @@ vstupu); autentizace je čistě front-end brána.
   `roleId`+`deviceId`) — prázdná množina znamená, že role nevidí žádné
   zařízení.
 - **`POST /api/v1/auth/login`** (`apps/server/src/api/routes/auth.ts`) —
-  jednorázová kontrola hesla. Vrací uživatele + roli (včetně `deviceIds`).
-  **Žádný cookie, token ani server-side session** — frontend (`useAuthStore`,
-  persistováno v `sessionStorage`) si to jen pamatuje lokálně, aby věděl, co
-  zobrazit. `users`/`roles` CRUD (`api/routes/users.ts`, `roles.ts`) nejsou
+  jednorázová kontrola hesla. Vrací uživatele + roli (`id`/`name`/`isAdmin`,
+  bez `deviceIds`). **Žádný cookie, token ani server-side session** —
+  frontend (`useAuthStore`, persistováno v `sessionStorage`) si to jen
+  pamatuje lokálně, aby věděl, co zobrazit (které admin sekce jsou
+  dostupné). `users`/`roles` CRUD (`api/routes/users.ts`, `roles.ts`) nejsou
   serverem nijak vynucené jako admin-only — to je záměr, ne mezera.
 - **Router guard** (`apps/ui/src/router/index.ts` + čistá, testovaná
   `lib/router.ts`) — každá route kromě `/login` a kiosk vieweru vyžaduje
   přihlášeného uživatele (dle lokálního stavu `useAuthStore`); `meta.admin`
   routy navíc vyžadují `role.isAdmin`.
-- **Viditelnost zařízení** — `useDevicesStore`'s `devices` computed přidává
-  `canSeeDevice(id, role)` (`lib/devices.ts`, čisté, testované) ke stávajícímu
-  filtru `enabled`/`deviceKind`. `GET /devices` i WS broadcast zůstávají
-  nezměněné (stále jeden sdílený topic všem) — aktualizace pro zařízení, které
-  frontend nezná, je prostý no-op.
+- **Viditelnost zařízení, řešená na serveru** — `GET /devices` a `GET
+  /devices/live` přijímají `?role_id=`; `filterByRole`
+  (`api/routes/devices.ts`) omezí vrácený seznam na `role_devices` dané role
+  (admin nebo bez `role_id` → vše, beze změny). `useDevicesStore.fetchAll()`
+  posílá `auth.role?.id` při každém fetchi, takže o tom, co se vrátí,
+  rozhoduje server, ne klientská cache. Nahradilo to dřívější řešení
+  (klientský filtr `canSeeDevice` + `refresh()`/polling), které cachovalo
+  `role.deviceIds` už při loginu — a to zastaralo ve chvíli, kdy admin roli
+  upravil (reálně nahlášený bug: baristovi nově přidané zařízení se
+  neobjevilo, dokud se ručně neodhlásí a znovu nepřihlásí). Filtrování na
+  serveru při každém fetchi znamená, že prostý reload stránky je vždy správně, bez
+  jakékoliv cache, co by mohla zastarat, a bez timeru k údržbě. WS broadcast
+  zůstává nezměněný (stále jeden sdílený topic všem) — aktualizace pro
+  zařízení, které frontend nezná, je prostý no-op.
 - **Automatické odhlášení po nečinnosti** — čistě klientské (`useIdle` z
   `@vueuse/core`), interval nastavitelný adminem v Settings → Security,
   uložený přes doposud nevyužitou tabulku `config` (`GET/PUT
