@@ -3,10 +3,13 @@
  *   - User panel (`UserLayout`) at the root — device control, schedules monitor.
  *     The room pages render `DevicesView`; the route's `roomId` param drives the
  *     device scope so the URL is the source of truth and a refresh stays put.
- *   - Admin portal (`AdminLayout`) under `/admin/**` — only the built pages are
- *     registered; later passes add connections/devices/scenes/etc. Access is
- *     structural for now (no auth — PLAN P6); the `meta.admin` flag and the
- *     guard placeholder below are where a real auth check will slot in.
+ *   - Admin portal (`AdminLayout`) under `/admin/**` — only reachable to a role
+ *     with `isAdmin` (see the guard below and `stores/auth.ts`).
+ *
+ * Auth is a front-end-only gate (PLAN.md "Priority 6", simplified): the guard
+ * below checks the locally-remembered `useAuthStore` state, not a server
+ * session — every route except `/login` and the kiosk viewer requires a
+ * logged-in user, and `meta.admin` routes additionally require an admin role.
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import UserLayout from '@/layouts/UserLayout.vue'
@@ -14,6 +17,8 @@ import AdminLayout from '@/layouts/AdminLayout.vue'
 import DevicesView from '@/views/DevicesView.vue'
 import IframeView from '@/views/IframeView.vue'
 import SchedulesView from '@/views/SchedulesView.vue'
+import { resolveGuard } from '@/lib/router'
+import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -121,12 +126,27 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/SettingsView.vue'),
         meta: { title: 'Settings', subtitle: 'Appearance, system and drivers' },
       },
+      {
+        path: 'users',
+        name: 'admin-users',
+        component: () => import('@/views/admin/UsersView.vue'),
+        meta: { title: 'Users', subtitle: 'Accounts and roles' },
+      },
     ],
   },
-  // Chromeless kiosk viewer — no header/sidebar, just the canvas (toasts come
-  // from the global shell in App.vue). Looked up by name (the URL key).
+  // Simple username + password lock screen — outside both layouts, like the
+  // kiosk viewer below, since it must render with no session at all.
   {
-    path: '/kiosk/:id',
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue'),
+  },
+  // Chromeless kiosk viewer — no header/sidebar, just the canvas (toasts come
+  // from the global shell in App.vue). Looked up by name (the URL key — hence
+  // `:name`, not `:id`; the two were confused here before). Its own PIN pad
+  // gates it, independently of the username/password login above.
+  {
+    path: '/kiosk/:name',
     name: 'kiosk',
     component: () => import('@/views/KioskView.vue'),
   },
@@ -139,6 +159,11 @@ export const router = createRouter({
   routes,
 })
 
-// Auth guard placeholder — when P6 (authentication) lands, gate `meta.admin`
-// routes here:
-//   router.beforeEach((to) => to.meta.admin && !isAuthed() ? '/login' : true)
+// Front-end login gate (see the file header). `useAuthStore().init()` restores
+// a previous login from sessionStorage before the app mounts (see main.ts), so
+// by the time this guard runs, `isAuthenticated`/`isAdmin` already reflect it.
+// Decision logic lives in `lib/router.ts` (pure, unit-tested).
+router.beforeEach((to) => {
+  const auth = useAuthStore()
+  return resolveGuard(to, { isAuthenticated: auth.isAuthenticated, isAdmin: auth.isAdmin })
+})

@@ -10,6 +10,7 @@ import type { Server } from "bun";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { ApiContext } from "./context.ts";
+import { authRoutes } from "./routes/auth.ts";
 import { camerasRoutes } from "./routes/cameras.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { devicesRoutes } from "./routes/devices.ts";
@@ -18,10 +19,13 @@ import { iframesRoutes } from "./routes/iframes.ts";
 import { kiosksRoutes } from "./routes/kiosks.ts";
 import { logsRoutes } from "./routes/logs.ts";
 import { mappingsRoutes } from "./routes/mappings.ts";
+import { rolesRoutes } from "./routes/roles.ts";
 import { roomsRoutes } from "./routes/rooms.ts";
 import { scenesRoutes } from "./routes/scenes.ts";
 import { schedulesRoutes } from "./routes/schedules.ts";
+import { settingsRoutes } from "./routes/settings.ts";
 import { systemRoutes } from "./routes/system.ts";
+import { usersRoutes } from "./routes/users.ts";
 import { makeWebSocketHandlers, setupBroadcast } from "./ws.ts";
 
 const log = logger.child("api");
@@ -42,6 +46,10 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...scenesRoutes(ctx),
       ...schedulesRoutes(ctx),
       ...mappingsRoutes(ctx),
+      ...authRoutes(ctx),
+      ...usersRoutes(ctx),
+      ...rolesRoutes(ctx),
+      ...settingsRoutes(ctx),
       // WebSocket upgrade endpoint.
       "/ws": (req, server) => {
         if (server.upgrade(req, { data: {} })) return undefined;

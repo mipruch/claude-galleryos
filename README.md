@@ -1677,9 +1677,9 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   shell s plnou navigací pro `/admin/**`. Sekce, které ještě nejsou hotové, jsou
   v navigaci vidět jako *disabled* ("soon"), takže je vidět celá informační
   architektura.
-- **Routy** jsou vnořené pod layout-rodiči; admin parent nese `meta.admin` a v
-  routeru je připravené místo pro auth guard (autentizace je odložená — PLAN P6,
-  zatím čistě strukturální oddělení, bez loginu).
+- **Routy** jsou vnořené pod layout-rodiči; admin parent nese `meta.admin`,
+  který spolu s `/login` a přihlašovacím stavem (`useAuthStore`) řídí
+  `router.beforeEach` guard (`lib/router.ts`, PLAN P6 — viz §17.2).
 
 #### Implementováno (první řez — Logs + Dashboard)
 
@@ -1955,12 +1955,15 @@ Low-code builder pro User UI.
 ```
 useRoomsStore        - cache místností
 useConnectionsStore  - connections + live status
-useDevicesStore      - devices + live state (Socket.io updates)
+useDevicesStore      - devices + live state (Socket.io updates), scoped per roli (§17.2)
 useScenesStore       - scény + execution status
 useLayoutsStore      - UI layouts
 useLogsStore         - real-time log stream
 useSystemStore       - system health, connected clients
 useDriversStore      - driver manifesty (pro generování formulářů)
+useAuthStore         - lokální login state (§17.2) — bez server-side session
+useUsersStore        - uživatelské účty (admin CRUD)
+useRolesStore        - role + jejich role_devices (admin CRUD)
 ```
 
 -----
@@ -2937,17 +2940,70 @@ tools: [
 
 Integrace s Claude API nebo jiným LLM providerem. Admin UI dostane “AI asistent” panel — chat input, kde admin píše přirozenou řečí. User UI volitelně dostane “chat” tlačítko s omezenějšími oprávněními (jen execute scene, read state).
 
-### 17.2 Autentizace a role
+### 17.2 Autentizace a role ✓ (implementováno, zjednodušená verze)
 
-Schema je připraveno (`created_by` sloupce, `ui_layouts` separované od users). Pro přidání auth:
+⚠️ **Oprava plánu:** tato sekce původně navrhovala JWT middleware, pevný enum
+rolí (`admin`/`operator`/`viewer`) a přepínač `AUTH_ENABLED`. Nic z toho se
+nepoužilo — po upřesnění zadání šlo o mnohem užší cíl: zabránit personálu
+(Custodian, Barista, …) omylem sahat na zařízení, která nejsou jejich, a
+zamezit veřejnosti přístup ke kiosku, dokud ho neodemkne. **Není to tvrdá
+bezpečnostní hranice** — HTTP API i `/ws` zůstávají stejně otevřené jako
+kterákoliv jiná route v tomto kódu (stejná důvěra, jaká je už přiznaná OSC/TCP
+vstupu); autentizace je čistě front-end brána.
 
-1. Přidat tabulku `users` (id, name, role: ‘admin’ | ‘operator’ | ‘viewer’, password_hash, created_at)
-1. Přidat tabulku `sessions` nebo JWT middleware do Fastify
-1. Přidat `required_role` sloupec do `scenes` a `devices`
-1. API Gateway middleware zkontroluje roli před každým requestem
-1. User UI dostane login screen (pokud auth je zapnutá)
+- **`roles`** (`id`, `name`, `isAdmin`, `description`) + **`users`** (`id`,
+  `username` unikátní, `passwordHash` — `Bun.password`, argon2id, žádná nová
+  závislost, `roleId`, `displayName`, `enabled`). Role s `isAdmin` vidí a smí
+  vše; ostatní role jsou omezené tabulkou `role_devices` (prosté n:n,
+  `roleId`+`deviceId`) — prázdná množina znamená, že role nevidí žádné
+  zařízení.
+- **`POST /api/v1/auth/login`** (`apps/server/src/api/routes/auth.ts`) —
+  jednorázová kontrola hesla. Vrací uživatele + roli (`id`/`name`/`isAdmin`,
+  bez `deviceIds`). **Žádný cookie, token ani server-side session** —
+  frontend (`useAuthStore`, persistováno v `sessionStorage`) si to jen
+  pamatuje lokálně, aby věděl, co zobrazit (které admin sekce jsou
+  dostupné). `users`/`roles` CRUD (`api/routes/users.ts`, `roles.ts`) nejsou
+  serverem nijak vynucené jako admin-only — to je záměr, ne mezera.
+- **Router guard** (`apps/ui/src/router/index.ts` + čistá, testovaná
+  `lib/router.ts`) — každá route kromě `/login` a kiosk vieweru vyžaduje
+  přihlášeného uživatele (dle lokálního stavu `useAuthStore`); `meta.admin`
+  routy navíc vyžadují `role.isAdmin`.
+- **Viditelnost zařízení, řešená na serveru** — `GET /devices` a `GET
+  /devices/live` přijímají `?role_id=`; `filterByRole`
+  (`api/routes/devices.ts`) omezí vrácený seznam na `role_devices` dané role
+  (admin nebo bez `role_id` → vše, beze změny). `useDevicesStore.fetchAll()`
+  posílá `auth.role?.id` při každém fetchi, takže o tom, co se vrátí,
+  rozhoduje server, ne klientská cache. Nahradilo to dřívější řešení
+  (klientský filtr `canSeeDevice` + `refresh()`/polling), které cachovalo
+  `role.deviceIds` už při loginu — a to zastaralo ve chvíli, kdy admin roli
+  upravil (reálně nahlášený bug: baristovi nově přidané zařízení se
+  neobjevilo, dokud se ručně neodhlásí a znovu nepřihlásí). Filtrování na
+  serveru při každém fetchi znamená, že prostý reload stránky je vždy správně, bez
+  jakékoliv cache, co by mohla zastarat, a bez timeru k údržbě. WS broadcast
+  zůstává nezměněný (stále jeden sdílený topic všem) — aktualizace pro
+  zařízení, které frontend nezná, je prostý no-op.
+- **Automatické odhlášení po nečinnosti** — čistě klientské (`useIdle` z
+  `@vueuse/core`), interval nastavitelný adminem v Settings → Security,
+  uložený přes doposud nevyužitou tabulku `config` (`GET/PUT
+  /api/v1/settings/security`).
+- **PIN kiosku** — `kiosks.pin` (nullable, čistý text — je to front-end zámek,
+  ne heslo, proto záměrně bez hashe). `KioskView.vue` porovnává zadaný PIN
+  lokálně, žádné volání na server. Stav odemčení žije v `sessionStorage` per
+  kiosk. Součástí této změny byla i oprava reálného, dříve existujícího bugu:
+  admin stránky (Layouts/Builder) vždy odkazovaly na viewer podle **jména**
+  kiosku, ale viewer si ho hledal podle **id** — takže „Open viewer“ dřív
+  skončilo 404. Nyní používá `GET /kiosks/by-name/:name` (existovalo už na
+  serveru, jen nebylo zapojené) a route parametr je `:name`, ne `:id`.
+- **Výchozí admin účet** — seed vytvoří jednoho uživatele s rolí Admin z
+  `ADMIN_USERNAME`/`ADMIN_PASSWORD` (výchozí `admin`/`admin`), bez vynuceného
+  vynucení změny hesla.
+- Uživatelské jméno se posílá jako `source` u `scene:execute` a jako
+  volitelné `username` u `device:command` — čistě pro dohledatelnost v
+  logách, není to autorizační identita.
 
-Přepínač `AUTH_ENABLED=false` v .env umožní běh bez auth (aktuální stav).
+**Záměrně nepostaveno:** session/cookie infrastruktura, auth middleware na
+libovolné routě, dělení práv na čtení/zápis (kdo zařízení vidí, ten ho i
+ovládá), CSRF ochrana, přehled aktivních session, přepínač `AUTH_ENABLED`.
 
 ### 17.3 Multi-uživatelský User UI
 

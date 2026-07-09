@@ -28,10 +28,12 @@ import {
 } from '@/lib/devices'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
+import { useAuthStore } from './auth'
 import { useRealtimeStore } from './realtime'
 
 export const useDevicesStore = defineStore('devices', () => {
   const rt = useRealtimeStore()
+  const auth = useAuthStore()
 
   // ── reactive state ────────────────────────────────────────────────────────
   const records = ref<DeviceRecord[]>([])
@@ -84,6 +86,9 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   // Devices we know how to render, sorted by the admin-defined display order.
+  // Role-based visibility is already applied server-side (fetchAll passes
+  // `role_id`, see api.devices.list/live) — records never contains a device
+  // the current role can't see, so there's nothing to filter again here.
   const devices = computed(() =>
     [...records.value]
       .filter((d) => d.enabled && deviceKind(d) !== 'unsupported')
@@ -243,10 +248,13 @@ export const useDevicesStore = defineStore('devices', () => {
     try {
       // The device list + one batched live snapshot ({ [id]: { state, status } })
       // + rooms (for the "group by room" headings), instead of 2×N per-device
-      // fetches.
+      // fetches. `role_id` lets the server scope the list to what the current
+      // role may see — omitted (kiosk sessions have no `auth.role`) or an admin
+      // role returns everything, unchanged.
+      const roleId = auth.role?.id
       const [list, live, roomList, iframeList] = await Promise.all([
-        api.devices.list(),
-        api.devices.live(),
+        api.devices.list({ roleId }),
+        api.devices.live(roleId),
         api.rooms.list(),
         api.iframes.list(),
       ])
@@ -347,7 +355,8 @@ export const useDevicesStore = defineStore('devices', () => {
 
     return new Promise<boolean>((resolve) => {
       enqueuePending(deviceId, { revert, resolve })
-      rt.send({ event: 'device:command', data: { deviceId, command, params } })
+      // `username` is for server log tracing only (see PLAN.md) — not a permission check.
+      rt.send({ event: 'device:command', data: { deviceId, command, params, username: auth.user?.username } })
     })
   }
 

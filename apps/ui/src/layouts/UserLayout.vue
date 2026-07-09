@@ -6,17 +6,25 @@
  * store hydration) stays global in `App.vue`.
  */
 import { computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
+import { useRoute, useRouter } from 'vue-router'
+import { LogOutIcon, SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import CommandPalette from '@/components/command/CommandPalette.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useDevicesStore } from '@/stores/devices'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 
 const store = useDevicesStore()
+const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const { openPalette } = useCommandPalette()
+
+function logout(): void {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
@@ -83,6 +91,16 @@ const pageSubtitle = computed(() => {
               <component :is="store.connected ? WifiIcon : WifiOffIcon" class="size-4" />
               {{ store.connected ? 'Live' : 'Offline' }}
             </span>
+
+            <button
+              type="button"
+              class="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs outline-none focus-visible:ring-2"
+              :aria-label="`Log out (${auth.user?.username})`"
+              @click="logout"
+            >
+              <LogOutIcon class="size-3.5" />
+              <span class="hidden sm:inline">{{ auth.user?.username }}</span>
+            </button>
           </div>
         </header>
 

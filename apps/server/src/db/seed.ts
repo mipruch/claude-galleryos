@@ -14,7 +14,8 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { cameras, connections, devices, iframes, kiosks, rooms, sceneActions, scenes, scheduledJobs } from "@gallery/types/schema";
+import { cameras, connections, devices, iframes, kiosks, roles, rooms, sceneActions, scenes, scheduledJobs, users } from "@gallery/types/schema";
+import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
 
@@ -24,6 +25,12 @@ const log = logger.child("seed");
 // Rooms
 const ROOM_HALL  = "11111111-1111-1111-1111-111111111111";
 const ROOM_FOYER = "11111111-1111-1111-1111-111111111112";
+
+// Roles + the bootstrap admin account
+const ROLE_ADMIN     = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01";
+const ROLE_CUSTODIAN = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb02";
+const ROLE_BARISTA   = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb03";
+const USER_ADMIN     = "cccccccc-cccc-cccc-cccc-cccccccccc01";
 
 // Connections
 const CONN_PJLINK = "22222222-2222-2222-2222-222222222222";
@@ -762,6 +769,15 @@ const SEED_CAMERAS = [
   },
 ];
 
+// Roles gating the frontend. Custodian/Barista start with no permitted
+// devices — an honest empty default; assign real devices per your
+// deployment from the admin Users/Roles page (or via role_devices).
+const SEED_ROLES = [
+  { id: ROLE_ADMIN, name: "Admin", isAdmin: true, description: "Full access to everything." },
+  { id: ROLE_CUSTODIAN, name: "Custodian", isAdmin: false, description: "Sees only its assigned devices." },
+  { id: ROLE_BARISTA, name: "Barista", isAdmin: false, description: "Sees only its assigned devices." },
+];
+
 // ── inserter ─────────────────────────────────────────────────
 /**
  * Populates the database with sample data for rooms, connections, devices, scenes, scene actions, and iframes.
@@ -780,6 +796,19 @@ async function main(): Promise<void> {
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
   await db.insert(kiosks).values(SEED_KIOSKS).onConflictDoNothing();
   await db.insert(cameras).values(SEED_CAMERAS).onConflictDoNothing();
+  await db.insert(roles).values(SEED_ROLES).onConflictDoNothing();
+  await db
+    .insert(users)
+    .values([
+      {
+        id: USER_ADMIN,
+        username: appConfig.auth.adminUsername,
+        passwordHash: await Bun.password.hash(appConfig.auth.adminPassword),
+        roleId: ROLE_ADMIN,
+        displayName: "Administrator",
+      },
+    ])
+    .onConflictDoNothing();
 
   log.info("Seed complete", {
     rooms: SEED_ROOMS.length,
@@ -791,7 +820,10 @@ async function main(): Promise<void> {
     iframes: SEED_IFRAMES.length,
     kiosks: SEED_KIOSKS.length,
     cameras: SEED_CAMERAS.length,
-    note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware",
+    roles: SEED_ROLES.length,
+    users: 1,
+    note: "Update IP addresses and BSS/DALI placeholder IDs to match your hardware. " +
+      "Change ADMIN_PASSWORD before deploying for real.",
   });
   await closeDb();
 }

@@ -15,6 +15,7 @@ import { EventBus } from "../../src/core/EventBus.ts";
 import { driverRegistry } from "../../src/core/DriverRegistry.ts";
 import {
   camerasRepo,
+  configRepo,
   connectionsRepo,
   dbRepo,
   devicesRepo,
@@ -22,10 +23,12 @@ import {
   inputMappingsRepo,
   kiosksRepo,
   logsRepo,
+  rolesRepo,
   roomsRepo,
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  usersRepo,
 } from "../../src/db/repositories.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/redis/state.ts";
 import { SceneEngine } from "../../src/core/SceneEngine.ts";
@@ -116,6 +119,9 @@ beforeAll(async () => {
       iframes: iframesRepo,
       kiosks: kiosksRepo,
       cameras: camerasRepo,
+      roles: rolesRepo,
+      users: usersRepo,
+      config: configRepo,
       streamManager,
       logs: logsRepo,
       scenes: scenesRepo,

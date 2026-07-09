@@ -688,12 +688,84 @@ See README §10–11 for full spec; see §11 for the implemented slice.
 
 ---
 
-## Priority 6 — Authentication & Security (later)
+## Priority 6 — Authentication & Security ✓
 
-- [ ] `users` table + password_hash
-- [ ] JWT middleware on `Bun.serve`
-- [ ] Role-based access (`admin` / `operator` / `viewer`)
-- [ ] `AUTH_ENABLED=false` env flag keeps current no-auth behaviour
+⚠️ **PLAN correction:** this section originally sketched JWT middleware on
+`Bun.serve`, a fixed `admin`/`operator`/`viewer` role enum, and an
+`AUTH_ENABLED` escape hatch. None of that shipped. The actual requirement
+(clarified directly) was much narrower — stop staff from casually touching
+devices that aren't theirs, and keep the public out of a kiosk until it's
+unlocked — not a hardened security boundary. So:
+
+- [x] **`roles` + `users` tables** (`packages/types/src/schema.ts`) — a role
+      has a name, an `isAdmin` flag (full admin portal + every device), and
+      an optional description. A user has a username (unique), an
+      argon2id-hashed password (`Bun.password`, native, no new dependency),
+      a `roleId`, a display name, and `enabled`.
+- [x] **`role_devices`** — a plain n:n join table (not an enum, not a column
+      on `devices`) recording which devices a non-admin role may see in the
+      User UI. Empty = sees nothing; admin roles bypass it entirely.
+- [x] **`POST /api/v1/auth/login`** — a one-shot credential check
+      (`apps/server/src/api/routes/auth.ts`). Returns the user + role
+      (`id`/`name`/`isAdmin`, no `deviceIds`) on success. **No cookie, no
+      token, no server-side session** — the frontend just remembers this
+      locally (`useAuthStore`, persisted to `sessionStorage`) to decide what
+      to render (which admin sections are reachable). The HTTP API and
+      `/ws` stay exactly as open as every other route in this codebase —
+      the same trust level already accepted for OSC/TCP ingress. This is a
+      front-end convenience gate, not a hardened auth boundary; documenting
+      that plainly here so it's a design decision, not a hidden gap.
+- [x] **Users/Roles CRUD** (`api/routes/users.ts`, `roles.ts`) — admin-only
+      by convention (nothing enforces it server-side, matching the point
+      above); no self-registration, admin creates every account.
+- [x] **Router guard** (`apps/ui/src/router/index.ts` + `lib/router.ts`,
+      pure/unit-tested) — every route except `/login` and the kiosk viewer
+      requires a logged-in user (checked against the local `useAuthStore`
+      state); `meta.admin` routes additionally require `role.isAdmin`.
+- [x] **Device visibility, decided server-side** — `GET /devices` and `GET
+      /devices/live` accept `?role_id=`; `filterByRole`
+      (`api/routes/devices.ts`) scopes the returned list to that role's
+      `role_devices` (admin or no `role_id` → everything, unchanged).
+      `useDevicesStore.fetchAll()` passes `auth.role?.id` on every fetch, so
+      the server — not a client-side cache — decides what comes back. This
+      replaced an earlier client-side `canSeeDevice` filter plus a
+      `refresh()`/polling mechanism: that design cached the role's
+      `deviceIds` in `useAuthStore` at login time, which went stale the
+      moment an admin edited the role afterwards (a real reported bug — a
+      barista granted devices mid-session saw nothing until an explicit
+      logout/login). Filtering server-side on every fetch instead means a
+      plain page reload is always correct, with nothing cached to go stale
+      and no timer to maintain. The WS broadcast is still untouched (one
+      shared topic to everyone) — a device the frontend never kept a record
+      for is simply a no-op when its `device:state` update arrives.
+- [x] **Inactivity auto-logout** — client-side only (`useIdle` from
+      `@vueuse/core`, first real use of it here), timeout minutes
+      admin-configurable from Settings → Security, persisted through the
+      previously-unused `config` key/value table via `GET/PUT
+      /api/v1/settings/security`.
+- [x] **Kiosk PIN** — `kiosks.pin` (nullable, plain digits — a front-end
+      lock, not a credential, so deliberately not hashed). `KioskView.vue`
+      compares the entered PIN locally; no backend call for the check
+      itself. Unlock state persists in `sessionStorage` per kiosk id.
+      Fixed a real pre-existing bug in the same file while adding this: the
+      admin Layouts/Builder pages always linked to the viewer by the
+      kiosk's **name**, but the viewer looked itself up by **id** — so
+      "Open viewer" 404'd before this change. Now uses `GET
+      /kiosks/by-name/:name` (already existed server-side, just wasn't
+      wired into the viewer) and the route param is `:name`, not `:id`.
+- [x] **Bootstrap admin** — the seed script creates one Admin user from
+      `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars (`admin`/`admin` if unset),
+      no forced password change.
+- [x] Usernames are threaded into `scene:execute`'s existing `source` field
+      and a new optional `username` on `device:command`, for server log
+      tracing only — not an enforcement identity.
+
+**Deliberately not built** (explicit scope decisions, not oversights): no
+session/cookie machinery, no auth middleware on any route, no per-role
+read/write split (if a role can see a device, it can control it), no
+per-scene device visibility beyond what a scene's own `visibleRoles`-style
+column would need (not added — out of the stated scope), no CSRF handling,
+no admin "active sessions" view, no `AUTH_ENABLED` flag.
 
 ---
 

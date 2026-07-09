@@ -38,6 +38,11 @@ const validationSchema = toTypedSchema(
     height: z.coerce.number().int('Whole number').min(KIOSK_MIN_SIZE).max(KIOSK_MAX_SIZE),
     columns: z.coerce.number().int('Whole number').min(1).max(48),
     cellHeight: z.coerce.number().int('Whole number').min(8).max(1000),
+    // Front-end-only lock (see PLAN.md) — plain digits, not hashed. Blank = no PIN gate.
+    pin: z
+      .string()
+      .optional()
+      .refine((v) => !v || /^\d{4,10}$/.test(v), '4-10 digits'),
   }),
 )
 
@@ -47,8 +52,15 @@ function hydrate(): void {
   const k = props.kiosk
   resetForm({
     values: k
-      ? { name: k.name, width: k.width, height: k.height, columns: k.config.columns, cellHeight: k.config.cellHeight }
-      : { name: '', width: 1920, height: 1080, columns: 12, cellHeight: 80 },
+      ? {
+          name: k.name,
+          width: k.width,
+          height: k.height,
+          columns: k.config.columns,
+          cellHeight: k.config.cellHeight,
+          pin: k.pin ?? '',
+        }
+      : { name: '', width: 1920, height: 1080, columns: 12, cellHeight: 80, pin: '' },
   })
 }
 
@@ -64,9 +76,10 @@ const submit = handleSubmit(async (values) => {
   // Editing preserves existing tiles; create starts with an empty grid.
   const tiles = props.kiosk?.config.tiles ?? []
   const config = { columns: values.columns, cellHeight: values.cellHeight, tiles }
+  const pin = values.pin || null
   const saved = props.kiosk
-    ? await store.update(props.kiosk.id, { name: values.name, width: values.width, height: values.height, config })
-    : await store.create({ name: values.name, width: values.width, height: values.height, config })
+    ? await store.update(props.kiosk.id, { name: values.name, width: values.width, height: values.height, config, pin })
+    : await store.create({ name: values.name, width: values.width, height: values.height, config, pin })
   if (saved) {
     emit('saved', saved)
     emit('update:open', false)
@@ -132,6 +145,15 @@ const submit = handleSubmit(async (values) => {
             </FormItem>
           </FormField>
         </div>
+
+        <FormField v-slot="{ componentField }" name="pin">
+          <FormItem>
+            <FormLabel>PIN</FormLabel>
+            <FormControl><Input inputmode="numeric" placeholder="Leave blank for no lock" v-bind="componentField" /></FormControl>
+            <FormDescription>4-10 digits. The kiosk shows a keypad until this is entered.</FormDescription>
+            <FormMessage />
+          </FormItem>
+        </FormField>
 
         <DialogFooter>
           <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>

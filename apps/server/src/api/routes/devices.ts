@@ -1,12 +1,18 @@
 /**
  * Device routes — CRUD plus direct control and live state.
  *
- *   GET/POST            /api/v1/devices            (?room_id= &type= &enabled= &connection_id=)
+ *   GET/POST            /api/v1/devices            (?room_id= &type= &enabled= &connection_id= &role_id=)
  *   GET/PUT/DELETE      /api/v1/devices/:id
  *   POST                /api/v1/devices/:id/command   { command, params }
  *   GET                 /api/v1/devices/:id/state     (live values, Redis)
  *   GET                 /api/v1/devices/:id/status    (online/offline, Redis)
- *   GET                 /api/v1/devices/live          (state + status for all, one shot)
+ *   GET                 /api/v1/devices/live          (state + status for all, one shot; ?role_id=)
+ *
+ * `?role_id=` scopes the list/live-snapshot to what that role may see (the
+ * server, not the client, decides — see `filterByRole`): omitted or an admin
+ * role returns everything, unchanged from before. This is the front-end
+ * login gate from PLAN.md "Priority 6" — a UI convenience, not an enforced
+ * restriction (there's nothing stopping a direct request without the param).
  */
 
 import type { ApiContext } from "../context.ts";
@@ -22,7 +28,23 @@ import {
   route,
   type RouteMap,
 } from "../http.ts";
+import { logger } from "../../logger.ts";
 import { assertValidDeviceAddress } from "../validation.ts";
+
+const log = logger.child("api.devices");
+
+/** Scope a device list to a role's `role_devices` — a no-op for admins or when `roleId` is absent. */
+async function filterByRole<T extends { id: string }>(
+  ctx: ApiContext,
+  devices: T[],
+  roleId: string | undefined,
+): Promise<T[]> {
+  if (!roleId) return devices;
+  const role = await ctx.roles.get(roleId);
+  if (!role || role.isAdmin) return devices;
+  const visible = new Set(role.deviceIds);
+  return devices.filter((d) => visible.has(d.id));
+}
 
 /**
  * Defines HTTP route handlers for device management operations.
@@ -45,7 +67,7 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
           connectionId: query(req, "connection_id"),
           enabled: enabled === undefined ? undefined : enabled === "true",
         });
-        return json(devices);
+        return json(await filterByRole(ctx, devices, query(req, "role_id")));
       }),
       POST: route(async (req) => {
         const body = await readJson(req);
@@ -81,8 +103,9 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
     // Batched live snapshot for the whole UI: one request instead of 2×N.
     // Returns a map keyed by device id: { [id]: { state, status } }.
     "/api/v1/devices/live": {
-      GET: route(async () => {
-        const devices = await ctx.devices.list({});
+      GET: route(async (req) => {
+        const allDevices = await ctx.devices.list({});
+        const devices = await filterByRole(ctx, allDevices, query(req, "role_id"));
         const entries = await Promise.all(
           devices.map(async (d) => {
             const [state, status] = await Promise.all([
@@ -150,7 +173,14 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
         const body = await readJson(req);
         requireFields(body, ["command"]);
         const params = body.params ? asObject(body.params, "params") : {};
-        const result = await ctx.deviceManager.execute(paramId(req), String(body.command), params);
+        const deviceId = paramId(req);
+        // `username` is caller-supplied, for log tracing only — not an auth check.
+        log.info("device command", {
+          deviceId,
+          command: body.command,
+          username: body.username ? String(body.username) : undefined,
+        });
+        const result = await ctx.deviceManager.execute(deviceId, String(body.command), params);
         return json(result);
       }),
     },

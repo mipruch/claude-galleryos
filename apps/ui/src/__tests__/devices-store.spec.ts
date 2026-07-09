@@ -16,7 +16,9 @@ beforeAll(() => {
   globalThis.fetch = vi.fn<() => Promise<unknown>>().mockResolvedValue({ ok: true, json: async () => [] }) as unknown as typeof fetch
 })
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
 function dev(id: string, roomId: string | null, type = 'light'): DeviceRecord {
   return makeDevice({ id, name: id, roomId, type, subtype: 'dali.fixture' })

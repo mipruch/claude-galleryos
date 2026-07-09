@@ -19,10 +19,12 @@ import type { SceneCreateInput, SceneDTO, SceneUpdateInput, SceneWithActionsDTO 
 import { filterScenesByRooms, searchScenes } from '@/lib/scenes'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
+import { useAuthStore } from './auth'
 import { useDevicesStore } from './devices'
 import { useRealtimeStore } from './realtime'
 
 export const useScenesStore = defineStore('scenes', () => {
+  const auth = useAuthStore()
   const devices = useDevicesStore()
   const rt = useRealtimeStore()
 
@@ -77,7 +79,8 @@ export const useScenesStore = defineStore('scenes', () => {
   async function execute(id: string): Promise<void> {
     running.value = { ...running.value, [id]: true }
     try {
-      await api.scenes.execute(id, 'ui')
+      // `source` is for server log tracing only (see PLAN.md) — not a permission check.
+      await api.scenes.execute(id, auth.user?.username ?? 'ui')
       toast.success(sceneName(id), { description: 'Scene started' })
     } catch (err) {
       markFinished(id)
