@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import DeviceWidget from '@/components/devices/DeviceWidget.vue'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
+import { errMsg } from '@/lib/http'
 
 const DEFAULT_TILE_W = 2
 const DEFAULT_TILE_H = 1
@@ -48,7 +49,7 @@ const devices = useDevicesStore()
 
 const loading = ref(false)
 const kiosk: Ref<KioskDTO | null> = ref(null)
-const error = ref(null)
+const error: Ref<string | null> = ref(null)
 
 async function fetchData(id: string): Promise<void> {
   error.value = null
@@ -61,7 +62,7 @@ async function fetchData(id: string): Promise<void> {
       return res.json()
     })
   } catch (err) {
-    error.value = err.toString()
+    error.value = errMsg(err)
   } finally {
     loading.value = false
   }
