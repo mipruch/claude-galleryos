@@ -17,7 +17,9 @@ const rooms = computed(() =>
 )
 
 const iframes = computed(() => store.iframes)
-const cameras = computed(() => camerasStore.records)
+// Disabled cameras are admin-only (managed under /admin/cameras) — the server
+// also 404s a stream request for one, so keep them out of the sidebar too.
+const cameras = computed(() => camerasStore.records.filter((c) => c.enabled))
 
 function linkClass(isActive: boolean): string {
   return [
