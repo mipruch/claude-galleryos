@@ -16,6 +16,7 @@
 import type { JsonSchema } from '@gallery/driver-core'
 import { z } from 'zod'
 import { isHost } from './host'
+import { buildConnectionOptions } from './widgets'
 
 export type FieldKind = 'string' | 'number' | 'boolean' | 'enum'
 
@@ -28,6 +29,15 @@ export interface SchemaField {
   /** For `enum` fields: the selectable values (stringified). */
   options?: string[]
   placeholder?: string
+  /**
+   * For a `number`/`integer` field whose schema declares `connectionEnum`,
+   * resolved into a labeled dropdown once a connection config was passed to
+   * `schemaToFields()` (e.g. a matrix switcher's output number — friendlier
+   * than typing a bare index). Kind/validation stay `number`; this only
+   * changes how `SchemaFields.vue` renders the input. Absent (or empty) when
+   * unresolvable — the field then falls back to a plain number input.
+   */
+  dynamicOptions?: { value: string; label: string }[]
 }
 
 const titleCase = (key: string): string =>
@@ -43,8 +53,17 @@ function kindOf(prop: JsonSchema): FieldKind {
   return 'string'
 }
 
-/** Ordered render descriptors for an object schema's properties. */
-export function schemaToFields(schema: JsonSchema | undefined): SchemaField[] {
+/**
+ * Ordered render descriptors for an object schema's properties. Pass the
+ * owning device's connection config to resolve any `connectionEnum` field
+ * (e.g. Extron's output number) into a labeled dropdown; omit it (or when
+ * unresolvable, e.g. no connection picked yet) and that field falls back to
+ * a plain number input.
+ */
+export function schemaToFields(
+  schema: JsonSchema | undefined,
+  connectionConfig?: Record<string, unknown>,
+): SchemaField[] {
   const properties = (schema?.properties ?? {}) as Record<string, JsonSchema>
   const required = new Set((schema?.required as string[] | undefined) ?? [])
 
@@ -54,6 +73,7 @@ export function schemaToFields(schema: JsonSchema | undefined): SchemaField[] {
     .filter(([, prop]) => prop.type !== 'array' && prop.type !== 'object')
     .map(([key, prop]) => {
     const kind = kindOf(prop)
+    const dynamic = prop.connectionEnum ? buildConnectionOptions(prop.connectionEnum, connectionConfig) : undefined
     return {
       key,
       label: (prop.title as string | undefined) ?? titleCase(key),
@@ -62,6 +82,7 @@ export function schemaToFields(schema: JsonSchema | undefined): SchemaField[] {
       required: required.has(key),
       options: kind === 'enum' ? (prop.enum as unknown[]).map((v) => String(v)) : undefined,
       placeholder: prop.default !== undefined ? String(prop.default) : undefined,
+      dynamicOptions: dynamic?.map((o) => ({ value: String(o.value), label: o.label })),
     }
   })
 }

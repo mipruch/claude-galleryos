@@ -117,6 +117,20 @@ const EXTRON_INPUT_LABELS = [
   "Camera 1", "Camera 2", "Wireless AirMedia", "Aux HDMI", "Test Pattern",
 ];
 
+// Output labels + per-device room/icon — named once here (index 0 = output 1)
+// and reused both for the connection's config.outputs (admin bookkeeping when
+// picking an output number) and to build the actual output devices below.
+const EXTRON_OUTPUT_NAMES: { name: string; roomId: string; icon: string }[] = [
+  { name: "Projektor sál",      roomId: ROOM_HALL,  icon: "projector" },
+  { name: "LED stěna sál",      roomId: ROOM_HALL,  icon: "monitor" },
+  { name: "Náhled sál",         roomId: ROOM_HALL,  icon: "monitor" },
+  { name: "Lobby displej",      roomId: ROOM_FOYER, icon: "monitor" },
+  { name: "Foyer displej 2",    roomId: ROOM_FOYER, icon: "monitor" },
+  { name: "Stream enkodér",     roomId: ROOM_HALL,  icon: "radio" },
+  { name: "Záznam",             roomId: ROOM_HALL,  icon: "circle" },
+  { name: "Confidence monitor", roomId: ROOM_HALL,  icon: "monitor" },
+];
+
 export const SEED_CONNECTIONS = [
   {
     id: CONN_PJLINK,
@@ -193,6 +207,10 @@ export const SEED_CONNECTIONS = [
       // duplicated per output. Re-cable input 3 → rename it once and every
       // output's picker updates. Index 0 = input 1.
       inputs: EXTRON_INPUT_LABELS,
+      // Output labels — purely documentation for whoever's picking an output
+      // number when creating a new device (which destination is physically
+      // which). Derived from EXTRON_OUTPUT_NAMES below so the two can't drift.
+      outputs: EXTRON_OUTPUT_NAMES.map((o) => o.name),
       responseTimeoutMs: 2000,
       reconnectMs: 2000,
     },
@@ -231,16 +249,6 @@ export const SEED_CONNECTIONS = [
 // 8 outputs of the Extron DTP CrossPoint 108 4K. Each output is a device feeding
 // a destination in the venue; input *labels* live on the connection (see
 // EXTRON_INPUT_LABELS above), so the output devices carry no input metadata.
-const EXTRON_OUTPUT_NAMES: { name: string; roomId: string; icon: string }[] = [
-  { name: "Projektor sál",      roomId: ROOM_HALL,  icon: "projector" },
-  { name: "LED stěna sál",      roomId: ROOM_HALL,  icon: "monitor" },
-  { name: "Náhled sál",         roomId: ROOM_HALL,  icon: "monitor" },
-  { name: "Lobby displej",      roomId: ROOM_FOYER, icon: "monitor" },
-  { name: "Foyer displej 2",    roomId: ROOM_FOYER, icon: "monitor" },
-  { name: "Stream enkodér",     roomId: ROOM_HALL,  icon: "radio" },
-  { name: "Záznam",             roomId: ROOM_HALL,  icon: "circle" },
-  { name: "Confidence monitor", roomId: ROOM_HALL,  icon: "monitor" },
-];
 const EXTRON_OUTPUTS = EXTRON_OUTPUT_NAMES.map((o, i) => {
   const output = i + 1;
   return {

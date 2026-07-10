@@ -2435,6 +2435,19 @@ možnosti se objeví až po prvním úspěšném výběru.
   `includeNone`, přednost před `optionsKey`/`options`, prázdný seznam bez
   platného počtu); `packages/drivers/driver-extron-matrix/test/` ztratil tři
   testy, které ověřovaly driverem-počítané `options` (chování už neexistuje).
+- **Stejná myšlenka i v Admin UI formuláři zařízení:** admin dřív psal číslo
+  výstupu do prostého number inputu — nešlo pamatovat si, který výstup je
+  fyzicky co. Nový `JsonSchema.connectionEnum` (`{labelsKey, countKey,
+  fallbackLabel}`) na libovolné `number`/`integer` vlastnosti `addressSchema`
+  — `schemaToFields()` ho (přes stejnou `buildConnectionOptions`) rozřeší do
+  popsaného dropdownu, **jakmile admin vybere connection**, ale `kind`
+  zůstává `'number'` (validace/koerce na číslo beze změny — `SchemaFields.vue`
+  jen jinak *renderuje* stejné pole). `driver-extron-matrix`'s `output` ho
+  používá (`labelsKey: "outputs"`); seed přidal `config.outputs` k Extron
+  connection (odvozeno z `EXTRON_OUTPUT_NAMES`, aby se dva seznamy nemohly
+  rozejít). Testy: `apps/ui/src/__tests__/schemaForm.spec.ts`
+  (`connectionEnum` — rozřešení z connection configu při zachování `kind:
+  'number'`, prázdné bez configu/platného počtu).
 
 ### Princip fungování
 

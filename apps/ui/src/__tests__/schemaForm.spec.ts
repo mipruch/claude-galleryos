@@ -49,6 +49,46 @@ describe('schemaToFields', () => {
   it('returns an empty list for an undefined schema', () => {
     expect(schemaToFields(undefined)).toEqual([])
   })
+
+  // A `connectionEnum` field (e.g. Extron's output number) resolves into a
+  // labeled dropdown once the owning connection's config is known, without
+  // changing its kind/validation — it's still a plain `number` field.
+  describe('connectionEnum (dynamic dropdown for a number field)', () => {
+    const outputSchema: JsonSchema = {
+      type: 'object',
+      required: ['output'],
+      properties: {
+        output: {
+          type: 'integer',
+          title: 'Output number',
+          minimum: 1,
+          maximum: 64,
+          connectionEnum: { labelsKey: 'outputs', countKey: 'outputCount', fallbackLabel: 'Output' },
+        },
+      },
+    }
+
+    it('resolves dynamicOptions from connection config, keeping kind as number', () => {
+      const fields = schemaToFields(outputSchema, { outputCount: 3, outputs: ['Hall A left', 'Hall A right'] })
+      const field = fields.find((f) => f.key === 'output')!
+      expect(field.kind).toBe('number')
+      expect(field.dynamicOptions).toEqual([
+        { value: '1', label: '1. Hall A left' },
+        { value: '2', label: '2. Hall A right' },
+        { value: '3', label: 'Output 3' },
+      ])
+    })
+
+    it('leaves dynamicOptions unset without a connection config (falls back to a plain number input)', () => {
+      const fields = schemaToFields(outputSchema)
+      expect(fields.find((f) => f.key === 'output')!.dynamicOptions).toBeUndefined()
+    })
+
+    it('leaves dynamicOptions unset when the connection has no valid count yet', () => {
+      const fields = schemaToFields(outputSchema, {})
+      expect(fields.find((f) => f.key === 'output')!.dynamicOptions).toBeUndefined()
+    })
+  })
 })
 
 describe('defaultsFromSchema', () => {

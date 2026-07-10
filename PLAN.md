@@ -772,6 +772,18 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         (documentation for picking an output number when creating a device).
         Deliberately kept scope to one-output-per-device (no bundling multiple
         outputs into one widget) rather than a bigger address-shape change.
+  - [x] **Same fix, one layer up — the admin device form:** picking an output
+        number was a bare number input, so the admin had to remember which
+        output physically was which. New `JsonSchema.connectionEnum`
+        (`{labelsKey, countKey, fallbackLabel}`) on any `number`/`integer`
+        address property — `schemaToFields()` resolves it (via the same
+        `buildConnectionOptions` the widget fix above uses) into a labeled
+        dropdown once a connection is picked, while the field's `kind` stays
+        `'number'` so validation/coercion are untouched; `SchemaFields.vue`
+        just renders that field differently. `driver-extron-matrix`'s
+        `output` address field uses it (`labelsKey: "outputs"`); seed gained
+        `config.outputs` on the Extron connection, derived from the existing
+        `EXTRON_OUTPUT_NAMES` list so the two can't drift apart.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.

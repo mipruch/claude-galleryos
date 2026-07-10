@@ -57,14 +57,23 @@ export function readSelected(value: unknown): number | string {
   return typeof value === 'number' || typeof value === 'string' ? value : 0
 }
 
+/** The `{labelsKey, countKey, fallbackLabel}` shape shared by every "build a numbered, labeled list from connection config" spot — a select widget's live options and an admin form's address field (see `lib/schemaForm.ts`). */
+export interface ConnectionOptionsSpec {
+  labelsKey: string
+  countKey: string
+  fallbackLabel: string
+  includeNone?: boolean
+}
+
 /**
- * Build a `connectionOptions` binding's {value,label}[] from connection config:
- * entries `1..count`, each labeled `"{n}. {labels[n-1]}"` when named or
- * `"{fallbackLabel} {n}"` when not. Returns undefined when the connection has
- * no valid count yet, so the caller can fall through to another source.
+ * Build a `{labelsKey,countKey,fallbackLabel}` spec's {value,label}[] from
+ * connection config: entries `1..count`, each labeled `"{n}. {labels[n-1]}"`
+ * when named or `"{fallbackLabel} {n}"` when not. Returns undefined when the
+ * connection has no valid count yet, so the caller can fall through to
+ * another source (or a plain input, for `SchemaFields.vue`'s address fields).
  */
-function buildConnectionOptions(
-  options: NonNullable<SelectWidgetBinding['connectionOptions']>,
+export function buildConnectionOptions(
+  options: ConnectionOptionsSpec,
   connectionConfig: Record<string, unknown> | undefined,
 ): { value: number | string; label: string }[] | undefined {
   const count = connectionConfig?.[options.countKey]

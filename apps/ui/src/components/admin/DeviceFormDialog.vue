@@ -59,7 +59,10 @@ const driverId = computed(() => connections.connections.find((c) => c.id === con
 const endpointTypes = computed(() => drivers.endpointTypes(driverId.value))
 const endpointType = computed(() => drivers.endpointType(driverId.value, subtype.value))
 const addressSchema = computed(() => endpointType.value?.addressSchema)
-const addressFields = computed(() => schemaToFields(addressSchema.value))
+// The selected connection's config resolves any `connectionEnum` address field
+// (e.g. Extron's output number) into a labeled dropdown — see `lib/schemaForm`.
+const connectionConfig = computed(() => connections.configOf(connectionId.value))
+const addressFields = computed(() => schemaToFields(addressSchema.value, connectionConfig.value))
 
 // Array-of-object address properties (e.g. a meter widget's `meters`) are edited
 // outside vee-validate by ArrayObjectField; the scalar schema form skips them.

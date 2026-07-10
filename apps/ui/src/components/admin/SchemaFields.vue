@@ -11,6 +11,18 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 defineProps<{ fields: SchemaField[] }>()
+
+/**
+ * A field renders as a dropdown when it has either resolved `dynamicOptions`
+ * (a `number` field's `connectionEnum`) or a manifest-declared `enum` —
+ * unified here so the template only needs one `<Select>` branch instead of
+ * two near-identical ones.
+ */
+function selectOptionsFor(field: SchemaField): { value: string; label: string }[] | undefined {
+  if (field.dynamicOptions?.length) return field.dynamicOptions
+  if (field.kind === 'enum') return field.options?.map((opt) => ({ value: opt, label: opt }))
+  return undefined
+}
 </script>
 
 <template>
@@ -29,13 +41,19 @@ defineProps<{ fields: SchemaField[] }>()
       <template v-else>
         <FormLabel>{{ field.label }}</FormLabel>
         <FormControl>
-          <Select v-if="field.kind === 'enum'" :model-value="value as string" @update:model-value="handleChange">
+          <Select
+            v-if="selectOptionsFor(field)"
+            :model-value="value as string"
+            @update:model-value="handleChange"
+          >
             <SelectTrigger>
               <SelectValue :placeholder="field.placeholder ?? 'Select…'" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</SelectItem>
+                <SelectItem v-for="opt in selectOptionsFor(field)" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>

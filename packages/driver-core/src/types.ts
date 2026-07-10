@@ -53,6 +53,25 @@ export interface JsonSchema {
   enum?: unknown[];
   const?: unknown;
 
+  /**
+   * For a `number`/`integer` property whose valid choices are enumerated
+   * dynamically by the selected connection's own config (e.g. a matrix
+   * switcher's output number) rather than known statically at
+   * manifest-authoring time. The admin form resolves this into a labeled
+   * dropdown once a connection is selected, entries `1..config[countKey]`
+   * each labeled `"{n}. {config[labelsKey][n-1]}"` when named or
+   * `"{fallbackLabel} {n}"` when not — same shape and resolution as
+   * `SelectWidgetBinding.connectionOptions` (the equivalent for the
+   * end-user control widget), just for an admin-form address field instead
+   * of a live device control. Validation/type stay whatever `type` already
+   * declares — this only changes how the field renders.
+   */
+  connectionEnum?: {
+    labelsKey: string;
+    countKey: string;
+    fallbackLabel: string;
+  };
+
   // Allow forward-compatible extra keywords without losing type safety elsewhere.
   [keyword: string]: unknown;
 }

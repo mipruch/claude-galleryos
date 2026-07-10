@@ -124,6 +124,7 @@ export const manifest: DriverManifest = {
             description: "Output (destination) number on the switcher, 1-based.",
             minimum: 1,
             maximum: 64,
+            connectionEnum: { labelsKey: "outputs", countKey: "outputCount", fallbackLabel: "Output" },
           },
         },
         additionalProperties: false,
