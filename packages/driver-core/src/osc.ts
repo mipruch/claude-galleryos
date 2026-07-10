@@ -67,9 +67,12 @@ export function encodeOscMessage(address: string, args: OscArg[] = []): Uint8Arr
   return concat(chunks);
 }
 
+/** OSC 1.0's reserved "immediately" time-tag: 63 zero bits + a 1 in the LSB. */
+const IMMEDIATE_TIME_TAG = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]);
+
 /** Wrap already-encoded elements (messages/bundles) in an OSC bundle (immediate time-tag). */
 export function encodeOscBundle(elements: Uint8Array[]): Uint8Array {
-  const chunks: Uint8Array[] = [oscString("#bundle"), new Uint8Array(8) /* zero time-tag */];
+  const chunks: Uint8Array[] = [oscString("#bundle"), IMMEDIATE_TIME_TAG];
   for (const element of elements) chunks.push(int32(element.length), element);
   return concat(chunks);
 }

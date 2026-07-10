@@ -600,12 +600,14 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         new driver never touches the UI again.
         - **`EndpointTypeDefinition.widgets?: WidgetBinding[]`** (new,
           `packages/driver-core/src/types.ts`) — a manifest names, per endpoint
-          type, which of four generic widget kinds it supports and which
+          type, which generic widget kinds it supports and which
           command/param/state key each is wired to (`power`/`mute`: two zero-arg
           commands or one boolean-param command; `fader`: a 0..1 level command;
           `select`: an enumerated choice, options either static in the manifest
-          or a driver-computed list stamped onto state via `optionsKey`). A
-          binding only ever *names* things — it carries no behaviour.
+          or a driver-computed list stamped onto state via `optionsKey`; `buttons`:
+          a row of stateless fire-and-forget commands, added later by
+          `driver-generic-trigger`, see below). A binding only ever *names*
+          things — it carries no behaviour.
         - **All real translation moved into driver code**, not a declarative
           rules engine: `driver-bss` gained a first-class `bss-soundweb.matrix`
           endpoint type with canonical `on`/`off` commands and a `power` state

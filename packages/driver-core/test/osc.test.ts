@@ -45,10 +45,11 @@ describe("encodeOscMessage", () => {
 });
 
 describe("encodeOscBundle", () => {
-  test("wraps elements with #bundle + zero time-tag + size-prefixed elements", () => {
+  test("wraps elements with #bundle + immediate time-tag + size-prefixed elements", () => {
     const element = encodeOscMessage("/go");
     const bundle = encodeOscBundle([element]);
-    expect(bundle).toEqual(concat(oscString("#bundle"), new Uint8Array(8), int32(element.length), element));
+    const immediateTimeTag = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]);
+    expect(bundle).toEqual(concat(oscString("#bundle"), immediateTimeTag, int32(element.length), element));
   });
 });
 

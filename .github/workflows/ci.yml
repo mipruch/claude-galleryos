@@ -45,7 +45,7 @@ jobs:
         run: bun test apps/server packages
 
       - name: UI unit tests
-        run: bun run --filter @gallery/ui test:unit:run
+        run: bun run --filter @gallery/ui test
 
       - name: UI lint (informational)
         run: bun run --filter @gallery/ui lint:ci

@@ -46,7 +46,7 @@ export const manifest: DriverManifest = {
 
   connectionSchema: {
     type: "object",
-    required: ["host"],
+    required: ["host", "port"],
     properties: {
       host: { type: "string", title: "Host / IP", format: "host" },
       port: { type: "integer", title: "Port", minimum: 1, maximum: 65535 },
@@ -216,7 +216,13 @@ export const manifest: DriverManifest = {
             required: ["address"],
             properties: {
               address: { type: "string", title: "OSC address", pattern: "^/" },
-              args: { type: "string", title: "Arguments" },
+              args: {
+                type: "string",
+                title: "Arguments",
+                description:
+                  "Space-separated. Each token is auto-typed: digits only → int, has a decimal " +
+                  "point → float, true/false → bool, anything else → string.",
+              },
             },
           },
         },

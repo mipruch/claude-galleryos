@@ -12,7 +12,7 @@
 
 import type { WidgetBinding } from '@gallery/driver-core'
 import { type DeviceRecord, type DeviceState } from './devices'
-import { selectOptions } from './widgets'
+import { buttonsFor, selectOptions } from './widgets'
 
 export interface DeviceAction {
   /** Stable id within a device (used as the list key). */
@@ -84,6 +84,21 @@ export function deviceActions(
         optimistic: { [select.stateKey]: option.value },
       })
     }
+  }
+
+  // A buttons-kind widget (e.g. generic-trigger's TCP/UDP/OSC send buttons):
+  // one quick action per button, generically — no per-driver special case.
+  // Stateless, like the on-screen widget, so no `optimistic` patch.
+  const buttons = widgets.find((w): w is Extract<WidgetBinding, { kind: 'buttons' }> => w.kind === 'buttons')
+  if (buttons) {
+    buttonsFor(device).forEach((button, index) => {
+      actions.push({
+        id: `${buttons.command}-${index}`,
+        label: button.label,
+        command: buttons.command,
+        params: button.params,
+      })
+    })
   }
 
   return actions

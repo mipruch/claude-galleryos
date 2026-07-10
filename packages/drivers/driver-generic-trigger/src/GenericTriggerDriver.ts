@@ -55,7 +55,8 @@ export class GenericTriggerDriver extends EventEmitter implements IDeviceDriver 
     this.host = config.host;
     this.port = config.port;
     this.txDelimiter = unescapeDelimiter(String(config.config.txDelimiter ?? "\r\n"));
-    this.connectTimeoutMs = Number(config.config.responseTimeoutMs ?? 2000);
+    const timeoutMs = Number(config.config.responseTimeoutMs ?? 2000);
+    this.connectTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 2000;
 
     ctx.signal.addEventListener("abort", () => {
       this.destroyed = true;
@@ -90,6 +91,9 @@ export class GenericTriggerDriver extends EventEmitter implements IDeviceDriver 
     params: Record<string, unknown>,
   ): Promise<CommandResult> {
     const start = Date.now();
+    if (this.destroyed) {
+      return { success: false, durationMs: 0, error: "driver destroyed" };
+    }
     if (command !== "send") {
       return { success: false, durationMs: 0, error: `unknown command: ${command}` };
     }

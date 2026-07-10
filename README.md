@@ -2126,12 +2126,13 @@ core se nemění" z §6. BSS matice navíc byla detekována kombinací
 
 - **Manifest deklaruje, co podporuje** — nové pole
   `EndpointTypeDefinition.widgets?: WidgetBinding[]`
-  (`packages/driver-core/src/types.ts`). Čtyři generické druhy:
+  (`packages/driver-core/src/types.ts`). Pět generických druhů:
   `power`/`mute` (buď dva bezparametrické příkazy `onCommand`/`offCommand`, nebo
   jeden příkaz s boolean parametrem — `trigger: 'commands' | 'param'`),
-  `fader` (0..1 úroveň, jeden příkaz s číselným parametrem) a `select`
+  `fader` (0..1 úroveň, jeden příkaz s číselným parametrem), `select`
   (výčet možností — buď statický seznam v manifestu, nebo `optionsKey` čtený ze
-  `state`, když je seznam dynamický). Binding nese **jen jména** — command,
+  `state`, když je seznam dynamický) a `buttons` (řada bezstavových tlačítek,
+  viz "generic-trigger" níže). Binding nese **jen jména** — command,
   param key, state key — žádnou logiku.
 - **Veškerý překlad zůstává v driveru, ne v deklarativních pravidlech.**
   `driver-bss` dostal plnohodnotný endpoint typ `bss-soundweb.matrix` s
@@ -2350,10 +2351,12 @@ cyklus řízený sledovaností (jeden ffmpeg proces na *právě sledovanou* kame
 #### Implementováno (generic-trigger — pátý generický widget: `buttons`)
 
 Ověření, že „driver-agnostic widgets" (výše) doopravdy škáluje na nový driver
-**beze změny UI kódu**: `driver-generic-trigger` (§6) přidal pátý
+**beze změny existujícího UI kódu**: `driver-generic-trigger` (§6) přidal pátý
 `WidgetBinding` druh, `buttons`, a nedotkl se přitom `DeviceWidget.vue`,
-`SchemaFields.vue` ani `ArrayObjectField.vue` — jen manifest + jedna nová
-generická komponenta.
+`SchemaFields.vue` ani `ArrayObjectField.vue` — jen rozšířil sdílený
+`WidgetBinding` kontrakt (`driver-core/src/types.ts`), `lib/widgets.ts#buttonsFor`
+a `lib/commands.ts` (paletový příkaz, stejně jako `select`), plus jednu novou
+generickou komponentu (`ButtonsWidget.vue`).
 
 - **`ButtonsWidgetBinding = { kind: 'buttons', command: string }`**
   (`packages/driver-core/src/types.ts`) — na rozdíl od `power`/`fader`/`select`

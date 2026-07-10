@@ -86,4 +86,29 @@ describe('deviceActions', () => {
       expect(deviceActions(dev([]), {}, [])).toEqual([])
     })
   })
+
+  // A buttons-kind widget (e.g. generic-trigger's send buttons) generates one
+  // action per button, generically — no per-driver special case, no optimistic
+  // state (buttons are stateless, matching ButtonsWidget.vue).
+  describe('buttons-kind widget bindings', () => {
+    const binding: WidgetBinding = { kind: 'buttons', command: 'send' }
+
+    it('generates one action per button, in order', () => {
+      const device = makeDevice({
+        id: 'd',
+        name: 'D',
+        capabilities: [],
+        address: { buttons: [{ label: 'Go', address: '/go' }, { label: 'Fanfare', address: '/cue/1/start' }] },
+      })
+      expect(deviceActions(device, {}, [binding])).toEqual([
+        { id: 'send-0', label: 'Go', command: 'send', params: { address: '/go' } },
+        { id: 'send-1', label: 'Fanfare', command: 'send', params: { address: '/cue/1/start' } },
+      ])
+    })
+
+    it('produces no button actions when no buttons binding is present', () => {
+      const device = makeDevice({ address: { buttons: [{ label: 'Go', address: '/go' }] } })
+      expect(deviceActions(device, {}, [])).toEqual([])
+    })
+  })
 })

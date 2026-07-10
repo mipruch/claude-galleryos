@@ -7,7 +7,7 @@
  * OSC "just send a message" endpoints, but works for any driver whose
  * `buttons` widget command needs no optimistic state.
  */
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { Button } from '@/components/ui/button'
 import type { ButtonsWidgetBinding } from '@gallery/driver-core'
 import { buttonsFor } from '@/lib/widgets'
@@ -17,7 +17,9 @@ import { useDevicesStore } from '@/stores/devices'
 const props = defineProps<{ device: DeviceRecord; binding: ButtonsWidgetBinding }>()
 const store = useDevicesStore()
 
-const buttons = buttonsFor(props.device)
+// Reactive (like SelectWidget's options) so an admin edit to the button list
+// re-renders this widget instead of requiring a remount.
+const buttons = computed(() => buttonsFor(props.device))
 // Per-button in-flight flag, keyed by index — disables just the clicked
 // button (not the whole row) so firing two different cues back to back stays
 // snappy, while a double-click on the *same* button can't double-fire it.
@@ -27,7 +29,7 @@ async function fire(index: number): Promise<void> {
   if (pending[index]) return
   pending[index] = true
   try {
-    await store.sendCommand(props.device.id, props.binding.command, buttons[index]!.params)
+    await store.sendCommand(props.device.id, props.binding.command, buttons.value[index]!.params)
   } finally {
     pending[index] = false
   }
