@@ -23,6 +23,9 @@ apps/ui/src/**/*.vue.js
 # Bun
 .bun/
 
+# Redis (local dev persistence dump)
+dump.rdb
+
 # OS / editor
 .DS_Store
 *.swp
