@@ -5,12 +5,27 @@
  * router links — refreshing keeps you on the same page.
  */
 import { computed } from 'vue'
-import { LayoutGridIcon, DoorOpenIcon, CalendarClockIcon, VideoIcon } from '@lucide/vue'
+import {
+  LayoutGridIcon,
+  DoorOpenIcon,
+  CalendarClockIcon,
+  VideoIcon,
+  UserCog,
+  LogOutIcon,
+} from '@lucide/vue'
 import { useDevicesStore } from '@/stores/devices'
 import { useCamerasStore } from '@/stores/cameras'
-
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+const router = useRouter()
+const auth = useAuthStore()
 const store = useDevicesStore()
 const camerasStore = useCamerasStore()
+
+function logout(): void {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 
 const rooms = computed(() =>
   [...store.rooms].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)),
@@ -76,9 +91,7 @@ function linkClass(isActive: boolean): string {
       </RouterLink>
 
       <template v-if="cameras.length">
-        <p
-          class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
-        >
+        <p class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
           Cameras
         </p>
         <RouterLink
@@ -96,9 +109,7 @@ function linkClass(isActive: boolean): string {
       </template>
 
       <template v-if="iframes.length">
-        <p
-          class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase"
-        >
+        <p class="text-muted-foreground px-3 pt-4 pb-1 text-xs font-medium tracking-wide uppercase">
           Views
         </p>
         <RouterLink
@@ -114,5 +125,27 @@ function linkClass(isActive: boolean): string {
         </RouterLink>
       </template>
     </nav>
+
+    <div class="border-t p-2">
+      <RouterLink to="/admin" custom v-slot="{ href, navigate }" v-if="auth.role?.isAdmin">
+        <a :href="href" :class="linkClass(false)" @click="navigate">
+          <UserCog class="size-4 shrink-0" />
+          <span class="flex-1 truncate">Admin panel</span>
+        </a>
+      </RouterLink>
+
+      <button
+        type="button"
+        :class="linkClass(false)"
+        class="w-full cursor-pointer"
+        @click="logout"
+        :aria-label="`Log out (${auth.user?.username})`"
+      >
+        <LogOutIcon class="size-4 shrink-0" />
+        <span class="flex-1 truncate text-left"
+          >Log out{{ auth.user ? ` (${auth.user.username})` : '' }}</span
+        >
+      </button>
+    </div>
   </aside>
 </template>

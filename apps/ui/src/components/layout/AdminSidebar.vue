@@ -103,7 +103,7 @@ function linkClass(isActive: boolean): string {
           <span class="flex-1 truncate">User panel</span>
         </a>
       </RouterLink>
-      <button type="button" :class="linkClass(false)" class="w-full" @click="logout">
+      <button type="button" :class="linkClass(false)" class="w-full cursor-pointer" @click="logout">
         <LogOutIcon class="size-4 shrink-0" />
         <span class="flex-1 truncate text-left"
           >Log out{{ auth.user ? ` (${auth.user.username})` : '' }}</span

@@ -14,7 +14,9 @@ import { useRealtimeStore } from '@/stores/realtime'
 const route = useRoute()
 const realtime = useRealtimeStore()
 
-const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Admin'))
+const pageTitle = computed(() =>
+  typeof route.meta.title === 'string' ? route.meta.title : 'Admin',
+)
 const pageSubtitle = computed(() =>
   typeof route.meta.subtitle === 'string' ? route.meta.subtitle : '',
 )
@@ -43,7 +45,11 @@ const pageSubtitle = computed(() =>
             <ConnectionStatus />
             <span
               class="flex items-center gap-1.5 text-xs"
-              :class="realtime.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'"
+              :class="
+                realtime.connected
+                  ? 'text-emerald-600 dark:text-emerald-500'
+                  : 'text-muted-foreground'
+              "
             >
               <component :is="realtime.connected ? WifiIcon : WifiOffIcon" class="size-4" />
               {{ realtime.connected ? 'Live' : 'Offline' }}
@@ -51,7 +57,7 @@ const pageSubtitle = computed(() =>
           </div>
         </header>
 
-        <main class="min-h-0 w-full flex-1">
+        <main class="min-h-0 w-full flex-1 overflow-auto">
           <RouterView />
         </main>
       </div>
