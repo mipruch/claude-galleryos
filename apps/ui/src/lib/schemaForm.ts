@@ -155,6 +155,20 @@ export function zodFromSchema(schema: JsonSchema | undefined): z.ZodObject<z.Zod
 }
 
 /**
+ * Coerce a form field's current value to what a `<Select>` needs for its
+ * `model-value`: a genuine string, not just a TypeScript-level cast. A
+ * `number`-kind field (e.g. a `connectionEnum` dropdown) holds a real JS
+ * number once seeded from a saved record — `value as string` doesn't
+ * actually convert it, so the number would never strictly-equal a
+ * `SelectItem`'s string `value` and the trigger would silently show the
+ * placeholder instead of the current selection. `String(value)` fixes both
+ * strings (already a no-op) and numbers.
+ */
+export function selectValueOf(value: unknown): string {
+  return value === null || value === undefined ? '' : String(value)
+}
+
+/**
  * Strips blank/undefined entries so an optional, untouched field isn't sent as
  * `""` (which would fail the server's stricter type checks).
  */

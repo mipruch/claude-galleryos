@@ -4,7 +4,7 @@
  * surrounding vee-validate form. Each field binds to the form by its `key`, so
  * the parent's `useForm({ validationSchema })` validates them with Zod.
  */
-import type { SchemaField } from '@/lib/schemaForm'
+import { selectValueOf, type SchemaField } from '@/lib/schemaForm'
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -43,7 +43,7 @@ function selectOptionsFor(field: SchemaField): { value: string; label: string }[
         <FormControl>
           <Select
             v-if="selectOptionsFor(field)"
-            :model-value="value as string"
+            :model-value="selectValueOf(value)"
             @update:model-value="handleChange"
           >
             <SelectTrigger>

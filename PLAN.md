@@ -784,6 +784,17 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `output` address field uses it (`labelsKey: "outputs"`); seed gained
         `config.outputs` on the Extron connection, derived from the existing
         `EXTRON_OUTPUT_NAMES` list so the two can't drift apart.
+  - [x] **Fix: editing a device showed the output dropdown's placeholder
+        instead of its saved value.** `SchemaFields.vue` bound the Select to
+        `value as string` — a compile-time-only cast — but a `number`-kind
+        field's value is a real JS number once seeded from a saved record
+        (`address.output: 6`), so `6 !== "6"` against the SelectItem's string
+        value and the trigger fell back to the placeholder. Never showed up
+        on create, where the value only ever came from the Select's own
+        `@update:model-value` (already a string). New exported
+        `selectValueOf()` in `lib/schemaForm.ts` does a real `String()`
+        conversion; unit-tested directly, plus verified live against an
+        existing seeded device.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.

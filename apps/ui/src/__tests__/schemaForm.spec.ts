@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { JsonSchema } from '@gallery/driver-core'
-import { defaultsFromSchema, pruneEmpty, schemaToFields, zodFromSchema } from '@/lib/schemaForm'
+import { defaultsFromSchema, pruneEmpty, schemaToFields, selectValueOf, zodFromSchema } from '@/lib/schemaForm'
 
 // Mirrors a real manifest connectionSchema (driver-tcp-generic) closely enough
 // to exercise every field kind + constraint the renderer/validator must handle.
@@ -171,5 +171,27 @@ describe('pruneEmpty', () => {
       e: false,
       f: 'x',
     })
+  })
+})
+
+describe('selectValueOf', () => {
+  // Regression: a number-kind field's SelectItems always have string values,
+  // but a saved record's value (e.g. address.output: 6) arrives as a real JS
+  // number when the edit form seeds from it — `value as string` is a
+  // TypeScript-only cast, not a runtime conversion, so 6 never matched "6"
+  // and the trigger silently fell back to the placeholder on edit (never
+  // reproduced on create, since there the value only ever came from a
+  // Select's own @update:model-value, which is always already a string).
+  it('stringifies a number so it matches a SelectItem value', () => {
+    expect(selectValueOf(6)).toBe('6')
+  })
+
+  it('passes an already-string value through unchanged', () => {
+    expect(selectValueOf('address')).toBe('address')
+  })
+
+  it('maps null/undefined to an empty string (nothing selected)', () => {
+    expect(selectValueOf(null)).toBe('')
+    expect(selectValueOf(undefined)).toBe('')
   })
 })

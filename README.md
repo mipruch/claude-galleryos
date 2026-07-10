@@ -2448,6 +2448,18 @@ možnosti se objeví až po prvním úspěšném výběru.
   rozejít). Testy: `apps/ui/src/__tests__/schemaForm.spec.ts`
   (`connectionEnum` — rozřešení z connection configu při zachování `kind:
   'number'`, prázdné bez configu/platného počtu).
+- ⚠️ **Bug nahlášený hned po nasazení:** editace existujícího zařízení
+  ukazovala u „Output number" jen placeholder „Select…", ne uloženou
+  hodnotu. Příčina: `SchemaFields.vue` posílalo do `<Select>` `:model-value="value
+  as string"` — `as string` je jen TypeScript **cast** (nic za běhu
+  nepřevede), zatímco `value` byl u čerstvě editovaného záznamu opravdové
+  **číslo** (`address.output: 6` z DB), ne řetězec. `SelectItem` má
+  `value` vždy jako string ("6"), takže `6 !== "6"` a trigger si myslel, že
+  nic nevybráno. Na create scestí se to nikdy neprojevilo — tam hodnota vždy
+  přišla z `@update:model-value` (už string). Oprava: nová exportovaná
+  `selectValueOf()` (`lib/schemaForm.ts`) dělá skutečnou `String()` koerzi
+  (`null`/`undefined` → `''`), otestovaná zvlášť
+  (`apps/ui/src/__tests__/schemaForm.spec.ts`).
 
 ### Princip fungování
 
