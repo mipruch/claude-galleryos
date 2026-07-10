@@ -31,6 +31,7 @@ export function deviceActions(
   device: DeviceRecord,
   state: DeviceState,
   widgets: WidgetBinding[],
+  connectionConfig?: Record<string, unknown>,
 ): DeviceAction[] {
   const caps = new Set(device.capabilities)
   const actions: DeviceAction[] = []
@@ -75,7 +76,7 @@ export function deviceActions(
   // widget, not just a matrix.
   const select = widgets.find((w): w is Extract<WidgetBinding, { kind: 'select' }> => w.kind === 'select')
   if (select) {
-    for (const option of selectOptions(select, state)) {
+    for (const option of selectOptions(select, state, connectionConfig)) {
       actions.push({
         id: `${select.command}-${option.value}`,
         label: option.label,

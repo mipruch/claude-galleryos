@@ -140,11 +140,32 @@ export interface SelectWidgetBinding {
   options?: WidgetSelectOption[];
   /**
    * State key holding a dynamic `{value,label}[]` option list, when the
-   * driver computes it at runtime (e.g. Extron input labels, which live on
-   * the owning connection, not the endpoint) and stamps it onto every state
-   * it emits. Takes priority over `options` when both are present.
+   * driver computes it at runtime and stamps it onto every state it emits.
+   * Ignored when `connectionOptions` is present.
    */
   optionsKey?: string;
+  /**
+   * Build the option list directly from the device's own connection config
+   * instead of live state — for a value that's static per-connection (e.g. a
+   * matrix switcher's input labels, named once on the connection rather than
+   * duplicated per output). Options are available the moment the connection
+   * is saved, with no dependency on the driver ever having connected or
+   * emitted a live state update. Entries run `1..config[countKey]`, each
+   * labeled `"{n}. {config[labelsKey][n-1]}"` when named or
+   * `"{fallbackLabel} {n}"` when not; a leading `{value:0,label:'None'}` entry
+   * is included when `includeNone` is set. Takes priority over `optionsKey`/
+   * `options` when present.
+   */
+  connectionOptions?: {
+    /** Connection config key holding the `string[]` of labels (0-indexed, i.e. index 0 names entry 1). */
+    labelsKey: string;
+    /** Connection config key holding how many entries to generate (1..N). */
+    countKey: string;
+    /** Label prefix for an unnamed entry, e.g. `"Input"` → `"Input 3"`. */
+    fallbackLabel: string;
+    /** Prepend a `{value:0,label:'None'}` entry. */
+    includeNone?: boolean;
+  };
 }
 
 /**

@@ -208,8 +208,10 @@ unsolicited front-panel ties refresh the cache and surface on the next poll.
 - [x] Register in `apps/server/src/drivers/registry.ts` (id `extron-matrix`, pkg `@gallery/driver-extron-matrix`)
 - [x] Seed: one connection + 8 output devices. **Input labels live on the connection**
       (`config.inputs`, named once per matrix), not duplicated per output device
-- [x] **User UI:** `matrixOutput` widget — one input `<select>` per output (`setInput`);
-      labels read from the connection's `config.inputs` via `useConnectionsStore`
+- [x] **User UI:** generic `select` widget (§5 "Driver-agnostic widgets") — one input
+      `<select>` per output (`setInput`); options built straight from the connection's
+      `config.inputs`/`config.inputCount` (`SelectWidgetBinding.connectionOptions`,
+      §5 "select options without live state"), no live device state involved
 
 ### 1.5 `driver-samsung-mdc` — Samsung MDC (TCP 1515) ✓ (power on/off only)
 
@@ -614,9 +616,11 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           key (replacing the `type==='matrix'` + inverted-`setMute` hack);
           `driver-dali-lunatone`/`driver-dali-foxtron` remember/restore a
           fixture's last brightness themselves (resolves H1, see below);
-          `driver-extron-matrix` computes its per-connection input-label list
-          once and stamps `options` onto every state it emits, so the UI never
-          reaches into connection config for this anymore.
+          `driver-extron-matrix`'s `select` binding is the one deliberate
+          exception in the other direction — its options are read straight
+          from connection config (`connectionOptions`, see below), since
+          input labels are static per-connection data, not something a live
+          device ever reports.
         - **UI composes, never special-cases:** `DeviceWidget.vue` resolves a
           device's `WidgetBinding[]` (`composables/useDeviceWidgets.ts`, joining
           the connection → driver → manifest, same pattern as
@@ -750,6 +754,24 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `driver-core` OSC tests + 4 new `buttonsFor` UI tests. Seed example: one
         `generic-trigger` UDP connection ("QLab (sál)") with two devices sharing
         it, "Qlab Jingles" and "Qlab Alarms".
+  - [x] **`select` options without live state (`connectionOptions`):** found
+        while wiring the command palette's `buttons` action (above) — the
+        palette's select actions, and it turned out the on-screen widget too,
+        showed zero options for any Extron matrix device, because nothing in
+        the server ever automatically calls a poll-only driver's `readState()`
+        after connect (the one public `DeviceManager.readState()` method is
+        only ever invoked from tests). Input labels are static per-connection
+        config, not live device data, so routing them through a state update
+        that may never happen was the wrong design from the start. New
+        `SelectWidgetBinding.connectionOptions` (`{labelsKey, countKey,
+        fallbackLabel, includeNone?}`) builds the option list straight from
+        `connection.config` — available the instant the connection is saved,
+        with zero dependency on the driver ever connecting. `driver-extron-matrix`
+        dropped its `computeOptions`/state-stamping entirely; its manifest
+        gained `outputs?: string[]` alongside the existing `inputs?: string[]`
+        (documentation for picking an output number when creating a device).
+        Deliberately kept scope to one-output-per-device (no bundling multiple
+        outputs into one widget) rather than a bigger address-shape change.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
 
 See README §10–11 for full spec; see §11 for the implemented slice.

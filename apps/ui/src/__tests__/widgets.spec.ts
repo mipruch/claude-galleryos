@@ -90,6 +90,54 @@ describe('selectOptions', () => {
     const bare: SelectWidgetBinding = { kind: 'select', command: 'setInput', paramKey: 'input', stateKey: 'input' }
     expect(selectOptions(bare, {})).toEqual([])
   })
+
+  // A matrix switcher's input labels are static per-connection, so they should
+  // be readable without any live device state at all — this is the fix for
+  // "select shows no options until the driver has connected at least once".
+  describe('connectionOptions (static, read from the connection, no live state needed)', () => {
+    const matrixBinding: SelectWidgetBinding = {
+      kind: 'select',
+      command: 'setInput',
+      paramKey: 'input',
+      stateKey: 'input',
+      connectionOptions: { labelsKey: 'inputs', countKey: 'inputCount', fallbackLabel: 'Input', includeNone: true },
+    }
+
+    it('builds None + numbered options from connection config, with no live state', () => {
+      const config = { inputCount: 3, inputs: ['Lectern', 'Laptop'] }
+      expect(selectOptions(matrixBinding, undefined, config)).toEqual([
+        { value: 0, label: 'None' },
+        { value: 1, label: '1. Lectern' },
+        { value: 2, label: '2. Laptop' },
+        { value: 3, label: 'Input 3' }, // unlabeled input falls back
+      ])
+    })
+
+    it('omits the None entry when includeNone is not set', () => {
+      const binding: SelectWidgetBinding = { ...matrixBinding, connectionOptions: { ...matrixBinding.connectionOptions!, includeNone: false } }
+      expect(selectOptions(binding, undefined, { inputCount: 1, inputs: ['Lectern'] })).toEqual([
+        { value: 1, label: '1. Lectern' },
+      ])
+    })
+
+    it('takes priority over optionsKey/options when both are present', () => {
+      const binding: SelectWidgetBinding = {
+        ...matrixBinding,
+        optionsKey: 'options',
+        options: [{ value: 9, label: 'Should not win' }],
+      }
+      const state = { options: [{ value: 8, label: 'Should also not win' }] }
+      expect(selectOptions(binding, state, { inputCount: 1, inputs: ['Lectern'] })).toEqual([
+        { value: 0, label: 'None' },
+        { value: 1, label: '1. Lectern' },
+      ])
+    })
+
+    it('falls back to optionsKey/options when the connection config has no valid count', () => {
+      expect(selectOptions(matrixBinding, undefined, {})).toEqual([])
+      expect(selectOptions(matrixBinding, undefined, { inputCount: 0, inputs: ['Lectern'] })).toEqual([])
+    })
+  })
 })
 
 describe('buttonsFor', () => {

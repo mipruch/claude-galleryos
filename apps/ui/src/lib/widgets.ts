@@ -58,14 +58,47 @@ export function readSelected(value: unknown): number | string {
 }
 
 /**
- * Resolve a select widget's option list: a dynamic list the driver stamped
- * onto state (`optionsKey`, e.g. Extron's per-connection input labels) wins
- * over a static one declared directly in the manifest.
+ * Build a `connectionOptions` binding's {value,label}[] from connection config:
+ * entries `1..count`, each labeled `"{n}. {labels[n-1]}"` when named or
+ * `"{fallbackLabel} {n}"` when not. Returns undefined when the connection has
+ * no valid count yet, so the caller can fall through to another source.
+ */
+function buildConnectionOptions(
+  options: NonNullable<SelectWidgetBinding['connectionOptions']>,
+  connectionConfig: Record<string, unknown> | undefined,
+): { value: number | string; label: string }[] | undefined {
+  const count = connectionConfig?.[options.countKey]
+  if (typeof count !== 'number' || count <= 0) return undefined
+
+  const labels = connectionConfig?.[options.labelsKey]
+  const entries: { value: number | string; label: string }[] = options.includeNone
+    ? [{ value: 0, label: 'None' }]
+    : []
+  for (let index = 1; index <= count; index++) {
+    const named = Array.isArray(labels) ? labels[index - 1] : undefined
+    const label = typeof named === 'string' && named !== '' ? `${index}. ${named}` : `${options.fallbackLabel} ${index}`
+    entries.push({ value: index, label })
+  }
+  return entries
+}
+
+/**
+ * Resolve a select widget's option list, trying each source in order:
+ * 1. `connectionOptions` — built from the device's own connection config
+ *    (e.g. a matrix switcher's input labels), no live state needed.
+ * 2. `optionsKey` — a dynamic list the driver stamped onto state.
+ * 3. `options` — a static list declared directly in the manifest.
  */
 export function selectOptions(
   binding: SelectWidgetBinding,
   state: Record<string, unknown> | undefined,
+  connectionConfig?: Record<string, unknown>,
 ): { value: number | string; label: string }[] {
+  const fromConnection = binding.connectionOptions
+    ? buildConnectionOptions(binding.connectionOptions, connectionConfig)
+    : undefined
+  if (fromConnection) return fromConnection
+
   const dynamic = binding.optionsKey ? state?.[binding.optionsKey] : undefined
   if (Array.isArray(dynamic)) return dynamic as { value: number | string; label: string }[]
   return binding.options ?? []

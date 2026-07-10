@@ -34,7 +34,7 @@ interface PaletteItem {
 
 const store = useDevicesStore()
 const scenes = useScenesStore()
-const { widgetsFor } = useDeviceWidgets()
+const { widgetsFor, connectionConfigFor } = useDeviceWidgets()
 const { open, close, toggle } = useCommandPalette()
 
 const query = ref('')
@@ -61,7 +61,7 @@ const results = computed<PaletteItem[]>(() => {
   if (view.value === 'device' && activeDevice.value) {
     const device = activeDevice.value
     const q = query.value.trim().toLowerCase()
-    return deviceActions(device, store.stateOf(device.id), widgetsFor(device))
+    return deviceActions(device, store.stateOf(device.id), widgetsFor(device), connectionConfigFor(device))
       .filter((a) => !q || a.label.toLowerCase().includes(q))
       .map((a) => ({
         id: a.id,

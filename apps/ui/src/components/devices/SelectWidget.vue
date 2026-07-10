@@ -12,11 +12,15 @@ import type { SelectWidgetBinding } from '@gallery/driver-core'
 import { readSelected, selectOptions } from '@/lib/widgets'
 import type { DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
+import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
 
 const props = defineProps<{ device: DeviceRecord; binding: SelectWidgetBinding }>()
 const store = useDevicesStore()
+const { connectionConfigFor } = useDeviceWidgets()
 
-const options = computed(() => selectOptions(props.binding, store.stateOf(props.device.id)))
+const options = computed(() =>
+  selectOptions(props.binding, store.stateOf(props.device.id), connectionConfigFor(props.device)),
+)
 const current = computed(() => readSelected(store.stateOf(props.device.id)[props.binding.stateKey]))
 // A dynamic option list (e.g. Extron input labels) only exists once the driver
 // has emitted state at least once — before that (device never connected /

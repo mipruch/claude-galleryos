@@ -19,6 +19,10 @@ export function useDeviceWidgets() {
   const driverIdOf = (device: DeviceRecord): string | undefined =>
     connections.connections.find((c) => c.id === device.connectionId)?.driverId
 
+  /** The device's own connection's config blob (e.g. a matrix's input labels) — empty if unknown. */
+  const connectionConfigFor = (device: DeviceRecord): Record<string, unknown> =>
+    connections.configOf(device.connectionId)
+
   /** The generic widget bindings this device's endpoint type declares (empty if none/unknown). */
   const widgetsFor = (device: DeviceRecord): WidgetBinding[] =>
     drivers.endpointType(driverIdOf(device), device.subtype ?? undefined)?.widgets ?? []
@@ -27,5 +31,5 @@ export function useDeviceWidgets() {
   const isRenderable = (device: DeviceRecord): boolean =>
     isRenderableType(device.subtype, widgetsFor(device))
 
-  return { widgetsFor, isRenderable, isCustomWidgetType }
+  return { widgetsFor, connectionConfigFor, isRenderable, isCustomWidgetType }
 }

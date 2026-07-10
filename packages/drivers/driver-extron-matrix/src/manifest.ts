@@ -71,6 +71,16 @@ export const manifest: DriverManifest = {
         minimum: 1,
         maximum: 64,
       },
+      outputs: {
+        type: "array",
+        title: "Output labels",
+        description:
+          "Human names for the switcher's outputs, in order (index 0 = output 1). " +
+          "Purely documentation for admins picking an output number when creating a " +
+          "device — e.g. \"Hall A — left projector\". Shorter than outputCount is fine.",
+        items: { type: "string" },
+        maxItems: 64,
+      },
       responseTimeoutMs: {
         type: "integer",
         title: "Response timeout (ms)",
@@ -177,11 +187,18 @@ export const manifest: DriverManifest = {
         },
       ],
 
-      // The option list is dynamic (per-connection input labels), so the driver
-      // computes it from its own config and stamps it onto every state it emits
-      // under `optionsKey` — the UI never reaches into the connection itself.
+      // The input list is static per-connection (named once on the matrix, not
+      // per output), so the UI builds the option list directly from the
+      // connection's own config (`connectionOptions`) instead of needing the
+      // driver to have connected and emitted a live state update first.
       widgets: [
-        { kind: "select", command: "setInput", paramKey: "input", stateKey: "input", optionsKey: "options" },
+        {
+          kind: "select",
+          command: "setInput",
+          paramKey: "input",
+          stateKey: "input",
+          connectionOptions: { labelsKey: "inputs", countKey: "inputCount", fallbackLabel: "Input", includeNone: true },
+        },
       ],
     },
   ],

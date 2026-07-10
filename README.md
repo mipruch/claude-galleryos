@@ -961,23 +961,34 @@ ověřená proti přiloženému manuálu (`manuals/Extron-108-manual.pdf`).
   `extron-matrix.output` (Device v místnosti) s jediným výběrem „který vstup?“ —
   8výstupová matice = 8 zařízení pod jednou connection. Mřížka 10×8 se v UI nikdy
   nezobrazuje.
-- **Popisky vstupů patří matici (connection), ne jednotlivým výstupům.** Žijí
-  v `connection.config.inputs` (pole názvů, index 0 = vstup 1) a jsou pojmenované
-  **jednou** — přepojíš vstup 3 na jiné zařízení, přejmenuješ ho na jednom místě
-  a promítne se do pickeru všech výstupů. (Alternativy — celá matice jako jedno
-  zařízení, nebo samostatná DB tabulka mapování — by buď znemožnily rozdělení
-  výstupů do více místností, nebo přidaly tabulku navíc; config matice je
-  nejjednodušší správné místo.)
-- **Endpoint `extron-matrix.output`**, adresa `{ output: 1..outputCount }`.
-  Connection config: `{ host, port=23, password?, inputCount=10, outputCount=8,
-  inputs?: string[], responseTimeoutMs, reconnectMs }`. Příkazy: `setInput` (AV),
-  `setVideoInput`, `setAudioInput`, `readState`. Capabilities: `subscriptions: false`
-  (poll, ale emituje `state` na echo), `bidirectional: true`, `discovery: false`.
+- **Popisky vstupů i výstupů patří matici (connection), ne jednotlivým
+  zařízením.** Žijí v `connection.config.inputs` / `connection.config.outputs`
+  (pole názvů, index 0 = číslo 1) a jsou pojmenované **jednou** — přepojíš vstup
+  3 na jiné zařízení, přejmenuješ ho na jednom místě a promítne se do pickeru
+  všech výstupů; `outputs` je čistě dokumentace pro admina při zakládání
+  zařízení (který výstup je „Hala A — levý projektor"). (Alternativy — celá
+  matice jako jedno zařízení, nebo samostatná DB tabulka mapování — by buď
+  znemožnily rozdělení výstupů do více místností, nebo přidaly tabulku navíc;
+  config matice je nejjednodušší správné místo.)
+- **Endpoint `extron-matrix.output`**, adresa `{ output: 1..outputCount }` —
+  pořád jeden výstup = jedno zařízení (bez bundlování víc výstupů do jednoho
+  widgetu). Connection config: `{ host, port=23, password?, inputCount=10,
+  outputCount=8, inputs?: string[], outputs?: string[], responseTimeoutMs,
+  reconnectMs }`. Příkazy: `setInput` (AV), `setVideoInput`, `setAudioInput`,
+  `readState`. Capabilities: `subscriptions: false` (poll, ale emituje `state`
+  na echo), `bidirectional: true`, `discovery: false`.
 - **User UI:** generický `select` widget — jeden `<select>` vstupů na výstup
-  (`setInput`). Driver si sám při `init()` spočítá `options` (`{value,label}[]`,
-  fallback „Input N”) z vlastního configu a vloží je do každého stavu, který
-  vydá (`mergeState`) — UI je čte přes `optionsKey`, žádné čtení
-  `connection.config` z FE (viz §11 “Driver-agnostic widgets”).
+  (`setInput`). ⚠️ **Oprava návrhu:** driver si dřív sám při `init()` spočítal
+  `options` (`{value,label}[]`) a vkládal je do **každého stavu, který vydá**
+  (`mergeState`), UI je četlo přes `optionsKey` — ale protože stav se poprvé
+  vydá až po úspěšném `connect()` + první příkaz/poll, nikdy nepřipojené
+  zařízení (žádný `readState()` se sám od sebe nespustí, viz §11) nemělo
+  **žádné** options — ani v paletě příkazů, ani ve widgetu, permanentně, dokud
+  admin neposlal aspoň jeden příkaz jinudy. Popisky vstupů jsou ale statický
+  config, ne živá data zařízení — driver už tedy `options` vůbec nepočítá;
+  UI je staví přímo z `connection.config` (`SelectWidgetBinding.connectionOptions`,
+  viz §11), takže jsou k dispozici okamžitě po uložení connection, bez ohledu
+  na to, jestli se driver kdy připojil.
 
 #### `driver-samsung-mdc` — Samsung MDC displeje (implementováno, jen zapnutí/vypnutí)
 
@@ -2130,10 +2141,12 @@ core se nemění" z §6. BSS matice navíc byla detekována kombinací
   `power`/`mute` (buď dva bezparametrické příkazy `onCommand`/`offCommand`, nebo
   jeden příkaz s boolean parametrem — `trigger: 'commands' | 'param'`),
   `fader` (0..1 úroveň, jeden příkaz s číselným parametrem), `select`
-  (výčet možností — buď statický seznam v manifestu, nebo `optionsKey` čtený ze
-  `state`, když je seznam dynamický) a `buttons` (řada bezstavových tlačítek,
-  viz "generic-trigger" níže). Binding nese **jen jména** — command,
-  param key, state key — žádnou logiku.
+  (výčet možností — statický seznam v manifestu, `optionsKey` čtený ze `state`
+  pro živě dodaný seznam, nebo `connectionOptions` postavený přímo z
+  `connection.config` pro seznam, který je statický na úrovni connection, viz
+  „Extron select bez čekání na live state" níže) a `buttons` (řada
+  bezstavových tlačítek, viz "generic-trigger" níže). Binding nese **jen
+  jména** — command, param key, state key — žádnou logiku.
 - **Veškerý překlad zůstává v driveru, ne v deklarativních pravidlech.**
   `driver-bss` dostal plnohodnotný endpoint typ `bss-soundweb.matrix` s
   kanonickými příkazy `on`/`off` a state klíčem `power` (nahrazuje starý hack);
@@ -2142,9 +2155,10 @@ core se nemění" z §6. BSS matice navíc byla detekována kombinací
   `driver-dali-lunatone`/`driver-dali-foxtron` si samy pamatují a obnovují
   poslední nenulový jas (řeší H1 z PLAN.md — dřív to dělal
   `redis/state.ts#shouldPreserveBrightness`, teď je `mergeDeviceState` zpátky
-  prostý shallow merge). `driver-extron-matrix` si jednou spočítá seznam
-  vstupů z configu connection a vloží ho jako `options` do každého stavu, který
-  pošle — UI se už nikdy nedívá do configu connection.
+  prostý shallow merge). `driver-extron-matrix`'s `select` binding je od
+  „Extron select bez čekání na live state" (níže) výjimka z tohoto pravidla
+  jedním směrem — UI **smí** číst `connection.config` přímo přes
+  `connectionOptions`, protože vstupy jsou tam statická, ne živá data.
 - **UI skládá, nikdy nespecializuje** — `DeviceWidget.vue` přes
   `composables/useDeviceWidgets.ts` (stejný vzor jako `useDeviceCommands`)
   zjistí `WidgetBinding[]` zařízení a naskládá jeden generický komponent
@@ -2377,6 +2391,50 @@ generickou komponentu (`ButtonsWidget.vue`).
 - Testy: `apps/ui/src/__tests__/widgets.spec.ts` (`buttonsFor` — rozdělení
   label/params, dvě zařízení s různými tlačítky na jedné connection,
   chybějící/neplatné pole, přeskočení poškozených položek).
+
+#### Implementováno (Extron select bez čekání na live state)
+
+⚠️ **Oprava návrhu.** `select` binding měl od začátku dva zdroje options:
+statický `options` v manifestu, nebo `optionsKey` čtený ze `state` pro
+driverem dodaný dynamický seznam (`driver-extron-matrix`'s vstupy). Problém:
+**nic v serveru automaticky nezavolá `readState()`** po připojení pro drivery
+bez `subscriptions: true` (jediné volání `DeviceManager.readState()` je
+z API route, která se sama nikde nevolá) — takže dokud zařízení nedostane
+aspoň jeden úspěšný příkaz jinudy, `state.options` je prázdné, a `select`
+widget (na kartě **i** v paletě příkazů) nemá co nabídnout. Pro Extron je to
+bootstrapping deadlock: nejde vybrat vstup, dokud nejsou vidět možnosti, a
+možnosti se objeví až po prvním úspěšném výběru.
+
+- **Kořen problému:** popisky vstupů jsou **statický config connection**
+  (`connection.config.inputs`), ne živá data zařízení — nemají důvod procházet
+  přes stav vůbec. Řešení není „donutit server aby zavolal readState dřív"
+  (to by opravilo jen Extron a přidalo latenci/composity jinam), ale přestat
+  posílat statická data živou cestou.
+- **`SelectWidgetBinding.connectionOptions`** (nové,
+  `packages/driver-core/src/types.ts`) — `{ labelsKey, countKey, fallbackLabel,
+  includeNone? }`. `lib/widgets.ts#selectOptions` (přes malou čistou
+  `buildConnectionOptions`) postaví `{value,label}[]` přímo z
+  `connection.config[countKey]` + `connection.config[labelsKey]` — **bez
+  jakékoli závislosti na živém stavu**, takže options existují okamžitě po
+  uložení connection, i pro zařízení, které se nikdy nepřipojilo. Bere přednost
+  před `optionsKey`/`options`, když je přítomný.
+- **`useDeviceWidgets.ts` přibylo o `connectionConfigFor(device)`** (obálka nad
+  už existujícím `useConnectionsStore().configOf`) — `SelectWidget.vue` i
+  `CommandPalette.vue` ho použijí k předání connection configu do
+  `selectOptions()`.
+- **`driver-extron-matrix` zjednodušen:** `computeOptions`/`this.options` a
+  všechna tři místa, kde se `options` vkládaly do stavu (`mergeState`,
+  `applyDryRun`, dry-run `readState`), zmizely — driver už `options` vůbec
+  nepočítá, UI je nikdy nežádá ze stavu. Manifest přidal `outputs?: string[]`
+  vedle existujícího `inputs?: string[]` (čistě dokumentace pro admina, který
+  výstup je fyzicky který projektor/displej při zakládání zařízení).
+- **Zůstává:** jeden výstup = jedno zařízení (žádné bundlování víc výstupů do
+  jednoho widgetu — zvažováno, ale zamítnuto ve prospěch jednoduchosti).
+- Testy: `apps/ui/src/__tests__/widgets.spec.ts` (`connectionOptions` —
+  postavení None + číslovaných voleb z connection configu, vypnutý
+  `includeNone`, přednost před `optionsKey`/`options`, prázdný seznam bez
+  platného počtu); `packages/drivers/driver-extron-matrix/test/` ztratil tři
+  testy, které ověřovaly driverem-počítané `options` (chování už neexistuje).
 
 ### Princip fungování
 
