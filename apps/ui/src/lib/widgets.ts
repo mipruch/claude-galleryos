@@ -57,6 +57,39 @@ export function readSelected(value: unknown): number | string {
   return typeof value === 'number' || typeof value === 'string' ? value : 0
 }
 
+/** Composition-level render hints `DeviceWidget.vue` derives for a fader from a sibling power/mute binding, if any. */
+export interface FaderRenderHints {
+  /** Grey the fader out (a sibling power/mute binding says off/muted). */
+  dimmed: boolean
+  /** A commit should persist the desired value instead of sending a live command. */
+  blockCommit: boolean
+}
+
+/**
+ * Pairs a fader with a sibling power/mute binding on the same device, if any,
+ * so the fader can grey itself out (and, for a power companion whose
+ * `gatesFader` isn't explicitly `false`, avoid sending a live command while
+ * the device is off). A `mute` companion, or a `power` companion declared
+ * with `gatesFader: false` (e.g. a matrix crosspoint's route-enable riding
+ * the same always-addressable parameter as its fader), never blocks commit —
+ * see `WidgetBinding.gatesFader` in `@gallery/driver-core`.
+ */
+export function faderRenderHints(
+  widgets: WidgetBinding[],
+  state: Record<string, unknown> | undefined,
+): FaderRenderHints {
+  const companion = widgets.find(
+    (widget): widget is Extract<WidgetBinding, { kind: 'power' | 'mute' }> =>
+      widget.kind === 'power' || widget.kind === 'mute',
+  )
+  if (!companion) return { dimmed: false, blockCommit: false }
+
+  const raw = readBoolLike(state?.[companion.stateKey])
+  const offOrMuted = companion.kind === 'power' ? !raw : raw
+  const gatesFader = companion.kind === 'power' && companion.gatesFader !== false
+  return { dimmed: offOrMuted, blockCommit: gatesFader && offOrMuted }
+}
+
 /** The `{labelsKey, countKey, fallbackLabel}` shape shared by every "build a numbered, labeled list from connection config" spot — a select widget's live options and an admin form's address field (see `lib/schemaForm.ts`). */
 export interface ConnectionOptionsSpec {
   labelsKey: string

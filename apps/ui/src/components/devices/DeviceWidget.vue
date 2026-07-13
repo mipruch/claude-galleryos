@@ -19,7 +19,7 @@ import DeviceCard from './DeviceCard.vue'
 import GenericWidget from './GenericWidget.vue'
 import BssMeterWidget from './BssMeterWidget.vue'
 import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
-import { readBoolLike } from '@/lib/widgets'
+import { faderRenderHints } from '@/lib/widgets'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 
@@ -35,30 +35,20 @@ const widgets = computed(() => widgetsFor(props.device))
 interface RenderEntry {
   key: number
   binding: WidgetBinding
-  /** Grey the fader out (a sibling power/mute binding says off/muted). */
   dimmed: boolean
-  /** While a sibling *power* binding is off, a fader commit persists instead of sending a live command (see FaderWidget.vue's doc comment). */
   blockCommit: boolean
 }
 
 /**
  * Pairs each fader with a sibling power/mute binding on the same device, if
- * any, so the fader can grey itself out (and, for a power companion, avoid
- * sending a live command) while the device is off/muted. Pure composition —
- * no driver ever needs to know this happens.
+ * any (see `faderRenderHints` in `lib/widgets.ts`). Pure composition — no
+ * driver ever needs to know this happens beyond declaring `gatesFader` when
+ * its "power" companion doesn't actually gate the fader's parameter.
  */
 const entries = computed<RenderEntry[]>(() =>
   widgets.value.map((binding, key) => {
     if (binding.kind !== 'fader') return { key, binding, dimmed: false, blockCommit: false }
-
-    const companion = widgets.value.find(
-      (w): w is Extract<WidgetBinding, { kind: 'power' | 'mute' }> => w.kind === 'power' || w.kind === 'mute',
-    )
-    if (!companion) return { key, binding, dimmed: false, blockCommit: false }
-
-    const raw = readBoolLike(store.stateOf(props.device.id)[companion.stateKey])
-    const offOrMuted = companion.kind === 'power' ? !raw : raw
-    return { key, binding, dimmed: offOrMuted, blockCommit: companion.kind === 'power' && offOrMuted }
+    return { key, binding, ...faderRenderHints(widgets.value, store.stateOf(props.device.id)) }
   }),
 )
 </script>

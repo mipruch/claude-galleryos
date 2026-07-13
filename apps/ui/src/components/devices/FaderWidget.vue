@@ -9,11 +9,14 @@
  * derives from a sibling power/mute binding on the same device (if any), not
  * anything this component decides on its own:
  *   - `dimmed` — visual only, greys the fader out.
- *   - `blockCommit` — while a paired *power* switch is off, committing a drag
- *     persists the desired level (Redis + broadcast) instead of sending a live
- *     command, so e.g. dragging a light's brightness while it's off doesn't
- *     itself turn the light on. Not applied for a `mute` companion — a muted
- *     audio channel is still addressable, so its fader keeps working normally.
+ *   - `blockCommit` — while a paired *power* switch that gates this fader is
+ *     off, committing a drag persists the desired level (Redis + broadcast)
+ *     instead of sending a live command, so e.g. dragging a light's brightness
+ *     while it's off doesn't itself turn the light on. Not applied for a
+ *     `mute` companion, nor for a `power` companion declared with
+ *     `gatesFader: false` — either way the underlying parameter is still
+ *     addressable, so the fader keeps working normally (see
+ *     `WidgetBinding.gatesFader` in `@gallery/driver-core`).
  */
 import { computed } from 'vue'
 import FaderControl from './FaderControl.vue'

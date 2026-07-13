@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { SelectWidgetBinding } from '@gallery/driver-core'
+import type { WidgetBinding, SelectWidgetBinding } from '@gallery/driver-core'
 import {
   buttonsFor,
+  faderRenderHints,
   isCustomWidgetType,
   isRenderableType,
   readBoolLike,
@@ -137,6 +138,35 @@ describe('selectOptions', () => {
       expect(selectOptions(matrixBinding, undefined, {})).toEqual([])
       expect(selectOptions(matrixBinding, undefined, { inputCount: 0, inputs: ['Lectern'] })).toEqual([])
     })
+  })
+})
+
+describe('faderRenderHints', () => {
+  const fader: WidgetBinding = { kind: 'fader', command: 'setLevel', paramKey: 'level', stateKey: 'level' }
+  const muteCompanion: WidgetBinding = { kind: 'mute', trigger: 'param', command: 'setMute', paramKey: 'muted', stateKey: 'muted' }
+  const powerCompanion: WidgetBinding = { kind: 'power', trigger: 'commands', onCommand: 'on', offCommand: 'off', stateKey: 'power' }
+  const nonGatingPowerCompanion: WidgetBinding = { ...powerCompanion, gatesFader: false }
+
+  it('is a no-op with no companion binding', () => {
+    expect(faderRenderHints([fader], {})).toEqual({ dimmed: false, blockCommit: false })
+  })
+
+  it('a power companion that is off dims and blocks commit by default (e.g. a DALI light)', () => {
+    expect(faderRenderHints([fader, powerCompanion], { power: false })).toEqual({ dimmed: true, blockCommit: true })
+    expect(faderRenderHints([fader, powerCompanion], {})).toEqual({ dimmed: true, blockCommit: true })
+  })
+
+  it('a power companion that is on neither dims nor blocks commit', () => {
+    expect(faderRenderHints([fader, powerCompanion], { power: true })).toEqual({ dimmed: false, blockCommit: false })
+  })
+
+  it('gatesFader: false dims while off but never blocks commit (e.g. a BSS matrix crosspoint route-enable)', () => {
+    expect(faderRenderHints([fader, nonGatingPowerCompanion], { power: false })).toEqual({ dimmed: true, blockCommit: false })
+  })
+
+  it('a mute companion dims while muted but never blocks commit — the channel stays addressable', () => {
+    expect(faderRenderHints([fader, muteCompanion], { muted: true })).toEqual({ dimmed: true, blockCommit: false })
+    expect(faderRenderHints([fader, muteCompanion], { muted: false })).toEqual({ dimmed: false, blockCommit: false })
   })
 })
 
