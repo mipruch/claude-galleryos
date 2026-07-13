@@ -25,7 +25,7 @@ import { Controls } from '@vue-flow/controls'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
-import { ArrowLeftIcon, PlusIcon, SaveIcon } from '@lucide/vue'
+import { ArrowLeftIcon, SaveIcon } from '@lucide/vue'
 import type { SceneWithActionsDTO } from '@gallery/types'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
@@ -48,6 +48,7 @@ import { Button } from '@/components/ui/button'
 import SceneActionRow from '@/components/admin/SceneActionRow.vue'
 import StageNode from '@/components/admin/workflow/StageNode.vue'
 import ActionNode from '@/components/admin/workflow/ActionNode.vue'
+import AddNode from '@/components/admin/workflow/AddNode.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,6 +94,8 @@ const selectedIndex = computed(() => actions.value.findIndex((a) => a.key === se
 function onNodeClick({ node }: NodeMouseEvent): void {
   const { kind, value } = parseNodeId(node.id)
   if (kind === 'action') selectedKey.value = value
+  else if (kind === 'add-stage') addAction()
+  else if (kind === 'add-action') addActionToGroup(Number(value))
 }
 
 /** Dragging across columns re-groups into that column's *existing* group value (not its rank), so it truly merges rather than spawning a new column. */
@@ -107,10 +110,20 @@ function onNodeDragStop({ node }: NodeDragEvent): void {
   action.position = { x: node.position.x, y: node.position.y }
 }
 
+/** The "+" after the last stage: a new action in a brand new trailing stage. */
 function addAction(): void {
   const groups = distinctGroups(actions.value)
   const action = emptyAction()
   action.parallelGroup = String(groups.length ? Math.max(...groups) + 1 : 0)
+  actions.value.push(action)
+  selectedKey.value = action.key
+}
+
+/** The "+" under an existing stage: a new action merged straight into that stage. */
+function addActionToGroup(groupIndex: number): void {
+  const rawGroup = distinctGroups(actions.value)[groupIndex] ?? 0
+  const action = emptyAction()
+  action.parallelGroup = String(rawGroup)
   actions.value.push(action)
   selectedKey.value = action.key
 }
@@ -120,16 +133,6 @@ function removeSelected(): void {
   if (i === -1) return
   actions.value.splice(i, 1)
   selectedKey.value = null
-}
-
-/** SceneActionRow's reorder buttons still work (plain array move) but only affect the stepOrder tiebreak — column/position (not array order) drive the visual layout here. */
-function moveSelected(delta: number): void {
-  const i = actions.value.findIndex((a) => a.key === selectedKey.value)
-  if (i === -1) return
-  const j = i + delta
-  if (j < 0 || j >= actions.value.length) return
-  const [item] = actions.value.splice(i, 1)
-  if (item) actions.value.splice(j, 0, item)
 }
 
 async function save(): Promise<void> {
@@ -172,10 +175,6 @@ async function save(): Promise<void> {
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" @click="addAction">
-          <PlusIcon class="size-4" />
-          Add action
-        </Button>
         <Button size="sm" :disabled="saving" @click="save">
           <SaveIcon class="size-4" />
           {{ saving ? 'Saving…' : 'Save' }}
@@ -193,6 +192,7 @@ async function save(): Promise<void> {
           :min-zoom="0.25"
           @node-click="onNodeClick"
           @node-drag-stop="onNodeDragStop"
+          @pane-click="selectedKey = null"
         >
           <Background :gap="20" />
           <Controls :show-interactive="false" />
@@ -201,6 +201,9 @@ async function save(): Promise<void> {
           </template>
           <template #node-action="props">
             <ActionNode :data="props.data" :selected="props.selected" />
+          </template>
+          <template #node-add="props">
+            <AddNode :data="props.data" />
           </template>
         </VueFlow>
       </div>
@@ -212,9 +215,8 @@ async function save(): Promise<void> {
           :index="selectedIndex"
           :total="actions.length"
           :exclude-scene-id="scene.id"
+          :show-reorder="false"
           @remove="removeSelected"
-          @move-up="moveSelected(-1)"
-          @move-down="moveSelected(1)"
         />
       </aside>
     </div>

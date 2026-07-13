@@ -155,6 +155,10 @@ export type StageGraphNodeData =
   | { kind: 'start' }
   | { kind: 'stage'; groupIndex: number; count: number }
   | { kind: 'action'; action: EditAction; index: number }
+  /** "+" under an existing stage's actions — adds a new action into that stage. */
+  | { kind: 'add-action'; groupIndex: number }
+  /** "+" after the last stage — adds a new action into a brand new trailing stage. */
+  | { kind: 'add-stage' }
 
 export type StageNode = Node<StageGraphNodeData>
 
@@ -162,6 +166,8 @@ const COLUMN_WIDTH = 280
 const STAGE_ROW_Y = 0
 const ACTION_START_Y = 130
 const ACTION_ROW_HEIGHT = 108
+const addActionNodeId = (groupIndex: number): string => `add-action:${groupIndex}`
+const ADD_STAGE_NODE_ID = 'add-stage'
 
 const columnCenterX = (groupIndex: number): number => (groupIndex + 1) * COLUMN_WIDTH
 
@@ -231,14 +237,20 @@ export function buildSceneStageGraph(actions: EditAction[]): StageGraph {
       connectable: false,
     })
 
-    // Sort by saved y when present; a stable sort falls back to the actions
-    // array's existing order (last-saved stepOrder) for the rest.
+    // Saved y only decides *order* here (sort key), never the literal render
+    // position — two actions can otherwise land close enough to visually
+    // overlap (e.g. one dragged to y:134 next to an unpositioned sibling
+    // whose fallback is y:130). Rendering always at a fixed row spacing
+    // keeps a column collision-free; a stable sort falls back to the
+    // actions array's existing order (last-saved stepOrder) for ties.
+    let lastActionY = ACTION_START_Y
     ;[...actionsInGroup]
       .sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
       .forEach((action, rowIndex) => {
         // x always tracks the current column (even if a stale saved x drifted
-        // from a parallelGroup edited elsewhere); only y is user-arranged.
-        const y = action.position?.y ?? ACTION_START_Y + rowIndex * ACTION_ROW_HEIGHT
+        // from a parallelGroup edited elsewhere).
+        const y = ACTION_START_Y + rowIndex * ACTION_ROW_HEIGHT
+        lastActionY = y
         nodes.push({
           id: actionNodeId(action.key),
           type: 'action',
@@ -247,6 +259,26 @@ export function buildSceneStageGraph(actions: EditAction[]): StageGraph {
           connectable: false,
         })
       })
+
+    nodes.push({
+      id: addActionNodeId(groupIndex),
+      type: 'add',
+      position: { x: columnCenterX(groupIndex), y: lastActionY + ACTION_ROW_HEIGHT },
+      data: { kind: 'add-action', groupIndex },
+      draggable: false,
+      connectable: false,
+      selectable: false,
+    })
+  })
+
+  nodes.push({
+    id: ADD_STAGE_NODE_ID,
+    type: 'add',
+    position: { x: columnCenterX(groups.length), y: STAGE_ROW_Y },
+    data: { kind: 'add-stage' },
+    draggable: false,
+    connectable: false,
+    selectable: false,
   })
 
   return { nodes, columnCount: groups.length }

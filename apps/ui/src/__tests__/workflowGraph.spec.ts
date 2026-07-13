@@ -123,9 +123,9 @@ describe('columnIndexFromX', () => {
 })
 
 describe('buildSceneStageGraph', () => {
-  it('always renders a start node, even with no actions', () => {
+  it('always renders a start node and an add-stage button, even with no actions', () => {
     const { nodes, columnCount } = buildSceneStageGraph([])
-    expect(nodes.map((n) => n.id)).toEqual(['start'])
+    expect(nodes.map((n) => n.id)).toEqual(['start', 'add-stage'])
     expect(columnCount).toBe(0)
   })
 
@@ -140,6 +140,28 @@ describe('buildSceneStageGraph', () => {
     expect(columnCount).toBe(2)
     expect(nodes.filter((n) => n.type === 'action')).toHaveLength(3)
     expect(nodes.find((n) => n.id === 'stage:0')?.data).toMatchObject({ kind: 'stage', groupIndex: 0, count: 2 })
+  })
+
+  it('adds an add-action button per stage and one trailing add-stage button', () => {
+    const actions = [
+      { ...emptyAction(), key: 'a', parallelGroup: '0' },
+      { ...emptyAction(), key: 'b', parallelGroup: '1' },
+    ]
+    const { nodes } = buildSceneStageGraph(actions)
+
+    expect(nodes.find((n) => n.id === 'add-action:0')?.data).toEqual({ kind: 'add-action', groupIndex: 0 })
+    expect(nodes.find((n) => n.id === 'add-action:1')?.data).toEqual({ kind: 'add-action', groupIndex: 1 })
+    expect(nodes.find((n) => n.id === 'add-stage')?.data).toEqual({ kind: 'add-stage' })
+  })
+
+  it('never lets two actions in the same stage share a render position, even when one has a stale saved y close to another', () => {
+    const actions = [
+      { ...emptyAction(), key: 'a', parallelGroup: '0', position: null },
+      { ...emptyAction(), key: 'b', parallelGroup: '0', position: { x: 0, y: 133.76 } },
+    ]
+    const { nodes } = buildSceneStageGraph(actions)
+    const positions = nodes.filter((n) => n.type === 'action').map((n) => `${n.position.x},${n.position.y}`)
+    expect(new Set(positions).size).toBe(2)
   })
 })
 

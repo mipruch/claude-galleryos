@@ -18,12 +18,17 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-const props = defineProps<{
-  action: EditAction
-  index: number
-  total: number
-  excludeSceneId?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    action: EditAction
+    index: number
+    total: number
+    excludeSceneId?: string
+    /** Hide the move-up/down buttons — meaningless on the workflow canvas, where a stage's actions are inherently parallel and order comes from dragging between columns, not array position. */
+    showReorder?: boolean
+  }>(),
+  { showReorder: true },
+)
 const emit = defineEmits<{ remove: []; moveUp: []; moveDown: [] }>()
 
 const devices = useDevicesStore()
@@ -70,19 +75,21 @@ watch(
       </Select>
 
       <div class="ml-auto flex items-center gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Move up" :disabled="index === 0" @click="emit('moveUp')">
-          <ArrowUpIcon class="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Move down"
-          :disabled="index === total - 1"
-          @click="emit('moveDown')"
-        >
-          <ArrowDownIcon class="size-4" />
-        </Button>
+        <template v-if="showReorder">
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Move up" :disabled="index === 0" @click="emit('moveUp')">
+            <ArrowUpIcon class="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Move down"
+            :disabled="index === total - 1"
+            @click="emit('moveDown')"
+          >
+            <ArrowDownIcon class="size-4" />
+          </Button>
+        </template>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove step" @click="emit('remove')">
           <XIcon class="size-4" />
         </Button>
