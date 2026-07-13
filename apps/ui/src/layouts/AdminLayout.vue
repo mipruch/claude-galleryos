@@ -24,14 +24,6 @@ const pageSubtitle = computed(() =>
 
 <template>
   <div class="flex h-screen overflow-hidden flex-col">
-    <div
-      v-if="!realtime.connected"
-      class="bg-destructive/10 text-destructive flex items-center justify-center gap-2 px-4 py-1.5 text-sm"
-    >
-      <WifiOffIcon class="size-4" />
-      <span>Realtime connection lost — reconnecting…</span>
-    </div>
-
     <div class="flex min-h-0 flex-1">
       <AdminSidebar />
 
@@ -57,7 +49,7 @@ const pageSubtitle = computed(() =>
           </div>
         </header>
 
-        <main class="min-h-0 w-full flex-1 overflow-auto">
+        <main class="min-h-0 w-full flex-1">
           <RouterView />
         </main>
       </div>

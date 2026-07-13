@@ -24,6 +24,7 @@ import { useRealtimeStore } from '@/stores/realtime'
 import { useCamerasStore } from '@/stores/cameras'
 import { useDriversStore } from '@/stores/drivers'
 import { useConnectionsStore } from '@/stores/connections'
+import { WifiOffIcon } from '@lucide/vue'
 
 const auth = useAuthStore()
 const store = useDevicesStore()
@@ -70,7 +71,14 @@ onBeforeUnmount(() => realtime.close())
 
 <template>
   <TooltipProvider>
-    <div class="bg-background text-foreground min-h-screen">
+    <div class="bg-background text-foreground h-screen max-h-screen overflow-hidden flex flex-col">
+      <div
+        v-show="!store.connected"
+        class="bg-destructive/10 text-destructive flex items-center justify-center gap-2 px-4 py-1.5 text-sm"
+      >
+        <WifiOffIcon class="size-4" />
+        <span>Realtime connection lost — reconnecting…</span>
+      </div>
       <RouterView />
     </div>
     <Toaster />

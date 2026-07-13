@@ -63,19 +63,21 @@ function linkClass(isActive: boolean): string {
 
 <template>
   <!-- Backdrop — mobile only; closes the drawer on tap. -->
-  <div
-    v-if="open"
-    class="fixed inset-0 z-40 bg-black/50 md:hidden"
-    aria-hidden="true"
-    @click="close"
-  />
 
   <aside
-    class="bg-background fixed inset-y-0 left-0 z-50 flex w-56 shrink-0 -translate-x-full flex-col border-r transition-transform duration-200 ease-in-out md:static md:z-auto md:translate-x-0"
+    class="bg-background h-screen md:grid md:grid-rows-subgrid fixed inset-y-0 left-0 z-50 w-56 shrink-0 -translate-x-full border-r transition-transform duration-200 ease-in-out md:static md:z-auto md:translate-x-0"
     :class="{ 'translate-x-0': open }"
   >
-    <div class="flex items-center justify-between gap-2 border-b px-4 py-4">
-      <div class="min-w-0">
+    <teleport to="body">
+      <div
+        v-if="open"
+        class="fixed inset-0 z-40 bg-black/50 md:hidden"
+        aria-hidden="true"
+        @click="close"
+      />
+    </teleport>
+    <div class="items-center justify-between gap-2 border-b px-4 py-4">
+      <div class="min-w-0 hidden md:block">
         <h1 class="text-lg font-semibold tracking-tight">GalleryOS</h1>
         <p class="text-muted-foreground text-xs">Device control</p>
       </div>
@@ -89,7 +91,7 @@ function linkClass(isActive: boolean): string {
       </button>
     </div>
 
-    <nav class="flex-1 space-y-0.5 overflow-y-auto p-2">
+    <nav class="md:h-full space-y-0.5 overflow-y-auto p-2">
       <RouterLink to="/" custom v-slot="{ href, navigate, isExactActive }">
         <a :href="href" :class="linkClass(isExactActive)" @click="onNavigate(navigate, $event)">
           <LayoutGridIcon class="size-4 shrink-0" />
@@ -184,3 +186,14 @@ function linkClass(isActive: boolean): string {
     </div>
   </aside>
 </template>
+<!--
+<style scoped>
+aside::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background-color: red;
+}
+</style> -->
