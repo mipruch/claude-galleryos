@@ -13,7 +13,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { VueFlow, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
+import {
+  VueFlow,
+  useNodesInitialized,
+  useVueFlow,
+  type NodeDragEvent,
+  type NodeMouseEvent,
+} from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import '@vue-flow/core/dist/style.css'
@@ -55,6 +61,8 @@ const actions = ref<EditAction[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const selectedKey = ref<string | null>(null)
+const { fitView } = useVueFlow()
+const nodesInitialized = useNodesInitialized()
 
 async function load(): Promise<void> {
   loading.value = true
@@ -67,6 +75,14 @@ async function load(): Promise<void> {
 }
 onMounted(load)
 watch(sceneId, load)
+
+// <VueFlow>'s own mount (and its fit-view-on-init) happens before `load()`
+// resolves and before Vue Flow has measured the real nodes' bounds
+// (`useNodesInitialized` stays false until it has), so it locks onto a
+// near-empty first render. Fit once the current node set is actually measured.
+watch(nodesInitialized, (ready) => {
+  if (ready) void fitView()
+})
 
 const graph = computed(() => buildSceneStageGraph(actions.value))
 const nodes = computed(() => graph.value.nodes)
@@ -172,7 +188,6 @@ async function save(): Promise<void> {
         <VueFlow
           :nodes="nodes"
           :edges="[]"
-          fit-view-on-init
           :delete-key-code="null"
           :nodes-connectable="false"
           :min-zoom="0.25"

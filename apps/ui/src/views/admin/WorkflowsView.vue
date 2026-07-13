@@ -14,9 +14,16 @@
  * Deleting a mapping/schedule stays on their existing admin list pages — the
  * canvas is for arranging and wiring, not a second CRUD surface.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { VueFlow, type Connection, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
+import {
+  VueFlow,
+  useNodesInitialized,
+  useVueFlow,
+  type Connection,
+  type NodeDragEvent,
+  type NodeMouseEvent,
+} from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import '@vue-flow/core/dist/style.css'
@@ -40,6 +47,8 @@ const mappingsStore = useMappingsStore()
 const schedulesStore = useSchedulesStore()
 const scenesStore = useScenesStore()
 const devicesStore = useDevicesStore()
+const { fitView } = useVueFlow()
+const nodesInitialized = useNodesInitialized()
 
 onMounted(() => {
   mappingsStore.fetchAll()
@@ -58,6 +67,15 @@ const graph = computed(() =>
 )
 const nodes = computed<RoutingNode[]>(() => graph.value.nodes)
 const edges = computed(() => graph.value.edges)
+
+// `fit-view-on-init` fits as soon as <VueFlow> mounts — before the fetches
+// above resolve and before Vue Flow has measured the real nodes' bounds
+// (`useNodesInitialized` stays false until it has), so it locks onto
+// whatever the very first, near-empty render happened to be. Fit once the
+// current node set is actually measured instead.
+watch(nodesInitialized, (ready) => {
+  if (ready) void fitView()
+})
 
 // ── trigger dialogs (reused as-is, not reimplemented for the canvas) ──────
 
@@ -160,7 +178,6 @@ function onConnect(connection: Connection): void {
       <VueFlow
         :nodes="nodes"
         :edges="edges"
-        fit-view-on-init
         :delete-key-code="null"
         :min-zoom="0.25"
         @node-click="onNodeClick"

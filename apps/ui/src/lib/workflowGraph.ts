@@ -134,7 +134,11 @@ function layoutUnpinned<D>(nodes: Node<D>[], edges: Edge[], pinned: Set<string>)
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir: 'LR', nodesep: 28, ranksep: 90 })
-  for (const n of nodes) g.setNode(n.id, DAGRE_NODE_SIZE)
+  // A fresh object per node: dagre writes each node's computed x/y back onto
+  // the exact object passed to setNode, so sharing one DAGRE_NODE_SIZE
+  // reference across every call would let the last-processed node's position
+  // overwrite the label every other node's lookup also points to.
+  for (const n of nodes) g.setNode(n.id, { ...DAGRE_NODE_SIZE })
   for (const e of edges) g.setEdge(e.source, e.target)
   dagre.layout(g)
 

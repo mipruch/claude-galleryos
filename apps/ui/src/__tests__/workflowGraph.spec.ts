@@ -68,11 +68,27 @@ describe('buildRoutingGraph', () => {
     expect(nodes.find((n) => n.id === 'mapping:m1')?.position).toEqual({ x: 42, y: 99 })
   })
 
-  it('auto-layouts a trigger with no saved position rather than stacking it at the origin', () => {
-    const mapping = makeMapping({ id: 'm1', position: null })
-    const { nodes } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [makeScene()], devices: [] })
+  it('auto-layouts multiple unpinned triggers to distinct positions, not all stacked together', () => {
+    // Regression test: dagre writes each node's computed x/y back onto the
+    // exact object passed to setNode, so sharing one size object across every
+    // setNode call let the last-processed node's position silently overwrite
+    // what every other node's lookup also pointed to — all nodes rendered on
+    // top of each other. Three separate schedule->scene pairs (no shared
+    // targets) makes that collapse obvious: every trigger would land at the
+    // same spot instead of three distinct ones.
+    const schedules = [
+      makeSchedule({ id: 'j1', sceneId: 's1', position: null }),
+      makeSchedule({ id: 'j2', sceneId: 's2', position: null }),
+      makeSchedule({ id: 'j3', sceneId: 's3', position: null }),
+    ]
+    const scenes = [makeScene({ id: 's1' }), makeScene({ id: 's2' }), makeScene({ id: 's3' })]
+    const { nodes } = buildRoutingGraph({ mappings: [], schedules, scenes, devices: [] })
 
-    expect(nodes.find((n) => n.id === 'mapping:m1')?.position).not.toEqual({ x: 0, y: 0 })
+    const positions = ['schedule:j1', 'schedule:j2', 'schedule:j3'].map(
+      (id) => nodes.find((n) => n.id === id)?.position,
+    )
+    const distinct = new Set(positions.map((p) => `${p?.x},${p?.y}`))
+    expect(distinct.size).toBe(3)
   })
 })
 
