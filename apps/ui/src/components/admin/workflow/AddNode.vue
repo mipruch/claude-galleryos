@@ -1,13 +1,20 @@
 <script setup lang="ts">
 /**
- * A "+" button rendered directly on the scene canvas — either at the end of
- * the stage row (add a new trailing stage) or under an existing stage's
- * actions (add into that stage). Purely presentational: the parent view's
- * node-click handler does the actual work, same as every other node here.
+ * A "+" button rendered directly on a canvas — the scene stage canvas (end of
+ * the stage row, or under an existing stage's actions) and the routing map
+ * (trailing a trigger, to add a new trigger action). Purely presentational:
+ * the parent view's node-click handler does the actual work, same as every
+ * other node here — only `data.kind` decides the label, the rest of each
+ * shape exists for the parent to read off the clicked node's id/data.
  */
 import { PlusIcon } from '@lucide/vue'
 
-defineProps<{ data: { kind: 'add-stage' } | { kind: 'add-action'; groupIndex: number } }>()
+defineProps<{
+  data:
+    | { kind: 'add-stage' }
+    | { kind: 'add-action'; groupIndex: number }
+    | { kind: 'add-action'; ownerKind: 'mapping' | 'schedule'; ownerId: string }
+}>()
 </script>
 
 <template>

@@ -6,9 +6,10 @@ import {
   columnIndexFromX,
   distinctGroups,
   orderActionsForSave,
+  parseAddActionValue,
   parseNodeId,
 } from '@/lib/workflowGraph'
-import { makeDevice, makeMapping, makeSchedule, makeScene } from './fixtures'
+import { makeDevice, makeMapping, makeSchedule, makeScene, makeTriggerAction } from './fixtures'
 
 describe('parseNodeId', () => {
   it('splits a namespaced id into kind and value', () => {
@@ -18,52 +19,150 @@ describe('parseNodeId', () => {
   it('treats an id with no colon as a bare kind', () => {
     expect(parseNodeId('start')).toEqual({ kind: 'start', value: '' })
   })
+
+  it('only splits on the first colon (an action id embeds no colon, but the add-action value does)', () => {
+    expect(parseNodeId('add-action:mapping:m1')).toEqual({ kind: 'add-action', value: 'mapping:m1' })
+  })
+})
+
+describe('parseAddActionValue', () => {
+  it('splits an add-action node value into owner kind and id', () => {
+    expect(parseAddActionValue('mapping:m1')).toEqual({ ownerKind: 'mapping', ownerId: 'm1' })
+    expect(parseAddActionValue('schedule:j1')).toEqual({ ownerKind: 'schedule', ownerId: 'j1' })
+  })
 })
 
 describe('buildRoutingGraph', () => {
-  it('connects a scene.execute mapping to its scene', () => {
-    const mapping = makeMapping({ id: 'm1', targetType: 'scene.execute', targetId: 's1' })
-    const { nodes, edges } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [makeScene({ id: 's1' })], devices: [] })
+  it('gives every trigger a trailing add-action button, even with no actions wired yet', () => {
+    const mapping = makeMapping({ id: 'm1' })
+    const { nodes, edges } = buildRoutingGraph({ mappings: [mapping], schedules: [], triggerActions: [], scenes: [], devices: [] })
 
-    expect(nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['mapping:m1', 'scene:s1']))
-    expect(edges).toEqual([{ id: 'mapping:m1->scene:s1', source: 'mapping:m1', target: 'scene:s1' }])
+    expect(nodes.map((n) => n.id)).toEqual(['mapping:m1', 'add-action:mapping:m1'])
+    expect(edges).toEqual([{ id: 'mapping:m1->add-action:mapping:m1', source: 'mapping:m1', target: 'add-action:mapping:m1' }])
   })
 
-  it('connects a device.command mapping to its device', () => {
-    const mapping = makeMapping({ id: 'm1', targetType: 'device.command', targetId: 'd1', targetCommand: 'on' })
-    const { nodes, edges } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [], devices: [makeDevice({ id: 'd1' })] })
+  it('connects a mapping-owned scene.execute action: trigger -> action -> scene', () => {
+    const mapping = makeMapping({ id: 'm1' })
+    const action = makeTriggerAction({ id: 'ta1', mappingId: 'm1', targetType: 'scene.execute', targetId: 's1' })
+    const { nodes, edges } = buildRoutingGraph({
+      mappings: [mapping],
+      schedules: [],
+      triggerActions: [action],
+      scenes: [makeScene({ id: 's1' })],
+      devices: [],
+    })
+
+    expect(nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['mapping:m1', 'action:ta1', 'scene:s1']))
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        { id: 'mapping:m1->action:ta1', source: 'mapping:m1', target: 'action:ta1' },
+        { id: 'action:ta1->scene:s1', source: 'action:ta1', target: 'scene:s1' },
+      ]),
+    )
+  })
+
+  it('connects a device.command action: trigger -> action -> device', () => {
+    const mapping = makeMapping({ id: 'm1' })
+    const action = makeTriggerAction({ id: 'ta1', mappingId: 'm1', targetType: 'device.command', targetId: 'd1', targetCommand: 'on' })
+    const { nodes, edges } = buildRoutingGraph({
+      mappings: [mapping],
+      schedules: [],
+      triggerActions: [action],
+      scenes: [],
+      devices: [makeDevice({ id: 'd1' })],
+    })
 
     expect(nodes.some((n) => n.id === 'device:d1')).toBe(true)
-    expect(edges).toEqual([{ id: 'mapping:m1->device:d1', source: 'mapping:m1', target: 'device:d1' }])
+    expect(edges).toEqual(
+      expect.arrayContaining([{ id: 'action:ta1->device:d1', source: 'action:ta1', target: 'device:d1' }]),
+    )
   })
 
-  it('gives an event.emit mapping its own terminal node', () => {
-    const mapping = makeMapping({ id: 'm1', targetType: 'event.emit', targetId: null, targetCommand: null })
-    const { nodes, edges } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [], devices: [] })
+  it('leaves an action with no targetId as a dangling node (no target edge)', () => {
+    const mapping = makeMapping({ id: 'm1' })
+    const action = makeTriggerAction({ id: 'ta1', mappingId: 'm1', targetType: 'device.command', targetId: null })
+    const { nodes, edges } = buildRoutingGraph({
+      mappings: [mapping],
+      schedules: [],
+      triggerActions: [action],
+      scenes: [],
+      devices: [],
+    })
 
-    expect(nodes.some((n) => n.id === 'event:m1')).toBe(true)
-    expect(edges).toEqual([{ id: 'mapping:m1->event:m1', source: 'mapping:m1', target: 'event:m1' }])
+    expect(nodes.some((n) => n.id === 'action:ta1')).toBe(true)
+    // No edge out of the action node — it has nothing to point at yet. It's
+    // still tied to its trigger, plus the trigger's own always-present
+    // add-action button edge.
+    expect(edges).toEqual(
+      expect.arrayContaining([{ id: 'mapping:m1->action:ta1', source: 'mapping:m1', target: 'action:ta1' }]),
+    )
+    expect(edges.some((e) => e.source === 'action:ta1')).toBe(false)
   })
 
-  it('leaves a mapping with no resolved target as a dangling trigger node', () => {
-    const mapping = makeMapping({ id: 'm1', targetType: 'device.command', targetId: null, targetCommand: null })
-    const { nodes, edges } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [], devices: [] })
-
-    expect(nodes).toHaveLength(1)
-    expect(edges).toHaveLength(0)
-  })
-
-  it('connects a schedule to its scene', () => {
-    const schedule = makeSchedule({ id: 'j1', sceneId: 's1' })
-    const { nodes, edges } = buildRoutingGraph({ mappings: [], schedules: [schedule], scenes: [makeScene({ id: 's1' })], devices: [] })
+  it('connects a schedule-owned action the same way as a mapping-owned one', () => {
+    const schedule = makeSchedule({ id: 'j1' })
+    const action = makeTriggerAction({ id: 'ta1', scheduleId: 'j1', mappingId: null, targetType: 'scene.execute', targetId: 's1' })
+    const { nodes, edges } = buildRoutingGraph({
+      mappings: [],
+      schedules: [schedule],
+      triggerActions: [action],
+      scenes: [makeScene({ id: 's1' })],
+      devices: [],
+    })
 
     expect(nodes.some((n) => n.id === 'schedule:j1')).toBe(true)
-    expect(edges).toEqual([{ id: 'schedule:j1->scene:s1', source: 'schedule:j1', target: 'scene:s1' }])
+    expect(edges).toEqual(
+      expect.arrayContaining([{ id: 'schedule:j1->action:ta1', source: 'schedule:j1', target: 'action:ta1' }]),
+    )
+  })
+
+  it('fans one trigger out to several actions (N wires from one trigger)', () => {
+    const schedule = makeSchedule({ id: 'j1' })
+    const actions = [
+      makeTriggerAction({ id: 'ta1', scheduleId: 'j1', targetType: 'scene.execute', targetId: 's1' }),
+      makeTriggerAction({ id: 'ta2', scheduleId: 'j1', targetType: 'scene.execute', targetId: 's2' }),
+      makeTriggerAction({ id: 'ta3', scheduleId: 'j1', targetType: 'device.command', targetId: 'd1', targetCommand: 'on' }),
+    ]
+    const { edges } = buildRoutingGraph({
+      mappings: [],
+      schedules: [schedule],
+      triggerActions: actions,
+      scenes: [makeScene({ id: 's1' }), makeScene({ id: 's2' })],
+      devices: [makeDevice({ id: 'd1' })],
+    })
+
+    const toActions = edges.filter((e) => e.source === 'schedule:j1' && e.target.startsWith('action:'))
+    expect(toActions).toHaveLength(3) // one wire per action
+    expect(edges.some((e) => e.source === 'schedule:j1' && e.target === 'add-action:schedule:j1')).toBe(true)
+  })
+
+  it('shows every scene regardless of whether a trigger action targets it yet', () => {
+    const { nodes } = buildRoutingGraph({
+      mappings: [],
+      schedules: [],
+      triggerActions: [],
+      scenes: [makeScene({ id: 's1' }), makeScene({ id: 's2' })],
+      devices: [],
+    })
+
+    expect(nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['scene:s1', 'scene:s2']))
+  })
+
+  it('only shows a device once some action targets it', () => {
+    const { nodes } = buildRoutingGraph({
+      mappings: [],
+      schedules: [],
+      triggerActions: [],
+      scenes: [],
+      devices: [makeDevice({ id: 'd1' })],
+    })
+
+    expect(nodes.some((n) => n.id === 'device:d1')).toBe(false)
   })
 
   it('keeps a saved trigger position instead of auto-layouting it', () => {
     const mapping = makeMapping({ id: 'm1', position: { x: 42, y: 99 } })
-    const { nodes } = buildRoutingGraph({ mappings: [mapping], schedules: [], scenes: [makeScene()], devices: [] })
+    const { nodes } = buildRoutingGraph({ mappings: [mapping], schedules: [], triggerActions: [], scenes: [], devices: [] })
 
     expect(nodes.find((n) => n.id === 'mapping:m1')?.position).toEqual({ x: 42, y: 99 })
   })
@@ -73,16 +172,21 @@ describe('buildRoutingGraph', () => {
     // exact object passed to setNode, so sharing one size object across every
     // setNode call let the last-processed node's position silently overwrite
     // what every other node's lookup also pointed to — all nodes rendered on
-    // top of each other. Three separate schedule->scene pairs (no shared
-    // targets) makes that collapse obvious: every trigger would land at the
-    // same spot instead of three distinct ones.
+    // top of each other. Three separate schedule->action->scene chains (no
+    // shared targets) makes that collapse obvious: every trigger would land
+    // at the same spot instead of three distinct ones.
     const schedules = [
-      makeSchedule({ id: 'j1', sceneId: 's1', position: null }),
-      makeSchedule({ id: 'j2', sceneId: 's2', position: null }),
-      makeSchedule({ id: 'j3', sceneId: 's3', position: null }),
+      makeSchedule({ id: 'j1', position: null }),
+      makeSchedule({ id: 'j2', position: null }),
+      makeSchedule({ id: 'j3', position: null }),
+    ]
+    const triggerActions = [
+      makeTriggerAction({ id: 'ta1', scheduleId: 'j1', targetType: 'scene.execute', targetId: 's1' }),
+      makeTriggerAction({ id: 'ta2', scheduleId: 'j2', targetType: 'scene.execute', targetId: 's2' }),
+      makeTriggerAction({ id: 'ta3', scheduleId: 'j3', targetType: 'scene.execute', targetId: 's3' }),
     ]
     const scenes = [makeScene({ id: 's1' }), makeScene({ id: 's2' }), makeScene({ id: 's3' })]
-    const { nodes } = buildRoutingGraph({ mappings: [], schedules, scenes, devices: [] })
+    const { nodes } = buildRoutingGraph({ mappings: [], schedules, triggerActions, scenes, devices: [] })
 
     const positions = ['schedule:j1', 'schedule:j2', 'schedule:j3'].map(
       (id) => nodes.find((n) => n.id === id)?.position,

@@ -1,17 +1,17 @@
 <script setup lang="ts">
 /**
  * Admin mappings list — every input-mapping rule (OSC/TCP/HTTP signal → action)
- * with its protocol, pattern and resolved target, plus enable/disable, edit,
- * delete, and a "Test signal" dry-run. Reuses `useMappingsStore`; scene/device
- * names are resolved from their stores for the target column.
+ * with its protocol and pattern, plus enable/disable, delete, and a "Test
+ * signal" dry-run. Creating and wiring a mapping's trigger actions both happen
+ * on the workflow canvas now (the old MappingFormDialog is gone); "New" and
+ * "Edit" here just navigate there, the latter with the row pre-selected.
  */
 import { onMounted, ref } from 'vue'
 import { PencilIcon, PlusIcon, Trash2Icon, WaypointsIcon, ZapIcon } from '@lucide/vue'
 import type { InputMappingDTO } from '@gallery/types'
+import { useRouter } from 'vue-router'
 import { useMappingsStore } from '@/stores/mappings'
-import { useScenesStore } from '@/stores/scenes'
-import { useDevicesStore } from '@/stores/devices'
-import { protocolLabel, targetSummary } from '@/lib/mappings'
+import { protocolLabel } from '@/lib/mappings'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
@@ -26,43 +26,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import MappingFormDialog from '@/components/admin/MappingFormDialog.vue'
 import MappingTestDialog from '@/components/admin/MappingTestDialog.vue'
 
+const router = useRouter()
 const store = useMappingsStore()
-const scenes = useScenesStore()
-const devices = useDevicesStore()
 
 onMounted(() => {
   store.fetchAll()
-  scenes.fetchAll()
-  devices.fetchAll()
 })
 
-/** Human description of a rule's target, with names resolved from the stores. */
-function describe(m: InputMappingDTO): string {
-  return targetSummary(m.targetType, {
-    sceneName: m.targetId ? scenes.records.find((s) => s.id === m.targetId)?.name : undefined,
-    deviceName: m.targetId ? devices.records.find((d) => d.id === m.targetId)?.name : undefined,
-    command: m.targetCommand,
-  })
+function openOnCanvas(m?: InputMappingDTO): void {
+  router.push({ name: 'admin-workflows', query: m ? { select: `mapping:${m.id}` } : {} })
 }
 
 // ── dialog + delete state ───────────────────────────────────────────────────
-const formOpen = ref(false)
 const testOpen = ref(false)
-const editing = ref<InputMappingDTO | null>(null)
 const toDelete = ref<InputMappingDTO | null>(null)
 const deleteOpen = ref(false)
 
-function openCreate(): void {
-  editing.value = null
-  formOpen.value = true
-}
-function openEdit(m: InputMappingDTO): void {
-  editing.value = m
-  formOpen.value = true
-}
 function askDelete(m: InputMappingDTO): void {
   toDelete.value = m
   deleteOpen.value = true
@@ -84,7 +65,7 @@ async function confirmDelete(): Promise<void> {
           <ZapIcon class="size-4" />
           Test signal
         </Button>
-        <Button @click="openCreate">
+        <Button @click="openOnCanvas()">
           <PlusIcon class="size-4" />
           New mapping
         </Button>
@@ -98,7 +79,6 @@ async function confirmDelete(): Promise<void> {
             <TableHead>Name</TableHead>
             <TableHead class="w-24">Protocol</TableHead>
             <TableHead>Pattern</TableHead>
-            <TableHead>Target</TableHead>
             <TableHead class="w-24">Enabled</TableHead>
             <TableHead class="w-24 text-right">Actions</TableHead>
           </TableRow>
@@ -108,13 +88,12 @@ async function confirmDelete(): Promise<void> {
             <TableCell class="font-medium">{{ m.name }}</TableCell>
             <TableCell><Badge variant="secondary">{{ protocolLabel(m.protocol) }}</Badge></TableCell>
             <TableCell class="font-mono text-xs">{{ m.pattern }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ describe(m) }}</TableCell>
             <TableCell>
               <Switch :model-value="m.enabled" @update:model-value="store.toggle(m.id, $event)" />
             </TableCell>
             <TableCell class="text-right">
               <div class="flex justify-end gap-1">
-                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(m)">
+                <Button variant="ghost" size="icon-sm" aria-label="Edit on canvas" @click="openOnCanvas(m)">
                   <PencilIcon class="size-4" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(m)">
@@ -125,23 +104,22 @@ async function confirmDelete(): Promise<void> {
           </TableRow>
 
           <TableRow v-if="!store.records.length">
-            <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
+            <TableCell colspan="5" class="text-muted-foreground py-10 text-center">
               <WaypointsIcon class="mx-auto mb-2 size-6 opacity-50" />
-              No mappings yet. Create one to drive scenes or devices from OSC/TCP/HTTP.
+              No mappings yet. Create one on the workflow canvas to drive scenes or devices from OSC/TCP/HTTP.
             </TableCell>
           </TableRow>
         </TableBody>
       </Table>
     </div>
 
-    <MappingFormDialog v-model:open="formOpen" :mapping="editing" />
     <MappingTestDialog v-model:open="testOpen" />
 
     <AlertDialog v-model:open="deleteOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{{ toDelete?.name }}”?</AlertDialogTitle>
-          <AlertDialogDescription>This removes the rule; incoming signals will no longer match it.</AlertDialogDescription>
+          <AlertDialogDescription>This removes the rule and any trigger actions wired to it; incoming signals will no longer match it.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>

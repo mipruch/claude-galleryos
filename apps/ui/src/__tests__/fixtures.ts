@@ -17,6 +17,7 @@ import type {
   RoomDTO,
   SceneDTO,
   ScheduledJobDTO,
+  TriggerActionDTO,
   UserDTO,
 } from '@gallery/types'
 
@@ -65,7 +66,6 @@ export function makeSchedule(over: Partial<ScheduledJobDTO> = {}): ScheduledJobD
   return {
     id: 'j',
     name: 'Schedule',
-    sceneId: 's',
     cron: '0 9 * * *',
     timezone: 'Europe/Prague',
     enabled: true,
@@ -113,11 +113,24 @@ export function makeMapping(over: Partial<InputMappingDTO> = {}): InputMappingDT
     name: 'Mapping',
     protocol: 'osc',
     pattern: '/scene/go',
+    enabled: true,
+    position: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `TriggerActionDTO`; pass `over` to override defaults. */
+export function makeTriggerAction(over: Partial<TriggerActionDTO> = {}): TriggerActionDTO {
+  return {
+    id: 'ta',
+    scheduleId: null,
+    mappingId: null,
     targetType: 'scene.execute',
     targetId: 's',
     targetCommand: null,
-    paramsTemplate: {},
-    enabled: true,
+    params: {},
     position: null,
     createdAt: NOW,
     updatedAt: NOW,

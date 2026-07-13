@@ -2,13 +2,15 @@
 /**
  * Dry-run an input signal against the enabled mappings — `POST /mappings/test`,
  * which matches but never dispatches. Lets an admin confirm a pattern matches
- * and see the params it would produce before wiring real hardware.
+ * and see the path params it captures before wiring real trigger actions to
+ * it (the wired actions' resolved params are a dispatch-time concern, not
+ * something this dry-run resolves).
  */
 import { ref, watch } from 'vue'
 import { PlayIcon } from '@lucide/vue'
 import type { InputMappingTestResult } from '@gallery/types'
 import { useMappingsStore } from '@/stores/mappings'
-import { PROTOCOL_OPTIONS, parseTestArgs, targetTypeLabel } from '@/lib/mappings'
+import { PROTOCOL_OPTIONS, parseTestArgs } from '@/lib/mappings'
 import {
   Dialog,
   DialogContent,
@@ -20,7 +22,6 @@ import {
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 const props = defineProps<{ open: boolean }>()
@@ -98,12 +99,9 @@ async function run(): Promise<void> {
         <div v-if="result" class="rounded-md border">
           <div v-if="result.matched" class="divide-y">
             <div v-for="m in result.matches" :key="m.id" class="flex flex-col gap-1 p-3">
-              <div class="flex items-center gap-2">
-                <Badge variant="secondary">{{ targetTypeLabel(m.targetType) }}</Badge>
-                <span class="font-medium">{{ m.name }}</span>
-              </div>
-              <pre v-if="Object.keys(m.params).length" class="text-muted-foreground bg-muted/40 rounded p-2 text-xs">{{ JSON.stringify(m.params) }}</pre>
-              <p v-else class="text-muted-foreground text-xs">No params.</p>
+              <span class="font-medium">{{ m.name }}</span>
+              <pre v-if="Object.keys(m.pathParams).length" class="text-muted-foreground bg-muted/40 rounded p-2 text-xs">{{ JSON.stringify(m.pathParams) }}</pre>
+              <p v-else class="text-muted-foreground text-xs">No captured path params.</p>
             </div>
           </div>
           <p v-else class="text-muted-foreground p-6 text-center text-sm">

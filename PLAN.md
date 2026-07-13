@@ -818,6 +818,62 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         Unpositioned nodes auto-layout with `@dagrejs/dagre`. New pure
         `lib/workflowGraph.ts` (unit-tested) builds both graphs from data the
         mappings/schedules/scenes/devices stores already hold.
+  - [x] **`trigger_actions` redesign — optional targets, N actions per
+        trigger.** Follow-up to the routing map above: `scheduled_jobs`/
+        `input_mappings` no longer carry a target at all (dropped
+        `scene_id`/`target_type`/`target_id`/`target_command`/
+        `params_template`) — a schedule or mapping is now a pure "when" row,
+        valid and savable with zero actions wired to it. What runs lives in a
+        new `trigger_actions` table (mirrors `scene_actions`'s shape: a
+        one-to-many child with an XOR-FK CHECK constraint, here
+        `schedule_id`/`mapping_id`), giving each trigger 0..N actions that
+        each independently target `scene.execute` or `device.command`;
+        `event.emit` was dropped from `TriggerTargetType` — a trigger action
+        runs a scene or a device command, nothing else. An unwired action
+        (dropped on the canvas before a target is picked) is a normal, valid
+        row; the dispatcher just skips it at fire time.
+        - New shared `TriggerActionDispatcher` (`core/TriggerActionDispatcher.ts`)
+          is the single place a `trigger_actions` row becomes a real effect,
+          used by both `Scheduler` (literal params, fetched fresh from the
+          repo on every cron fire — no cache to invalidate on a wiring edit)
+          and `InputMapper` (params template-evaluated against the ingress
+          signal's args/path params, cached alongside the mapping and
+          reloaded on a mapping- or trigger-action edit). Template evaluation
+          moved out of `input/patterns.ts` into a new shared
+          `core/templating.ts` since both dispatch paths need it now, not
+          just `InputMapper`.
+        - New `triggerActionsRepo` + REST `/api/v1/trigger-actions` (CRUD),
+          with an owner-XOR-target-type validation that mirrors the DB CHECK
+          constraint; a given `targetId` must resolve to a real scene/device,
+          but an absent one is accepted (unwired). `/mappings` and
+          `/schedules` routes dropped their target validation entirely.
+        - Canvas is now a 3-tier graph — trigger → its 0..N trigger-action
+          nodes → each action's resolved target — instead of the earlier
+          2-tier trigger → target. Dragging a connection **straight from a
+          trigger to a target** auto-creates and wires a new trigger action in
+          one gesture (so routing one schedule to several scenes/devices is N
+          drag gestures, not N clicks through a form); dragging from an
+          existing action node to a target just rewires that one action. A
+          "+" under every trigger creates a bare, unwired action and selects
+          it so the inspector opens for picking a target by hand. Scenes are
+          always shown as target nodes (bounded, admin-managed list) so one
+          can be wired up before any trigger points at it yet; devices only
+          appear once some action already targets them (avoids cluttering the
+          canvas with every device up front — a new device target is picked
+          via the inspector's Select, and its node appears once wired).
+        - **The canvas is now the only place a trigger/action's fields get
+          set** — `MappingFormDialog`/`ScheduleFormDialog` are deleted, per
+          the explicit design call to replace them with the canvas's own
+          right-sidebar inspector (new `TriggerInspector.vue` for
+          name/enabled/protocol+pattern or cron+timezone, and
+          `TriggerActionInspector.vue` + `TriggerActionDeviceFields.vue` for
+          target type/scene or device+command/params). The Mappings/Schedules
+          admin list pages are now pure monitoring + toggle + delete; their
+          "New"/"Edit" actions navigate to `/admin/workflows` (Edit via
+          `?select=<nodeId>` to pre-select the row's node and open its
+          inspector). The user-facing `/schedules` monitoring page now lists
+          every wired trigger action's summary per schedule instead of a
+          single scene name, since a schedule can fire more than one action.
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

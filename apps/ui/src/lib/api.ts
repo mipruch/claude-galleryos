@@ -48,6 +48,9 @@ import type {
   ScheduleUpdateInput,
   SceneUpdateInput,
   SceneWithActionsDTO,
+  TriggerActionCreateInput,
+  TriggerActionDTO,
+  TriggerActionUpdateInput,
   UserCreateInput,
   UserDTO,
   UserUpdateInput,
@@ -270,6 +273,19 @@ export const api = {
     /** Dry-run a sample signal against the enabled rules (no dispatch). */
     test: (input: { protocol: string; address: string; args?: unknown[] }) =>
       post<InputMappingTestResult>('/mappings/test', input),
+  },
+
+  triggerActions: {
+    /** All actions, or scoped to one owner via `?scheduleId=`/`?mappingId=`. */
+    list: (filter?: { scheduleId?: string; mappingId?: string }) =>
+      get<TriggerActionDTO[]>(
+        `/trigger-actions${qs({ scheduleId: filter?.scheduleId, mappingId: filter?.mappingId })}`,
+      ),
+    get: (id: string) => get<TriggerActionDTO>(`/trigger-actions/${id}`),
+    create: (input: TriggerActionCreateInput) => post<TriggerActionDTO>('/trigger-actions', input),
+    update: (id: string, input: TriggerActionUpdateInput) =>
+      put<TriggerActionDTO>(`/trigger-actions/${id}`, input),
+    remove: (id: string) => del(`/trigger-actions/${id}`),
   },
 
   drivers: {
