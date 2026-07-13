@@ -1,32 +1,41 @@
 /**
- * Scheduler — fires scenes on a cron schedule, timezone-aware.
+ * Scheduler — fires trigger actions on a cron schedule, timezone-aware.
  *
  * Each enabled `scheduled_jobs` row maps to one pending `setTimeout` aimed at its
  * next UTC fire time (computed from the cron expression in the job's timezone via
- * {@link computeNextRun}). When a timer fires, the scene runs through the injected
- * SceneEngine with `source: "scheduler"`, the run timestamps are persisted, and
- * the *next* occurrence is recomputed and re-armed. Recomputing after every fire
- * is what makes DST transitions correct — the offset is sampled fresh each time
- * rather than assumed constant (see {@link ./cron.ts}).
+ * {@link computeNextRun}). When a timer fires, every `trigger_actions` row wired
+ * to that job (0..N — a schedule with none yet is a normal, valid state before an
+ * admin wires it up on the canvas) is dispatched through the shared
+ * {@link TriggerActionDispatcher} with `source: "scheduler"`, the run timestamps
+ * are persisted, and the *next* occurrence is recomputed and re-armed.
+ * Recomputing after every fire is what makes DST transitions correct — the offset
+ * is sampled fresh each time rather than assumed constant (see {@link ./cron.ts}).
+ *
+ * A schedule's own params are never templated — a cron fire has no signal to
+ * template against, so each action's `params` are dispatched literally.
  *
  * Dynamic at runtime: the schedules REST controller calls {@link reloadJob} /
  * {@link removeJob} after a create/update/toggle/delete so the live timer set
- * tracks the DB without a server restart.
+ * tracks the DB without a server restart. The trigger-actions REST controller
+ * does NOT need to call back into the Scheduler — actions are fetched fresh from
+ * the repo on every fire, so a wiring change takes effect on the next occurrence
+ * with no cache to invalidate.
  *
- * Dependencies are injected via narrow interfaces (repo, scene engine, logger)
- * plus an optional clock + timer pair, so the engine is fully testable with fakes
- * and virtual time — no DB, no real `setTimeout`.
+ * Dependencies are injected via narrow interfaces (repo, trigger actions source,
+ * dispatcher, logger) plus an optional clock + timer pair, so the engine is fully
+ * testable with fakes and virtual time — no DB, no real `setTimeout`.
  */
 
 import { errMsg } from "@gallery/driver-core";
+import type { TriggerAction } from "@gallery/types";
 import { computeNextRun, CronParseError } from "./cron.ts";
+import type { TemplateContext, TriggerDispatchOutcome } from "./TriggerActionDispatcher.ts";
 import type { Logger } from "../logger.ts";
 
 /** The slice of a scheduled-job row the Scheduler needs. */
 export interface ScheduledJobRecord {
   id: string;
   name: string;
-  sceneId: string;
   cron: string;
   timezone: string;
   enabled: boolean;
@@ -42,13 +51,19 @@ export interface SchedulerJobsRepo {
   setLastRunAt(id: string, lastRunAt: Date): Promise<unknown>;
 }
 
-/** Just the entry point the Scheduler invokes on the SceneEngine. */
-export interface SchedulerSceneEngine {
-  executeScene(
-    sceneId: string,
+/** Source of the trigger actions wired to a schedule (a narrow view of `triggerActionsRepo`). */
+export interface SchedulerTriggerActions {
+  listByScheduleId(scheduleId: string): Promise<TriggerAction[]>;
+}
+
+/** The shared dispatcher every trigger source (schedules, mappings, …) fires through. */
+export interface SchedulerDispatcher {
+  dispatchAll(
+    actions: readonly TriggerAction[],
     source: string,
-    opts?: { sourceDetail?: string },
-  ): Promise<{ status: string }>;
+    sourceDetail: string,
+    template?: TemplateContext,
+  ): Promise<TriggerDispatchOutcome[]>;
 }
 
 /** Opaque timer handle — `setTimeout`'s return in production, anything in tests. */
@@ -56,7 +71,8 @@ type TimerHandle = unknown;
 
 export interface SchedulerOptions {
   jobs: SchedulerJobsRepo;
-  sceneEngine: SchedulerSceneEngine;
+  triggerActions: SchedulerTriggerActions;
+  dispatcher: SchedulerDispatcher;
   logger: Logger;
   /** Injectable clock (epoch ms). Defaults to `Date.now`. */
   now?: () => number;
@@ -186,24 +202,36 @@ export class Scheduler {
   }
 
   /**
-   * Timer callback: record the fire, kick off the scene (not awaited so a slow or
-   * conflicting run never delays rescheduling), then re-arm the next occurrence.
+   * Timer callback: record the fire, dispatch the job's wired trigger actions
+   * (not awaited so a slow or conflicting run never delays rescheduling), then
+   * re-arm the next occurrence.
    */
   private onFire(job: ScheduledJobRecord): void {
     this.timers.delete(job.id);
     const firedAt = new Date(this.now());
-    this.log.info("scheduled job firing", { id: job.id, name: job.name, sceneId: job.sceneId });
+    this.log.info("scheduled job firing", { id: job.id, name: job.name });
 
     void this.persistLastRun(job.id, firedAt);
-    void this.opts.sceneEngine
-      .executeScene(job.sceneId, "scheduler", { sourceDetail: `scheduler:${job.id}` })
-      .then((r) => this.log.info("scheduled scene finished", { id: job.id, status: r.status }))
-      .catch((err) =>
-        this.log.warn("scheduled scene run failed", { id: job.id, sceneId: job.sceneId, error: errMsg(err) }),
-      );
+    void this.dispatchActions(job);
 
     // Re-arm for the following occurrence.
     this.scheduleJob(job);
+  }
+
+  /** Fetch and dispatch a fired job's wired trigger actions. Never throws. */
+  private async dispatchActions(job: ScheduledJobRecord): Promise<void> {
+    try {
+      const actions = await this.opts.triggerActions.listByScheduleId(job.id);
+      if (actions.length === 0) {
+        this.log.debug("scheduled job fired but has no wired trigger actions", { id: job.id, name: job.name });
+        return;
+      }
+      const outcomes = await this.opts.dispatcher.dispatchAll(actions, "scheduler", `scheduler:${job.id}`);
+      const failed = outcomes.filter((o) => !o.ok).length;
+      this.log.info("scheduled job dispatched", { id: job.id, actions: outcomes.length, failed });
+    } catch (err) {
+      this.log.warn("scheduled job dispatch failed", { id: job.id, error: errMsg(err) });
+    }
   }
 
   /** Compare the persisted next-run against now; warn (don't auto-run) if overdue. */

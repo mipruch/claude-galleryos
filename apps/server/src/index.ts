@@ -28,6 +28,7 @@ import {
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  triggerActionsRepo,
   usersRepo,
 } from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
@@ -40,6 +41,7 @@ import { Watchdog } from "./core/Watchdog.ts";
 import { SceneEngine } from "./core/SceneEngine.ts";
 import { Scheduler } from "./core/Scheduler.ts";
 import { StreamManager } from "./core/StreamManager.ts";
+import { TriggerActionDispatcher } from "./core/TriggerActionDispatcher.ts";
 import { InputMapper } from "./input/InputMapper.ts";
 import { OscServer } from "./input/OscServer.ts";
 import { TcpInputServer } from "./input/TcpInputServer.ts";
@@ -132,26 +134,37 @@ async function main(): Promise<void> {
     });
     sceneEngine.start();
 
-    // Scheduler: fires scenes on their cron schedules (timezone/DST-aware). Loads
-    // enabled jobs from the DB and arms a timer per job; the schedules API keeps it
-    // in sync at runtime.
+    // Trigger action dispatcher: the single place a `trigger_actions` row turns
+    // into a real effect (run a scene, or call one device command). Shared by the
+    // Scheduler (cron-fired, literal params) and the InputMapper (ingress-fired,
+    // template-evaluated params).
+    const dispatcher = new TriggerActionDispatcher({
+        sceneEngine,
+        deviceManager,
+        logger,
+    });
+
+    // Scheduler: fires trigger actions on their cron schedules (timezone/DST
+    // -aware). Loads enabled jobs from the DB and arms a timer per job; the
+    // schedules API keeps it in sync at runtime.
     const scheduler = new Scheduler({
         jobs: scheduledJobsRepo,
-        sceneEngine,
+        triggerActions: triggerActionsRepo,
+        dispatcher,
         logger,
     });
     await scheduler.start();
 
-    // Input mapper: turns incoming OSC/TCP/HTTP signals into scene runs / device
-    // commands / events via the `input_mappings` rules. Caches the enabled rules;
-    // the mappings REST controller reloads it on every edit. The transport servers
-    // (TCP/OSC ingress) feed it normalized signals — wired in a later step.
+    // Input mapper: turns incoming OSC/TCP/HTTP signals into dispatched trigger
+    // actions via the `input_mappings` rules. Caches the enabled rules (joined
+    // with their wired trigger actions); the mappings AND trigger-actions REST
+    // controllers reload it on every edit. The transport servers (TCP/OSC
+    // ingress) feed it normalized signals — wired in a later step.
     const inputMapper = new InputMapper({
         repo: inputMappingsRepo,
+        triggerActions: triggerActionsRepo,
+        dispatcher,
         logger,
-        sceneEngine,
-        deviceManager,
-        eventBus,
     });
     await inputMapper.start();
 
@@ -230,6 +243,8 @@ async function main(): Promise<void> {
     scheduler,
     mappings: inputMappingsRepo,
     inputMapper,
+    triggerActions: triggerActionsRepo,
+    dispatcher,
     startedAt: Date.now(),
   });
 

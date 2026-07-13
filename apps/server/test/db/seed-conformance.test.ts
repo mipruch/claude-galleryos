@@ -13,6 +13,7 @@ import {
   SEED_DEVICES,
   SEED_SCENE_ACTIONS,
   SEED_SCHEDULED_JOBS,
+  SEED_TRIGGER_ACTIONS,
 } from "../../src/db/seed.ts";
 import {
   assertValidCommandParams,
@@ -23,7 +24,8 @@ import { computeNextRun, isValidCron } from "../../src/core/cron.ts";
 
 const connById = new Map(SEED_CONNECTIONS.map((c) => [c.id, c]));
 const devById = new Map(SEED_DEVICES.map((d) => [d.id, d]));
-// Scene IDs referenced by the seed (scene-action targets + schedule targets).
+const scheduleIds = new Set(SEED_SCHEDULED_JOBS.map((j) => j.id));
+// Scene IDs referenced by the seed (scene-action targets + trigger-action targets).
 const seededSceneIds = new Set(SEED_SCENE_ACTIONS.map((a) => a.sceneId));
 
 /** Endpoint type a device is addressed as (subtype, falling back to type). */
@@ -84,9 +86,27 @@ describe("seed data conforms to driver manifests", () => {
     }
   });
 
-  test("every scheduled job targets a seeded scene", () => {
+  test("every trigger action's owner is a seeded schedule", () => {
+    for (const action of SEED_TRIGGER_ACTIONS) {
+      expect(scheduleIds.has(action.scheduleId), `trigger action ${action.id} references a seeded schedule`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("every scene.execute trigger action targets a seeded scene", () => {
+    for (const action of SEED_TRIGGER_ACTIONS) {
+      if (action.targetType !== "scene.execute") continue;
+      expect(seededSceneIds.has(action.targetId), `trigger action ${action.id} references a seeded scene`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("every seeded schedule has at least one wired trigger action", () => {
+    const wiredScheduleIds = new Set(SEED_TRIGGER_ACTIONS.map((a) => a.scheduleId));
     for (const job of SEED_SCHEDULED_JOBS) {
-      expect(seededSceneIds.has(job.sceneId), `job ${job.name} references a seeded scene`).toBe(true);
+      expect(wiredScheduleIds.has(job.id), `job ${job.name} has a wired trigger action`).toBe(true);
     }
   });
 });

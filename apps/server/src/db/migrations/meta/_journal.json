@@ -56,6 +56,13 @@
       "when": 1783948441420,
       "tag": "0007_workflow_canvas_positions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783966736527,
+      "tag": "0008_trigger_actions",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@
  * repositories (scenes, schedules, logs) arrive with their feature steps.
  */
 
-import { type SQL, and, arrayOverlaps, count, desc, eq, gte, lte } from "drizzle-orm";
+import { type SQL, and, arrayOverlaps, count, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   cameras,
   config,
@@ -23,6 +23,7 @@ import {
   sceneExecutions,
   scenes,
   scheduledJobs,
+  triggerActions,
   users,
 } from "@gallery/types/schema";
 import type {
@@ -37,6 +38,7 @@ import type {
   NewKiosk,
   NewRole,
   NewScheduledJob,
+  NewTriggerAction,
   NewUser,
   RoleWithDevices,
   SceneActionInput,
@@ -573,6 +575,45 @@ export const inputMappingsRepo = {
         .where(eq(inputMappings.id, id))
         .returning(),
     ),
+};
+
+// ── trigger actions (what a schedule/mapping fires — 0..N per trigger) ──
+
+export const triggerActionsRepo = {
+  /** All actions, newest first. */
+  list: () => db.select().from(triggerActions).orderBy(desc(triggerActions.createdAt)),
+
+  /** Actions wired to one schedule — what the Scheduler dispatches on fire. */
+  listByScheduleId: (scheduleId: string) =>
+    db.select().from(triggerActions).where(eq(triggerActions.scheduleId, scheduleId)),
+
+  /** Actions wired to one mapping. */
+  listByMappingId: (mappingId: string) =>
+    db.select().from(triggerActions).where(eq(triggerActions.mappingId, mappingId)),
+
+  /** Actions wired to any of several mappings — what the InputMapper cache joins in. */
+  listByMappingIds: (mappingIds: string[]) =>
+    mappingIds.length
+      ? db.select().from(triggerActions).where(inArray(triggerActions.mappingId, mappingIds))
+      : Promise.resolve([]),
+
+  get: (id: string) =>
+    first(db.select().from(triggerActions).where(eq(triggerActions.id, id)).limit(1)),
+
+  create: (values: NewTriggerAction) =>
+    first(db.insert(triggerActions).values(values).returning()),
+
+  update: (id: string, values: Partial<NewTriggerAction>) =>
+    first(
+      db
+        .update(triggerActions)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(triggerActions.id, id))
+        .returning(),
+    ),
+
+  remove: (id: string) =>
+    first(db.delete(triggerActions).where(eq(triggerActions.id, id)).returning()),
 };
 
 // ── DeviceManager adapter (read-only) ────────────────────────

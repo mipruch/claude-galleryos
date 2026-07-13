@@ -15,7 +15,7 @@
 
 import { sql } from "drizzle-orm";
 import type { CanvasPosition } from "./canvas.ts";
-import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
+import type { InputProtocol, OnFailure, TriggerTargetType } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
   bigserial,
@@ -273,14 +273,13 @@ export const sceneExecutions = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────
-// scheduled_jobs — CRON schedules
+// scheduled_jobs — CRON schedules. Purely "when": what runs lives in
+// trigger_actions below, so a schedule can exist unwired (no rows yet)
+// and later fan out to several actions — it no longer embeds a target.
 // ─────────────────────────────────────────────────────────────
 export const scheduledJobs = pgTable("scheduled_jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 100 }).notNull(),
-  sceneId: uuid("scene_id")
-    .notNull()
-    .references(() => scenes.id, { onDelete: "cascade" }),
   cron: varchar("cron", { length: 100 }).notNull(),
   timezone: varchar("timezone", { length: 50 }).notNull().default("Europe/Prague"),
   enabled: boolean("enabled").notNull().default(true),
@@ -294,7 +293,8 @@ export const scheduledJobs = pgTable("scheduled_jobs", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// input_mappings — OSC/TCP/HTTP signal → action
+// input_mappings — OSC/TCP/HTTP signal → match. Purely "when" too, same
+// reasoning as scheduled_jobs: what runs lives in trigger_actions.
 // ─────────────────────────────────────────────────────────────
 export const inputMappings = pgTable(
   "input_mappings",
@@ -303,10 +303,6 @@ export const inputMappings = pgTable(
     name: varchar("name", { length: 100 }).notNull(),
     protocol: varchar("protocol", { length: 20 }).$type<InputProtocol>().notNull(),
     pattern: varchar("pattern", { length: 255 }).notNull(),
-    targetType: varchar("target_type", { length: 50 }).$type<InputTargetType>().notNull(),
-    targetId: uuid("target_id"),
-    targetCommand: varchar("target_command", { length: 100 }),
-    paramsTemplate: jsonb("params_template").$type<Record<string, unknown>>().notNull().default({}),
     enabled: boolean("enabled").notNull().default(true),
     // Node position on the workflow routing-map canvas (see scene_actions.position).
     position: jsonb("position").$type<CanvasPosition | null>(),
@@ -314,6 +310,51 @@ export const inputMappings = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index("idx_input_mappings_protocol").on(t.protocol, t.enabled)],
+);
+
+// ─────────────────────────────────────────────────────────────
+// trigger_actions — what a schedule or mapping fires: one row per action,
+// so a single trigger can fan out to several (mirrors scene_actions, which
+// is the same "one row per step, many rows per owner" shape for scenes).
+//
+// `scheduleId` XOR `mappingId` names the owning trigger. `targetId`/
+// `targetCommand` carry no hard FK (they mean a scene or a device depending
+// on `targetType`, checked in the route layer, same as scene_actions'
+// device_id) and may be null: a freshly-added action starts unwired
+// (dropped on the canvas before a target is picked), and the dispatcher
+// just skips one that still is at fire time rather than treating it as
+// invalid — completing it is a normal edit, not a distinct state.
+//
+// `params` is used only for device.command: literal values, or `{arg[0]}`/
+// `{:name}` tokens the dispatcher substitutes from the firing signal (see
+// core/templating.ts) when the owner is a mapping. A schedule has no
+// signal to draw from, so its actions' params are always literal — CRON
+// firings just never contain a token, not a different code path.
+// ─────────────────────────────────────────────────────────────
+export const triggerActions = pgTable(
+  "trigger_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scheduleId: uuid("schedule_id").references(() => scheduledJobs.id, { onDelete: "cascade" }),
+    mappingId: uuid("mapping_id").references(() => inputMappings.id, { onDelete: "cascade" }),
+    targetType: varchar("target_type", { length: 50 }).$type<TriggerTargetType>().notNull(),
+    targetId: uuid("target_id"),
+    targetCommand: varchar("target_command", { length: 100 }),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    // Node position on the workflow routing-map canvas (see scene_actions.position).
+    position: jsonb("position").$type<CanvasPosition | null>(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("idx_trigger_actions_schedule").on(t.scheduleId),
+    index("idx_trigger_actions_mapping").on(t.mappingId),
+    check(
+      "trigger_actions_owner_chk",
+      sql`(${t.scheduleId} IS NOT NULL AND ${t.mappingId} IS NULL)
+        OR (${t.mappingId} IS NOT NULL AND ${t.scheduleId} IS NULL)`,
+    ),
+  ],
 );
 
 // ─────────────────────────────────────────────────────────────

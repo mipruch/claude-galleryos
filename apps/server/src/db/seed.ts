@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { cameras, connections, devices, iframes, kiosks, roles, rooms, sceneActions, scenes, scheduledJobs, users } from "@gallery/types/schema";
+import { cameras, connections, devices, iframes, kiosks, roles, rooms, sceneActions, scenes, scheduledJobs, triggerActions, users } from "@gallery/types/schema";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
@@ -783,7 +783,6 @@ export const SEED_SCHEDULED_JOBS = [
     // Every weekday at 08:30 local — turn the hall lights on before opening.
     id: JOB_MORNING_LIGHTS,
     name: "Ranní světla (Po–Pá 8:30)",
-    sceneId: SCENE_LIGHTS_ON,
     cron: "30 8 * * 1-5",
     timezone: "Europe/Prague",
     enabled: true,
@@ -792,7 +791,6 @@ export const SEED_SCHEDULED_JOBS = [
     // Daily at 10:00 local — auto-start the lecture preset.
     id: JOB_LECTURE_START,
     name: "Přednáška — denně 10:00",
-    sceneId: SCENE_LECTURE_START,
     cron: "0 10 * * *",
     timezone: "Europe/Prague",
     enabled: false, // off by default; enable per exhibition programme
@@ -802,10 +800,36 @@ export const SEED_SCHEDULED_JOBS = [
     // projector-on scene; there is no dedicated power-off scene in the seed.)
     id: JOB_NIGHT_OFF,
     name: "Projektor — noční úloha (22:00 UTC)",
-    sceneId: SCENE_PROJECTOR_ON,
     cron: "0 22 * * *",
     timezone: "UTC",
     enabled: false,
+  },
+];
+
+// One scene.execute trigger action per schedule above — what a cron fire runs,
+// wired via `trigger_actions` (a schedule row itself carries no target).
+const TRIGGER_MORNING_LIGHTS   = "dddddddd-dddd-dddd-dddd-dddddddddd01";
+const TRIGGER_LECTURE_START    = "dddddddd-dddd-dddd-dddd-dddddddddd02";
+const TRIGGER_NIGHT_PROJECTOR  = "dddddddd-dddd-dddd-dddd-dddddddddd03";
+
+export const SEED_TRIGGER_ACTIONS = [
+  {
+    id: TRIGGER_MORNING_LIGHTS,
+    scheduleId: JOB_MORNING_LIGHTS,
+    targetType: "scene.execute" as const,
+    targetId: SCENE_LIGHTS_ON,
+  },
+  {
+    id: TRIGGER_LECTURE_START,
+    scheduleId: JOB_LECTURE_START,
+    targetType: "scene.execute" as const,
+    targetId: SCENE_LECTURE_START,
+  },
+  {
+    id: TRIGGER_NIGHT_PROJECTOR,
+    scheduleId: JOB_NIGHT_OFF,
+    targetType: "scene.execute" as const,
+    targetId: SCENE_PROJECTOR_ON,
   },
 ];
 
@@ -885,6 +909,7 @@ async function main(): Promise<void> {
   await db.insert(scenes).values(SEED_SCENES).onConflictDoNothing();
   await db.insert(sceneActions).values(SEED_SCENE_ACTIONS).onConflictDoNothing();
   await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
+  await db.insert(triggerActions).values(SEED_TRIGGER_ACTIONS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
   await db.insert(kiosks).values(SEED_KIOSKS).onConflictDoNothing();
   await db.insert(cameras).values(SEED_CAMERAS).onConflictDoNothing();
@@ -909,6 +934,7 @@ async function main(): Promise<void> {
     scenes: SEED_SCENES.length,
     sceneActions: SEED_SCENE_ACTIONS.length,
     scheduledJobs: SEED_SCHEDULED_JOBS.length,
+    triggerActions: SEED_TRIGGER_ACTIONS.length,
     iframes: SEED_IFRAMES.length,
     kiosks: SEED_KIOSKS.length,
     cameras: SEED_CAMERAS.length,

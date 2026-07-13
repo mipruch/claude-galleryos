@@ -28,12 +28,14 @@ import {
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  triggerActionsRepo,
   usersRepo,
 } from "../../src/db/repositories.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/redis/state.ts";
 import { SceneEngine } from "../../src/core/SceneEngine.ts";
 import { MeterService } from "../../src/core/MeterService.ts";
 import { Scheduler } from "../../src/core/Scheduler.ts";
+import { TriggerActionDispatcher } from "../../src/core/TriggerActionDispatcher.ts";
 import { InputMapper } from "../../src/input/InputMapper.ts";
 import { StreamManager } from "../../src/core/StreamManager.ts";
 import { startApiServer } from "../../src/api/server.ts";
@@ -86,14 +88,14 @@ beforeAll(async () => {
   sceneEngine.start();
   const meterService = new MeterService({ devices: dm, eventBus: bus, logger });
   dm.setMeterListener(meterService.handleMeterUpdate);
-  const scheduler = new Scheduler({ jobs: scheduledJobsRepo, sceneEngine, logger });
+  const dispatcher = new TriggerActionDispatcher({ sceneEngine, deviceManager: dm, logger });
+  const scheduler = new Scheduler({ jobs: scheduledJobsRepo, triggerActions: triggerActionsRepo, dispatcher, logger });
   await scheduler.start();
   const inputMapper = new InputMapper({
     repo: inputMappingsRepo,
+    triggerActions: triggerActionsRepo,
+    dispatcher,
     logger,
-    sceneEngine,
-    deviceManager: dm,
-    eventBus: bus,
   });
   await inputMapper.start();
   const streamManager = new StreamManager({
@@ -132,6 +134,8 @@ beforeAll(async () => {
       scheduler,
       mappings: inputMappingsRepo,
       inputMapper,
+      triggerActions: triggerActionsRepo,
+      dispatcher,
       startedAt: Date.now(),
     },
     0,

@@ -13,7 +13,7 @@
 
 import type { Jsonify } from "./json.ts";
 import type { CanvasPosition } from "./canvas.ts";
-import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
+import type { InputProtocol, OnFailure, TriggerTargetType } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
   cameras,
@@ -29,6 +29,7 @@ import {
   sceneExecutions,
   scenes,
   scheduledJobs,
+  triggerActions,
   users,
 } from "./schema.ts";
 
@@ -52,6 +53,8 @@ export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 export type InputMapping = typeof inputMappings.$inferSelect;
 export type NewInputMapping = typeof inputMappings.$inferInsert;
+export type TriggerAction = typeof triggerActions.$inferSelect;
+export type NewTriggerAction = typeof triggerActions.$inferInsert;
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -81,6 +84,7 @@ export type KioskDTO = Jsonify<Kiosk>;
 export type CameraDTO = Omit<Jsonify<Camera>, "username" | "password">;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 export type InputMappingDTO = Jsonify<InputMapping>;
+export type TriggerActionDTO = Jsonify<TriggerAction>;
 export type RoleDTO = Jsonify<RoleWithDevices>;
 /**
  * A user as the REST API exposes it: the serialized row with `passwordHash`
@@ -138,10 +142,13 @@ export type SceneUpdateInput = Partial<SceneCreateInput>;
 
 // ── schedules (CRON jobs) ────────────────────────────────────
 
-/** Body accepted by `POST /schedules`. */
+/**
+ * Body accepted by `POST /schedules`. Purely "when" — no target: a fresh
+ * schedule fires nothing until it has `trigger_actions` wired to it (see
+ * `TriggerActionCreateInput`), so it's a valid, savable row on its own.
+ */
 export interface ScheduleCreateInput {
   name: string;
-  sceneId: string;
   /** 5-field cron expression, interpreted in `timezone`. */
   cron: string;
   /** IANA timezone (e.g. "Europe/Prague"). Defaults server-side if omitted. */
@@ -190,32 +197,19 @@ export type CameraUpdateInput = Partial<CameraCreateInput>;
 // ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
 
 /**
- * Body accepted by `POST /mappings` — one rule mapping an incoming signal to an
- * action.
+ * Body accepted by `POST /mappings` — one rule matching an incoming signal.
+ * Purely "when", same as schedules: what runs is `trigger_actions` wired to
+ * it, not a field here, so a mapping with none yet is still a valid row.
  *
  * A `pattern` matches the signal address: either exact (`/scene/execute`) or
- * parameterised with `:name` segments (`/dim/:level`), the latter capturing the
- * matched segment for use in `paramsTemplate`.
- *
- * `paramsTemplate` values are either literals (passed through unchanged) or
- * reference tokens substituted from the signal: `{arg[0]}` for the Nth positional
- * argument, `{:name}` for a captured path param. A value that is exactly one token
- * keeps the referenced value's type; a token embedded in a larger string
- * interpolates as text.
- *
- * `targetId`/`targetCommand` requirements depend on `targetType`:
- *   - `scene.execute`  → `targetId` = scene id (no command)
- *   - `device.command` → `targetId` = device id + `targetCommand`
- *   - `event.emit`     → neither required (the mapping name identifies the event)
+ * parameterised with `:name` segments (`/dim/:level`), the latter capturing
+ * the matched segment for the wired trigger actions' `params` tokens to draw
+ * from (see `TriggerActionCreateInput`).
  */
 export interface InputMappingCreateInput {
   name: string;
   protocol: InputProtocol;
   pattern: string;
-  targetType: InputTargetType;
-  targetId?: string | null;
-  targetCommand?: string | null;
-  paramsTemplate?: Record<string, unknown>;
   enabled?: boolean;
   /** Node position on the workflow routing-map canvas. Omit to leave unchanged. */
   position?: CanvasPosition | null;
@@ -225,22 +219,45 @@ export type InputMappingUpdateInput = Partial<InputMappingCreateInput>;
 
 /**
  * Result of `POST /mappings/test` — a dry-run that matches a sample signal
- * against the enabled mappings without dispatching anything. Each match reports
- * the rule that fired, the path params captured from `:name` segments, and the
- * params after applying `paramsTemplate`.
+ * against the enabled mappings without dispatching anything. Each match
+ * reports the rule that fired and the path params captured from `:name`
+ * segments; it doesn't resolve trigger actions; that's a dispatch-time concern.
  */
 export interface InputMappingTestResult {
   matched: boolean;
   matches: Array<{
     id: string;
     name: string;
-    targetType: InputTargetType;
-    targetId: string | null;
-    targetCommand: string | null;
     pathParams: Record<string, string>;
-    params: Record<string, unknown>;
   }>;
 }
+
+// ── trigger actions (what a schedule/mapping fires — 0..N per trigger) ──
+
+/**
+ * Body accepted by `POST /trigger-actions` — one action a schedule or mapping
+ * fires. Exactly one of `scheduleId`/`mappingId` names the owner.
+ *
+ * `targetId`/`targetCommand` may be omitted entirely: an action dropped on
+ * the canvas before a target is picked is a normal, valid row — the
+ * dispatcher just skips one that's still unwired at fire time. `params`
+ * (device.command only) is either literal values or `{arg[0]}`/`{:name}`
+ * tokens the dispatcher fills in from the firing signal when the owner is a
+ * mapping (a schedule has no signal, so its actions' params stay literal).
+ */
+export interface TriggerActionCreateInput {
+  scheduleId?: string | null;
+  mappingId?: string | null;
+  targetType: TriggerTargetType;
+  targetId?: string | null;
+  /** Required once `targetType` is `device.command` and the action is meant to fire. */
+  targetCommand?: string | null;
+  params?: Record<string, unknown>;
+  /** Node position on the workflow canvas. Omit to leave unchanged. */
+  position?: CanvasPosition | null;
+}
+
+export type TriggerActionUpdateInput = Partial<Omit<TriggerActionCreateInput, "scheduleId" | "mappingId">>;
 
 // ── kiosks (wall-screen / tablet layouts) ────────────────────
 
