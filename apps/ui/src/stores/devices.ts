@@ -222,18 +222,6 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   /**
-   * Persist a state patch to Redis (via WS) and broadcast to all UIs, without
-   * executing any driver command. Use this to store "desired" values that should
-   * survive page reloads and be visible to other connected clients — e.g. the
-   * intended brightness while a DALI light is off.
-   */
-  function patchDeviceState(id: string, patch: DeviceState): void {
-    mergeState(id, patch) // optimistic local
-    if (!connected.value) return
-    rt.send({ event: 'device:state:patch', data: { deviceId: id, state: patch } })
-  }
-
-  /**
    * Loads device metadata and initial state from the server.
    */
   async function init(): Promise<void> {
@@ -400,7 +388,6 @@ export const useDevicesStore = defineStore('devices', () => {
     fetchAll,
     sendCommand,
     patchState,
-    patchDeviceState,
     createDevice,
     updateDevice,
     removeDevice,

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { WidgetBinding, SelectWidgetBinding } from '@gallery/driver-core'
 import {
   buttonsFor,
-  faderRenderHints,
   isCustomWidgetType,
+  isDimmedByCompanion,
   isRenderableType,
   readBoolLike,
   readLevel,
@@ -141,32 +141,27 @@ describe('selectOptions', () => {
   })
 })
 
-describe('faderRenderHints', () => {
+describe('isDimmedByCompanion', () => {
   const fader: WidgetBinding = { kind: 'fader', command: 'setLevel', paramKey: 'level', stateKey: 'level' }
   const muteCompanion: WidgetBinding = { kind: 'mute', trigger: 'param', command: 'setMute', paramKey: 'muted', stateKey: 'muted' }
   const powerCompanion: WidgetBinding = { kind: 'power', trigger: 'commands', onCommand: 'on', offCommand: 'off', stateKey: 'power' }
-  const nonGatingPowerCompanion: WidgetBinding = { ...powerCompanion, gatesFader: false }
 
-  it('is a no-op with no companion binding', () => {
-    expect(faderRenderHints([fader], {})).toEqual({ dimmed: false, blockCommit: false })
+  it('is false with no companion binding', () => {
+    expect(isDimmedByCompanion([fader], {})).toBe(false)
   })
 
-  it('a power companion that is off dims and blocks commit by default (e.g. a DALI light)', () => {
-    expect(faderRenderHints([fader, powerCompanion], { power: false })).toEqual({ dimmed: true, blockCommit: true })
-    expect(faderRenderHints([fader, powerCompanion], {})).toEqual({ dimmed: true, blockCommit: true })
+  it('dims while a power companion is off (or unknown)', () => {
+    expect(isDimmedByCompanion([fader, powerCompanion], { power: false })).toBe(true)
+    expect(isDimmedByCompanion([fader, powerCompanion], {})).toBe(true)
   })
 
-  it('a power companion that is on neither dims nor blocks commit', () => {
-    expect(faderRenderHints([fader, powerCompanion], { power: true })).toEqual({ dimmed: false, blockCommit: false })
+  it('does not dim while a power companion is on', () => {
+    expect(isDimmedByCompanion([fader, powerCompanion], { power: true })).toBe(false)
   })
 
-  it('gatesFader: false dims while off but never blocks commit (e.g. a BSS matrix crosspoint route-enable)', () => {
-    expect(faderRenderHints([fader, nonGatingPowerCompanion], { power: false })).toEqual({ dimmed: true, blockCommit: false })
-  })
-
-  it('a mute companion dims while muted but never blocks commit — the channel stays addressable', () => {
-    expect(faderRenderHints([fader, muteCompanion], { muted: true })).toEqual({ dimmed: true, blockCommit: false })
-    expect(faderRenderHints([fader, muteCompanion], { muted: false })).toEqual({ dimmed: false, blockCommit: false })
+  it('dims while a mute companion is muted, not while unmuted', () => {
+    expect(isDimmedByCompanion([fader, muteCompanion], { muted: true })).toBe(true)
+    expect(isDimmedByCompanion([fader, muteCompanion], { muted: false })).toBe(false)
   })
 })
 

@@ -628,13 +628,21 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (`PowerWidget`/`FaderWidget`/`SelectWidget`, dispatched by
           `GenericWidget.vue`) per binding inside one `DeviceCard` — a device
           declaring `[fader, mute]` gets both, automatically. A fader
-          auto-dims (and, next to a *power* companion, routes a drag-commit to
-          `patchDeviceState` instead of a live command) while its sibling
-          power/mute binding is off/muted — pure composition, no driver
-          involved. The **one deliberate exception** is the BSS live-meter
-          panel (a whole panel of bars fits no generic kind) — matched by
-          endpoint type via `lib/widgets.ts#isCustomWidgetType`, same as it
-          would need to be even in a fully declarative system.
+          auto-dims while its sibling power/mute binding is off/muted (a
+          visual-only nicety, `lib/widgets.ts#isDimmedByCompanion`) but always
+          sends `device:command` on commit — the UI carries **zero**
+          device-specific knowledge of whether that command should reach the
+          hardware right now. That decision (send live vs. remember-only) is
+          entirely the driver's: `DaliLunatoneDriver` tracks the fixture's
+          power state in its own per-connection KV store and skips the live
+          `dimmable` request while off, restoring the remembered level on the
+          next `on`. (An earlier version of this routed the decision through
+          the UI via a `blockCommit`/`gatesFader` flag; that leaked
+          vendor-specific hardware behaviour into generic UI code and was
+          removed — see H2 below.) The **one deliberate exception** is the BSS
+          live-meter panel (a whole panel of bars fits no generic kind) —
+          matched by endpoint type via `lib/widgets.ts#isCustomWidgetType`,
+          same as it would need to be even in a fully declarative system.
         - The command palette (`lib/commands.ts`) lost its
           `subtype === 'extron-matrix.output'` special case; a select binding's
           options now generate quick actions for any driver's select widget.
@@ -937,6 +945,33 @@ fixture reports off — `redis/state.ts`'s `mergeDeviceState` is back to a plain
 shallow spread with no vendor-specific rules. Covered by each driver's own
 tests (`test/lunatone.test.ts`, `test/foxtron.test.ts`), including survival
 across a driver restart.
+
+### H2 · Fader commit routing (device:command vs. remember-only) — UI, core, or driver? ✓ RESOLVED
+A first pass at "don't let a drag turn a light back on while it's off" put the
+decision in the UI: `DeviceWidget.vue` inferred, from a fader's sibling
+*power* binding reading off, that a commit should route to a new
+`device:state:patch` WS event (Redis-only, broadcast, no driver call) instead
+of `device:command`. This broke the BSS matrix crosspoint — its `power`
+companion is just a UI label over the same always-live gain parameter as its
+fader (see `driver-bss/src/manifest.ts`), so gating it was wrong: dragging its
+fader sent nothing to the device and only broadcast a stale value to every
+connected UI. A `gatesFader` manifest flag was tried as a fix, but that's
+still the same mistake one level down — the UI/manifest layer has no business
+knowing which endpoint types have a hardware relay independent of their
+level parameter and which don't.
+**Decided:** removed `device:state:patch` and `gatesFader` entirely. The UI
+now always sends `device:command` on a fader commit, full stop — see
+`FaderWidget.vue`. Whether that command reaches the hardware right now or is
+only remembered for later is the driver's own call, made with information
+only the driver has (its per-connection KV store, populated as it goes — see
+H1). Of the drivers with a fader next to a power/mute companion, only
+`DaliLunatoneDriver`'s gateway has a genuinely independent switchable/dimmable
+pair, so only it gates: `setBrightness` while off is remembered via
+`ctx.storage` and never sent, and `on` restores the remembered level in the
+same request (`DaliLunatoneDriver.plan`, tested in `test/lunatone.test.ts`
+under "power gating"). `DaliFoxtronDriver`'s `on`/`off` are themselves DALI
+level commands (no separate relay) and BSS's gain/mute are independently
+addressable — both already sent everything live and needed no changes.
 
 ### G7 · apps/ui vs packages/ui — resolve before building admin UI
 README §3 depicts a shared `packages/ui` component library. Reality is a

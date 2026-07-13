@@ -115,17 +115,6 @@ export interface CommandsBoolWidgetBinding {
   /** Command to call (no params) when the user switches this off. */
   offCommand: string;
   stateKey: string;
-  /**
-   * Only meaningful for `kind: "power"` (a `mute` companion never gates a
-   * fader). Whether a sibling fader's underlying parameter goes unaddressable
-   * while this is off, so the UI should persist a drag's desired value
-   * instead of sending it as a live command (see `FaderWidget.vue`). Defaults
-   * to `true` — a real power switch (a light, a display) usually does cut the
-   * fader's parameter off. Set `false` when "power" is only a UI label over a
-   * parameter that stays addressable regardless, e.g. a matrix crosspoint's
-   * route-enable riding the same always-live gain block as its fader.
-   */
-  gatesFader?: boolean;
 }
 
 /**
@@ -139,8 +128,6 @@ export interface ParamBoolWidgetBinding {
   command: string;
   paramKey: string;
   stateKey: string;
-  /** See `CommandsBoolWidgetBinding.gatesFader`. */
-  gatesFader?: boolean;
 }
 
 export type BoolWidgetBinding = CommandsBoolWidgetBinding | ParamBoolWidgetBinding;

@@ -57,37 +57,28 @@ export function readSelected(value: unknown): number | string {
   return typeof value === 'number' || typeof value === 'string' ? value : 0
 }
 
-/** Composition-level render hints `DeviceWidget.vue` derives for a fader from a sibling power/mute binding, if any. */
-export interface FaderRenderHints {
-  /** Grey the fader out (a sibling power/mute binding says off/muted). */
-  dimmed: boolean
-  /** A commit should persist the desired value instead of sending a live command. */
-  blockCommit: boolean
-}
-
 /**
- * Pairs a fader with a sibling power/mute binding on the same device, if any,
- * so the fader can grey itself out (and, for a power companion whose
- * `gatesFader` isn't explicitly `false`, avoid sending a live command while
- * the device is off). A `mute` companion, or a `power` companion declared
- * with `gatesFader: false` (e.g. a matrix crosspoint's route-enable riding
- * the same always-addressable parameter as its fader), never blocks commit —
- * see `WidgetBinding.gatesFader` in `@gallery/driver-core`.
+ * Whether a fader should grey itself out because a sibling power/mute binding
+ * on the same device reads off/muted — a purely visual, generic hint. What a
+ * fader commit actually *does* (send a live command vs. let the driver decide
+ * to hold it) is never the UI's call: every commit sends `device:command`
+ * unconditionally, and it's up to the driver to decide whether that reaches
+ * the hardware now or is only remembered for later (e.g. a DALI light's
+ * brightness while it's off — see `DaliLunatoneDriver`'s KV-backed power
+ * tracking). The UI carries no device-specific knowledge of that decision.
  */
-export function faderRenderHints(
+export function isDimmedByCompanion(
   widgets: WidgetBinding[],
   state: Record<string, unknown> | undefined,
-): FaderRenderHints {
+): boolean {
   const companion = widgets.find(
     (widget): widget is Extract<WidgetBinding, { kind: 'power' | 'mute' }> =>
       widget.kind === 'power' || widget.kind === 'mute',
   )
-  if (!companion) return { dimmed: false, blockCommit: false }
+  if (!companion) return false
 
   const raw = readBoolLike(state?.[companion.stateKey])
-  const offOrMuted = companion.kind === 'power' ? !raw : raw
-  const gatesFader = companion.kind === 'power' && companion.gatesFader !== false
-  return { dimmed: offOrMuted, blockCommit: gatesFader && offOrMuted }
+  return companion.kind === 'power' ? !raw : raw
 }
 
 /** The `{labelsKey, countKey, fallbackLabel}` shape shared by every "build a numbered, labeled list from connection config" spot — a select widget's live options and an admin form's address field (see `lib/schemaForm.ts`). */

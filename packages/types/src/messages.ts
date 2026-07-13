@@ -78,7 +78,6 @@ export type ClientMessage =
         username?: string;
       }
     >
-  | WsEnvelope<"device:state:patch", { deviceId: string; state: DeviceState }>
   | WsEnvelope<"scene:execute", { sceneId: string; source?: string }>
   // Meter widgets: subscribe while mounted, unsubscribe when dismounted.
   | WsEnvelope<"meter:subscribe", { deviceId: string }>

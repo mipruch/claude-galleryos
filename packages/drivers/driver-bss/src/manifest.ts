@@ -21,12 +21,6 @@
  * commands and a `power` state key — BssSoundwebDriver.ts maps them onto the same
  * wire parameter as the fader's `setMute`, entirely on its own (see the `Field`
  * routing in that file). The UI never learns BSS exists.
- *
- * Because that route-enable rides the same always-addressable Gain block as the
- * crosspoint's own fader (unlike, say, a light's power relay actually cutting the
- * dimmer's output), its `power` widget below declares `gatesFader: false` — a
- * disabled route still takes a live `setLevel` commit, exactly like a `mute`
- * companion would.
  */
 
 import type { DriverManifest } from "@gallery/driver-core";
@@ -250,11 +244,7 @@ export const manifest: DriverManifest = {
 
       widgets: [
         { kind: "fader", command: "setLevel", paramKey: "level", stateKey: "level" },
-        // gatesFader: false — the route-enable rides the same always-addressable Gain
-        // block as the fader (see the file header doc comment), so a disabled route
-        // shouldn't block the fader from sending a live setLevel command, exactly
-        // like a `mute` companion never blocks it.
-        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power", gatesFader: false },
+        { kind: "power", trigger: "commands", onCommand: "on", offCommand: "off", stateKey: "power" },
       ],
     },
 

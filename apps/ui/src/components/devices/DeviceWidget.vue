@@ -19,7 +19,7 @@ import DeviceCard from './DeviceCard.vue'
 import GenericWidget from './GenericWidget.vue'
 import BssMeterWidget from './BssMeterWidget.vue'
 import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
-import { faderRenderHints } from '@/lib/widgets'
+import { isDimmedByCompanion } from '@/lib/widgets'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 
@@ -36,19 +36,18 @@ interface RenderEntry {
   key: number
   binding: WidgetBinding
   dimmed: boolean
-  blockCommit: boolean
 }
 
 /**
  * Pairs each fader with a sibling power/mute binding on the same device, if
- * any (see `faderRenderHints` in `lib/widgets.ts`). Pure composition — no
- * driver ever needs to know this happens beyond declaring `gatesFader` when
- * its "power" companion doesn't actually gate the fader's parameter.
+ * any, so the fader can grey itself out while the device is off/muted (see
+ * `isDimmedByCompanion` in `lib/widgets.ts`) — a visual nicety only. What a
+ * commit actually does once sent is entirely the driver's call, not the UI's.
  */
 const entries = computed<RenderEntry[]>(() =>
   widgets.value.map((binding, key) => {
-    if (binding.kind !== 'fader') return { key, binding, dimmed: false, blockCommit: false }
-    return { key, binding, ...faderRenderHints(widgets.value, store.stateOf(props.device.id)) }
+    if (binding.kind !== 'fader') return { key, binding, dimmed: false }
+    return { key, binding, dimmed: isDimmedByCompanion(widgets.value, store.stateOf(props.device.id)) }
   }),
 )
 </script>
@@ -63,7 +62,6 @@ const entries = computed<RenderEntry[]>(() =>
         :device="device"
         :binding="entry.binding"
         :dimmed="entry.dimmed"
-        :block-commit="entry.blockCommit"
       />
     </div>
   </DeviceCard>

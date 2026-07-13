@@ -125,29 +125,6 @@ async function dispatch(
   ws.send(envelope("error", { message: `unknown event: ${event || "(none)"}` }));
 }
 
-/** Guard: data carries a non-empty deviceId and a non-empty state patch. */
-function isStatePatch(d: WsData): d is { deviceId: string; state: Record<string, unknown> } {
-  const patch = d.state as Record<string, unknown> | undefined;
-  return !!d.deviceId && !!patch && Object.keys(patch).length > 0;
-}
-
-/**
- * Persist a UI-originated state patch in Redis and broadcast to all clients
- * without executing a driver command. Used to store "desired" values
- * (e.g. brightness while a light is off) so all UIs stay in sync.
- */
-async function onStatePatch(
-  _ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  data: WsData,
-): Promise<void> {
-  if (!isStatePatch(data)) return;
-  const { deviceId, state: patch } = data;
-  await ctx.state.setDeviceState(deviceId, patch);
-  const stored = await ctx.state.getDeviceState(deviceId);
-  ctx.eventBus.emit({ type: "device.state.changed", deviceId, state: stored ?? patch, source: "ui" });
-}
-
 /**
  * Executes a device command and sends the result back to the client.
  */
@@ -232,7 +209,6 @@ async function onMeterUnsubscribe(
 }
 
 const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
-  "device:state:patch": onStatePatch,
   "device:command": onDeviceCommand,
   "scene:execute": onSceneExecute,
   "meter:subscribe": onMeterSubscribe,

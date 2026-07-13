@@ -17,9 +17,8 @@ withDefaults(
     binding: WidgetBinding
     /** Only meaningful for a `fader` binding — see FaderWidget.vue. */
     dimmed?: boolean
-    blockCommit?: boolean
   }>(),
-  { dimmed: false, blockCommit: false },
+  { dimmed: false },
 )
 </script>
 
@@ -29,7 +28,6 @@ withDefaults(
     :device="device"
     :binding="binding"
     :dimmed="dimmed"
-    :block-commit="blockCommit"
   />
   <PowerWidget
     v-else-if="binding.kind === 'power' || binding.kind === 'mute'"
