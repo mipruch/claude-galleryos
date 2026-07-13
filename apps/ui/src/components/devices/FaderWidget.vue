@@ -5,15 +5,11 @@
  * key to read and which command/param to send on commit are fully described
  * by the binding; this component has no vendor knowledge.
  *
- * `dimmed`/`blockCommit` are composition-level niceties `DeviceWidget.vue`
- * derives from a sibling power/mute binding on the same device (if any), not
- * anything this component decides on its own:
- *   - `dimmed` — visual only, greys the fader out.
- *   - `blockCommit` — while a paired *power* switch is off, committing a drag
- *     persists the desired level (Redis + broadcast) instead of sending a live
- *     command, so e.g. dragging a light's brightness while it's off doesn't
- *     itself turn the light on. Not applied for a `mute` companion — a muted
- *     audio channel is still addressable, so its fader keeps working normally.
+ * A commit always sends `device:command` — whether that reaches the hardware
+ * right now or is only remembered for later (e.g. a light's brightness while
+ * it's off) is entirely the driver's decision, not the UI's (see
+ * `DaliLunatoneDriver`'s KV-backed power tracking). `dimmed` is a visual-only
+ * nicety `DeviceWidget.vue` derives from a sibling power/mute binding, if any.
  */
 import { computed } from 'vue'
 import FaderControl from './FaderControl.vue'
@@ -27,9 +23,8 @@ const props = withDefaults(
     device: DeviceRecord
     binding: FaderWidgetBinding
     dimmed?: boolean
-    blockCommit?: boolean
   }>(),
-  { dimmed: false, blockCommit: false },
+  { dimmed: false },
 )
 const store = useDevicesStore()
 
@@ -41,11 +36,7 @@ function onInput(value: number): void {
 
 function onCommit(value: number): void {
   const optimistic = { [props.binding.stateKey]: value }
-  if (props.blockCommit) {
-    store.patchDeviceState(props.device.id, optimistic)
-  } else {
-    store.sendCommand(props.device.id, props.binding.command, { [props.binding.paramKey]: value }, optimistic)
-  }
+  store.sendCommand(props.device.id, props.binding.command, { [props.binding.paramKey]: value }, optimistic)
 }
 </script>
 

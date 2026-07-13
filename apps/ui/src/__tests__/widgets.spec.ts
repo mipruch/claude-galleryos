@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import type { SelectWidgetBinding } from '@gallery/driver-core'
+import type { WidgetBinding, SelectWidgetBinding } from '@gallery/driver-core'
 import {
   buttonsFor,
   isCustomWidgetType,
+  isDimmedByCompanion,
   isRenderableType,
   readBoolLike,
   readLevel,
@@ -137,6 +138,30 @@ describe('selectOptions', () => {
       expect(selectOptions(matrixBinding, undefined, {})).toEqual([])
       expect(selectOptions(matrixBinding, undefined, { inputCount: 0, inputs: ['Lectern'] })).toEqual([])
     })
+  })
+})
+
+describe('isDimmedByCompanion', () => {
+  const fader: WidgetBinding = { kind: 'fader', command: 'setLevel', paramKey: 'level', stateKey: 'level' }
+  const muteCompanion: WidgetBinding = { kind: 'mute', trigger: 'param', command: 'setMute', paramKey: 'muted', stateKey: 'muted' }
+  const powerCompanion: WidgetBinding = { kind: 'power', trigger: 'commands', onCommand: 'on', offCommand: 'off', stateKey: 'power' }
+
+  it('is false with no companion binding', () => {
+    expect(isDimmedByCompanion([fader], {})).toBe(false)
+  })
+
+  it('dims while a power companion is off (or unknown)', () => {
+    expect(isDimmedByCompanion([fader, powerCompanion], { power: false })).toBe(true)
+    expect(isDimmedByCompanion([fader, powerCompanion], {})).toBe(true)
+  })
+
+  it('does not dim while a power companion is on', () => {
+    expect(isDimmedByCompanion([fader, powerCompanion], { power: true })).toBe(false)
+  })
+
+  it('dims while a mute companion is muted, not while unmuted', () => {
+    expect(isDimmedByCompanion([fader, muteCompanion], { muted: true })).toBe(true)
+    expect(isDimmedByCompanion([fader, muteCompanion], { muted: false })).toBe(false)
   })
 })
 

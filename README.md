@@ -2189,12 +2189,21 @@ core se nemění" z §6. BSS matice navíc byla detekována kombinací
   zjistí `WidgetBinding[]` zařízení a naskládá jeden generický komponent
   (`PowerWidget` / `FaderWidget` / `SelectWidget`, přes dispatch komponentu
   `GenericWidget.vue`) na binding, vše v jedné `DeviceCard`. Fader se sám
-  ztlumí (a vedle *power* companion přesměruje potvrzení tahu na
-  `patchDeviceState` misto živého příkazu), když sourozenecký power/mute
-  binding hlásí off/muted — čistě kompoziční pravidlo v `DeviceWidget.vue`,
-  žádný driver o něm neví. **Jediná schválená výjimka** zůstává BSS live-metr
-  panel (`lib/widgets.ts#isCustomWidgetType`) — párování podle endpoint typu,
-  přesně jak by to vyžadoval i plně deklarativní systém.
+  ztlumí, když sourozenecký power/mute binding hlásí off/muted — čistě
+  vizuální detail (`lib/widgets.ts#isDimmedByCompanion`) — ale potvrzení tahu
+  vždy pošle `device:command`. UI nemá **žádnou** znalost o tom, jestli má
+  příkaz dorazit k hardwaru hned, nebo se má jen zapamatovat na později — to
+  je čistě věc driveru (viz H2 v PLAN.md). Dřívější verze tohle rozhodovala
+  přímo v UI přes `blockCommit`/`gatesFader` příznak; to prosakovalo
+  vendor-specifické chování hardwaru do generického UI kódu a rozbilo to BSS
+  matici (její „power" je jen UI popisek nad stejným, vždy živým gain
+  parametrem jako její fader) — odstraněno i s `device:state:patch` WS
+  eventem, který kvůli tomu vznikl. `DaliLunatoneDriver` si teď sám ve svém
+  per-connection KV store pamatuje stav napájení: `setBrightness` za vypnuta
+  na gateway vůbec nic nepošle, jen si zapamatuje požadovanou hodnotu, a `on`
+  ji ve stejném requestu obnoví. **Jediná schválená výjimka** zůstává BSS
+  live-metr panel (`lib/widgets.ts#isCustomWidgetType`) — párování podle
+  endpoint typu, přesně jak by to vyžadoval i plně deklarativní systém.
 - **Command paleta** (`lib/commands.ts`) ztratila `device.subtype ===
   'extron-matrix.output'` speciální případ — akce pro `select` binding se teď
   generují z libovolného driveru se `select` widgetem.
@@ -2400,9 +2409,10 @@ generickou komponentu (`ButtonsWidget.vue`).
 - **`ButtonsWidgetBinding = { kind: 'buttons', command: string }`**
   (`packages/driver-core/src/types.ts`) — na rozdíl od `power`/`fader`/`select`
   nenese `stateKey` (tlačítka nemají „aktuální stav", jen odpálí příkaz a
-  skončí), což si vyžádalo explicitní type-guard v `DeviceWidget.vue`'s
-  fader/power párování (`Extract<WidgetBinding, {kind:'power'|'mute'}>`), aby
-  TypeScript správně zúžil typ i bez společného pole.
+  skončí), což si vyžádalo explicitní type-guard ve fader/power párování
+  (`lib/widgets.ts#isDimmedByCompanion`,
+  `Extract<WidgetBinding, {kind:'power'|'mute'}>`), aby TypeScript správně
+  zúžil typ i bez společného pole.
 - **Seznam tlačítek je per-zařízení data** (`device.address.buttons[]`), ne
   vlastnost manifestu — stejný vzor jako BSS metr widgetu `meters[]`. Dvě
   zařízení na jedné connection (`generic-trigger.osc`) tak mají naprosto
@@ -2412,7 +2422,7 @@ generickou komponentu (`ButtonsWidget.vue`).
   per-widget) `pending` flag zamkne jen právě kliknuté tlačítko, takže odpálení
   dvou různých cue rychle po sobě zůstává plynulé, ale dvojklik na **stejné**
   tlačítko ho nemůže odpálit dvakrát. Bez optimistického stavu — tlačítka jsou
-  bezstavová (`store.sendCommand`, žádný `patchDeviceState`).
+  bezstavová, jen `store.sendCommand`.
 - Testy: `apps/ui/src/__tests__/widgets.spec.ts` (`buttonsFor` — rozdělení
   label/params, dvě zařízení s různými tlačítky na jedné connection,
   chybějící/neplatné pole, přeskočení poškozených položek).

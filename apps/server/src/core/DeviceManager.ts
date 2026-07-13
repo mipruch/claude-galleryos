@@ -1,6 +1,5 @@
 // fallow-ignore-file unused-class-member
 
-
 /**
  * DeviceManager — orchestrates all communication with physical devices.
  *
@@ -14,12 +13,21 @@
  * `LiveStateStore`) so the manager can be tested without a real DB/Redis.
  */
 
-import type { DriverKVStore, EndpointDescriptor, MeterUpdate } from "@gallery/driver-core";
-import { errMsg } from "@gallery/driver-core";
-import type { Connection, ConnectionStatus, Device, DeviceStatus } from "@gallery/types";
-import { DriverHost, type RestartPolicy } from "../drivers/DriverHost.ts";
-import { EventBus } from "./EventBus.ts";
-import type { Logger } from "../logger.ts";
+import type {
+	DriverKVStore,
+	EndpointDescriptor,
+	MeterUpdate,
+} from "@gallery/driver-core";
+import {errMsg} from "@gallery/driver-core";
+import type {
+	Connection,
+	ConnectionStatus,
+	Device,
+	DeviceStatus,
+} from "@gallery/types";
+import {DriverHost, type RestartPolicy} from "../drivers/DriverHost.ts";
+import {EventBus} from "./EventBus.ts";
+import type {Logger} from "../logger.ts";
 
 // ── records & dependency contracts ───────────────────────────
 
@@ -28,459 +36,562 @@ import type { Logger } from "../logger.ts";
  * to a driver `ConnectionConfig`. Derived from the shared `Connection` row so it
  * stays in lock-step with the schema.
  */
-export type ConnectionRecord = Pick<Connection, "id" | "driverId" | "host" | "port" | "config">;
+export type ConnectionRecord = Pick<
+	Connection,
+	"id" | "driverId" | "host" | "port" | "config"
+>;
 
 /**
  * A device as the manager needs it. `endpointType` is the driver endpoint type
  * (the row's `subtype`, falling back to `type`); the rest mirror the schema row.
  */
-export type DeviceRecord = Pick<Device, "id" | "connectionId" | "name" | "address"> & {
-  /** Matches an EndpointTypeDefinition.type, e.g. `pjlink.projector`. */
-  endpointType: string;
+export type DeviceRecord = Pick<
+	Device,
+	"id" | "connectionId" | "name" | "address"
+> & {
+	/** Matches an EndpointTypeDefinition.type, e.g. `pjlink.projector`. */
+	endpointType: string;
 };
 
 /** Data source for connections and devices (DB-backed in production). */
 export interface DeviceManagerRepo {
-  listEnabledConnections(): Promise<ConnectionRecord[]>;
-  listDevicesByConnection(connectionId: string): Promise<DeviceRecord[]>;
-  getDevice(deviceId: string): Promise<DeviceRecord | undefined>;
+	listEnabledConnections(): Promise<ConnectionRecord[]>;
+	listDevicesByConnection(connectionId: string): Promise<DeviceRecord[]>;
+	getDevice(deviceId: string): Promise<DeviceRecord | undefined>;
 }
 
 /** Live, disposable state (Redis-backed in production). */
 export interface LiveStateStore {
-  setDeviceState(deviceId: string, state: Record<string, unknown>): Promise<void>;
-  getDeviceState(deviceId: string): Promise<Record<string, unknown> | null>;
-  setDeviceStatus(deviceId: string, status: DeviceStatus): Promise<void>;
-  getDeviceStatus(deviceId: string): Promise<DeviceStatus | null>;
-  setConnectionStatus(connectionId: string, status: ConnectionStatus): Promise<void>;
-  getConnectionStatus(connectionId: string): Promise<ConnectionStatus | null>;
+	setDeviceState(
+		deviceId: string,
+		state: Record<string, unknown>
+	): Promise<void>;
+	getDeviceState(deviceId: string): Promise<Record<string, unknown> | null>;
+	setDeviceStatus(deviceId: string, status: DeviceStatus): Promise<void>;
+	getDeviceStatus(deviceId: string): Promise<DeviceStatus | null>;
+	setConnectionStatus(
+		connectionId: string,
+		status: ConnectionStatus
+	): Promise<void>;
+	getConnectionStatus(connectionId: string): Promise<ConnectionStatus | null>;
 }
 
 /** Snapshot of a driver host for system/diagnostics endpoints. */
 export interface DriverStatus {
-  connectionId: string;
-  driverId: string;
-  running: boolean;
-  connected: boolean;
+	connectionId: string;
+	driverId: string;
+	running: boolean;
+	connected: boolean;
 }
 
 export interface DeviceManagerOptions {
-  repo: DeviceManagerRepo;
-  state: LiveStateStore;
-  eventBus: EventBus;
-  logger: Logger;
-  /** Builds the per-connection KV store handed to each driver. */
-  driverKVStore: (connectionId: string) => DriverKVStore;
-  /**
-   * Whether a driver supports subscriptions (its manifest's
-   * `capabilities.subscriptions`). When true, the manager subscribes all of a
-   * connection's endpoints once it comes online so the driver pushes state.
-   * Omitted → no auto-subscribe (poll-only behaviour).
-   */
-  supportsSubscriptions?: (driverId: string) => boolean;
-  /**
-   * Whether a driver implements a per-endpoint health probe (its manifest's
-   * `capabilities.endpointHealth`). When false/omitted, the manager skips the
-   * watchdog's layer-2 endpoint check for that driver entirely — no IPC is sent
-   * — and relies on the connection-level health check alone. Correct for drivers
-   * where one connection is one endpoint (e.g. PJLink).
-   */
-  supportsEndpointHealth?: (driverId: string) => boolean;
-  /**
-   * Validates a command's params against the driver manifest before it is sent.
-   * Injected (built from the DriverRegistry) so the manager stays free of the
-   * API/validation layer. Throws on invalid params; the throw surfaces as a
-   * REST 400 / WS ack failure / failed scene action depending on the caller.
-   * Omitted → no validation (used by hermetic unit tests).
-   */
-  validateParams?: (
-    driverId: string,
-    endpointType: string,
-    command: string,
-    params: Record<string, unknown>,
-  ) => void;
-  dryRun?: boolean;
-  restart?: RestartPolicy;
-  commandTimeoutMs?: number;
+	repo: DeviceManagerRepo;
+	state: LiveStateStore;
+	eventBus: EventBus;
+	logger: Logger;
+	/** Builds the per-connection KV store handed to each driver. */
+	driverKVStore: (connectionId: string) => DriverKVStore;
+	/**
+	 * Whether a driver supports subscriptions (its manifest's
+	 * `capabilities.subscriptions`). When true, the manager subscribes all of a
+	 * connection's endpoints once it comes online so the driver pushes state.
+	 * Omitted → no auto-subscribe (poll-only behaviour).
+	 */
+	supportsSubscriptions?: (driverId: string) => boolean;
+	/**
+	 * Whether a driver implements a per-endpoint health probe (its manifest's
+	 * `capabilities.endpointHealth`). When false/omitted, the manager skips the
+	 * watchdog's layer-2 endpoint check for that driver entirely — no IPC is sent
+	 * — and relies on the connection-level health check alone. Correct for drivers
+	 * where one connection is one endpoint (e.g. PJLink).
+	 */
+	supportsEndpointHealth?: (driverId: string) => boolean;
+	/**
+	 * Validates a command's params against the driver manifest before it is sent.
+	 * Injected (built from the DriverRegistry) so the manager stays free of the
+	 * API/validation layer. Throws on invalid params; the throw surfaces as a
+	 * REST 400 / WS ack failure / failed scene action depending on the caller.
+	 * Omitted → no validation (used by hermetic unit tests).
+	 */
+	validateParams?: (
+		driverId: string,
+		endpointType: string,
+		command: string,
+		params: Record<string, unknown>
+	) => void;
+	dryRun?: boolean;
+	restart?: RestartPolicy;
+	commandTimeoutMs?: number;
 }
 
 // ── implementation ───────────────────────────────────────────
 
 export class DeviceManager {
-  private readonly hosts = new Map<string, DriverHost>();
-  private readonly driverIds = new Map<string, string>();
-  private readonly devicesByConnection = new Map<string, DeviceRecord[]>();
-  private readonly deviceCache = new Map<string, DeviceRecord>();
-  /** Per-endpoint command serialisation (avoids races on one device). */
-  private readonly locks = new Map<string, Promise<unknown>>();
-  /** Optional sink for live meter readings (the MeterService). */
-  private meterListener: ((connectionId: string, update: MeterUpdate) => void) | null = null;
-  private readonly log: Logger;
+	private readonly hosts = new Map<string, DriverHost>();
+	private readonly driverIds = new Map<string, string>();
+	private readonly devicesByConnection = new Map<string, DeviceRecord[]>();
+	private readonly deviceCache = new Map<string, DeviceRecord>();
+	/** Per-endpoint command serialisation (avoids races on one device). */
+	private readonly locks = new Map<string, Promise<unknown>>();
+	/** Optional sink for live meter readings (the MeterService). */
+	private meterListener:
+		| ((connectionId: string, update: MeterUpdate) => void)
+		| null = null;
+	private readonly log: Logger;
 
-  constructor(private readonly opts: DeviceManagerOptions) {
-    this.log = opts.logger.child("device_manager");
-  }
+	constructor(private readonly opts: DeviceManagerOptions) {
+		this.log = opts.logger.child("device_manager");
+	}
 
-  /** Load connections + devices and start a DriverHost for each connection. */
-  async start(): Promise<void> {
-    const connections = await this.opts.repo.listEnabledConnections();
-    this.log.info(`Starting ${connections.length} connection(s)`);
+	/** Load connections + devices and start a DriverHost for each connection. */
+	async start(): Promise<void> {
+		const connections = await this.opts.repo.listEnabledConnections();
+		this.log.info(`Starting ${connections.length} connection(s)`);
 
-    await Promise.all(connections.map((c) => this.startConnection(c)));
-  }
+		await Promise.all(connections.map((c) => this.startConnection(c)));
+	}
 
-  /** Stop all DriverHosts (graceful). */
-  async stop(): Promise<void> {
-    await Promise.all([...this.hosts.values()].map((h) => h.stop()));
-    this.hosts.clear();
-  }
+	/** Stop all DriverHosts (graceful). */
+	async stop(): Promise<void> {
+		await Promise.all([...this.hosts.values()].map((h) => h.stop()));
+		this.hosts.clear();
+	}
 
-  // ── runtime connection management (driven by the API) ──────
+	// ── runtime connection management (driven by the API) ──────
 
-  /** Start (or restart) a single connection at runtime. Idempotent. */
-  async addConnection(connection: ConnectionRecord): Promise<void> {
-    if (this.hosts.has(connection.id)) await this.stopConnection(connection.id);
-    await this.startConnection(connection);
-  }
+	/** Start (or restart) a single connection at runtime. Idempotent. */
+	async addConnection(connection: ConnectionRecord): Promise<void> {
+		if (this.hosts.has(connection.id))
+			await this.stopConnection(connection.id);
+		await this.startConnection(connection);
+	}
 
-  /** Stop and forget a connection's DriverHost and cached devices. */
-  async stopConnection(connectionId: string): Promise<void> {
-    const host = this.hosts.get(connectionId);
-    if (host) {
-      await host.stop();
-      this.hosts.delete(connectionId);
-    }
-    for (const d of this.devicesByConnection.get(connectionId) ?? []) this.deviceCache.delete(d.id);
-    this.devicesByConnection.delete(connectionId);
-    this.driverIds.delete(connectionId);
-  }
+	/** Stop and forget a connection's DriverHost and cached devices. */
+	async stopConnection(connectionId: string): Promise<void> {
+		const host = this.hosts.get(connectionId);
+		if (host) {
+			await host.stop();
+			this.hosts.delete(connectionId);
+		}
+		for (const d of this.devicesByConnection.get(connectionId) ?? [])
+			this.deviceCache.delete(d.id);
+		this.devicesByConnection.delete(connectionId);
+		this.driverIds.delete(connectionId);
+	}
 
-  /** Re-read a connection's devices into the cache (after device CRUD). */
-  async refreshConnectionDevices(connectionId: string): Promise<void> {
-    const devices = await this.opts.repo.listDevicesByConnection(connectionId);
-    for (const d of this.devicesByConnection.get(connectionId) ?? []) this.deviceCache.delete(d.id);
-    this.devicesByConnection.set(connectionId, devices);
-    for (const d of devices) this.deviceCache.set(d.id, d);
-  }
+	/** Re-read a connection's devices into the cache (after device CRUD). */
+	async refreshConnectionDevices(connectionId: string): Promise<void> {
+		const devices = await this.opts.repo.listDevicesByConnection(
+			connectionId
+		);
+		for (const d of this.devicesByConnection.get(connectionId) ?? [])
+			this.deviceCache.delete(d.id);
+		this.devicesByConnection.set(connectionId, devices);
+		for (const d of devices) this.deviceCache.set(d.id, d);
+	}
 
-  isConnectionRunning(connectionId: string): boolean {
-    return this.hosts.has(connectionId);
-  }
+	isConnectionRunning(connectionId: string): boolean {
+		return this.hosts.has(connectionId);
+	}
 
-  /** Snapshot of all running driver hosts (for system/drivers). */
-  driverStatuses(): DriverStatus[] {
-    return [...this.hosts.entries()].map(([connectionId, host]) => ({
-      connectionId,
-      driverId: this.driverIds.get(connectionId) ?? "unknown",
-      running: true,
-      connected: host.isConnected(),
-    }));
-  }
+	/** Snapshot of all running driver hosts (for system/drivers). */
+	driverStatuses(): DriverStatus[] {
+		return [...this.hosts.entries()].map(([connectionId, host]) => ({
+			connectionId,
+			driverId: this.driverIds.get(connectionId) ?? "unknown",
+			running: true,
+			connected: host.isConnected(),
+		}));
+	}
 
-  private async startConnection(connection: ConnectionRecord): Promise<void> {
-    const devices = await this.opts.repo.listDevicesByConnection(connection.id);
-    this.devicesByConnection.set(connection.id, devices);
-    this.driverIds.set(connection.id, connection.driverId);
-    for (const d of devices) this.deviceCache.set(d.id, d);
+	private async startConnection(connection: ConnectionRecord): Promise<void> {
+		const devices = await this.opts.repo.listDevicesByConnection(
+			connection.id
+		);
+		this.devicesByConnection.set(connection.id, devices);
+		this.driverIds.set(connection.id, connection.driverId);
+		for (const d of devices) this.deviceCache.set(d.id, d);
 
-    const host = new DriverHost({
-      connection: {
-        id: connection.id,
-        driver: connection.driverId,
-        host: connection.host ?? "",
-        port: connection.port ?? 0,
-        config: connection.config,
-      },
-      logger: this.opts.logger.child(`driver:${connection.driverId}`),
-      storage: this.opts.driverKVStore(connection.id),
-      dryRun: this.opts.dryRun,
-      restart: this.opts.restart,
-      commandTimeoutMs: this.opts.commandTimeoutMs,
-    });
+		const host = new DriverHost({
+			connection: {
+				id: connection.id,
+				driver: connection.driverId,
+				host: connection.host ?? "",
+				port: connection.port ?? 0,
+				config: connection.config,
+			},
+			logger: this.opts.logger.child(`driver:${connection.driverId}`),
+			storage: this.opts.driverKVStore(connection.id),
+			dryRun: this.opts.dryRun,
+			restart: this.opts.restart,
+			commandTimeoutMs: this.opts.commandTimeoutMs,
+		});
 
-    this.wireHostEvents(host, connection.id);
-    this.hosts.set(connection.id, host);
+		this.wireHostEvents(host, connection.id);
+		this.hosts.set(connection.id, host);
 
-    try {
-      await host.start();
-    } catch (err) {
-      this.log.error("failed to start connection", {
-        connectionId: connection.id,
-        error: errMsg(err),
-      });
-    }
-  }
+		try {
+			await host.start();
+		} catch (err) {
+			this.log.error("failed to start connection", {
+				connectionId: connection.id,
+				error: errMsg(err),
+			});
+		}
+	}
 
-  /** Bridge DriverHost events to the state store and the EventBus. */
-  private wireHostEvents(host: DriverHost, connectionId: string): void {
-    host.on("connected", () => {
-      void this.opts.state.setConnectionStatus(connectionId, {
-        online: true,
-        lastSeen: new Date().toISOString(),
-      });
-      this.opts.eventBus.emit({ type: "connection.connected", connectionId });
-      this.markDevices(connectionId, true);
-      this.subscribeEndpoints(host, connectionId);
-    });
+	/** Bridge DriverHost events to the state store and the EventBus. */
+	private wireHostEvents(host: DriverHost, connectionId: string): void {
+		host.on("connected", () => {
+			void this.opts.state.setConnectionStatus(connectionId, {
+				online: true,
+				lastSeen: new Date().toISOString(),
+			});
+			this.opts.eventBus.emit({
+				type: "connection.connected",
+				connectionId,
+			});
+			this.markDevices(connectionId, true);
+			this.subscribeEndpoints(host, connectionId);
+		});
 
-    host.on("disconnected", (reason: string) => {
-      void this.opts.state.setConnectionStatus(connectionId, {
-        online: false,
-        lastError: reason,
-        lastSeen: new Date().toISOString(),
-      });
-      this.opts.eventBus.emit({ type: "connection.disconnected", connectionId, reason });
-      this.markDevices(connectionId, false, reason);
-    });
+		host.on("disconnected", (reason: string) => {
+			void this.opts.state.setConnectionStatus(connectionId, {
+				online: false,
+				lastError: reason,
+				lastSeen: new Date().toISOString(),
+			});
+			this.opts.eventBus.emit({
+				type: "connection.disconnected",
+				connectionId,
+				reason,
+			});
+			this.markDevices(connectionId, false, reason);
+		});
 
-    host.on("state", (event) => {
-      // Write first, then read back the full merged state so the broadcast
-      // always includes the complete picture (e.g. a field from an earlier
-      // patch that this event didn't touch, like a matrix output's audioInput
-      // when only its video input changed).
-      void this.opts.state.setDeviceState(event.endpointId, event.state).then(async () => {
-        const full = (await this.opts.state.getDeviceState(event.endpointId)) ?? event.state;
-        this.opts.eventBus.emit({
-          type: "device.state.changed",
-          deviceId: event.endpointId,
-          state: full,
-          source: event.source,
-        });
-      });
-    });
+		host.on("state", (event) => {
+			// Write first, then read back the full merged state so the broadcast
+			// always includes the complete picture (e.g. a field from an earlier
+			// patch that this event didn't touch, like a matrix output's audioInput
+			// when only its video input changed).
+			void this.opts.state
+				.setDeviceState(event.endpointId, event.state)
+				.then(async () => {
+					const full =
+						(await this.opts.state.getDeviceState(
+							event.endpointId
+						)) ?? event.state;
+					this.opts.eventBus.emit({
+						type: "device.state.changed",
+						deviceId: event.endpointId,
+						state: full,
+						source: event.source,
+					});
+				});
+		});
 
-    // Live meters bypass the EventBus/Redis: they are high-frequency and
-    // forwarded only to the clients currently watching them (the MeterService).
-    host.on("meter", (update) => this.meterListener?.(connectionId, update));
+		// Live meters bypass the EventBus/Redis: they are high-frequency and
+		// forwarded only to the clients currently watching them (the MeterService).
+		host.on("meter", (update) =>
+			this.meterListener?.(connectionId, update)
+		);
 
-    host.on("error", (error) => {
-      this.opts.eventBus.emit({ type: "connection.error", connectionId, error: error.message });
-    });
+		host.on("error", (error) => {
+			this.opts.eventBus.emit({
+				type: "connection.error",
+				connectionId,
+				error: error.message,
+			});
+		});
 
-    host.on("crashed", (info) => {
-      this.opts.eventBus.emit({
-        type: "system.driver.crashed",
-        connectionId,
-        driverId: this.driverIdOf(connectionId),
-        error: info.error?.message ?? `exit code ${info.exitCode}`,
-      });
-      this.markDevices(connectionId, false, "driver_crashed");
-    });
-  }
+		host.on("crashed", (info) => {
+			this.opts.eventBus.emit({
+				type: "system.driver.crashed",
+				connectionId,
+				driverId: this.driverIdOf(connectionId),
+				error: info.error?.message ?? `exit code ${info.exitCode}`,
+			});
+			this.markDevices(connectionId, false, "driver_crashed");
+		});
+	}
 
-  // Optimistic: on `connected` this flips *every* endpoint to online the instant
-  // the transport opens, before any per-endpoint probe — so the UI may briefly show
-  // green for an endpoint that's actually unreachable. Watchdog's layer-2 endpoint
-  // checks correct it on the next tick. Intentional (fast feedback) for now.
-  /** Update every device of a connection to online/offline + emit events. */
-  private markDevices(connectionId: string, online: boolean, reason = ""): void {
-    const devices = this.devicesByConnection.get(connectionId) ?? [];
-    for (const device of devices) {
-      void this.opts.state.setDeviceStatus(device.id, {
-        online,
-        lastSeen: new Date().toISOString(),
-        lastError: online ? undefined : reason,
-      });
-      this.opts.eventBus.emit(
-        online
-          ? { type: "device.online", deviceId: device.id, connectionId }
-          : { type: "device.offline", deviceId: device.id, connectionId, reason },
-      );
-    }
-  }
+	// Optimistic: on `connected` this flips *every* endpoint to online the instant
+	// the transport opens, before any per-endpoint probe — so the UI may briefly show
+	// green for an endpoint that's actually unreachable. Watchdog's layer-2 endpoint
+	// checks correct it on the next tick. Intentional (fast feedback) for now.
+	/** Update every device of a connection to online/offline + emit events. */
+	private markDevices(
+		connectionId: string,
+		online: boolean,
+		reason = ""
+	): void {
+		const devices = this.devicesByConnection.get(connectionId) ?? [];
+		for (const device of devices) {
+			void this.opts.state.setDeviceStatus(device.id, {
+				online,
+				lastSeen: new Date().toISOString(),
+				lastError: online ? undefined : reason,
+			});
+			this.opts.eventBus.emit(
+				online
+					? {type: "device.online", deviceId: device.id, connectionId}
+					: {
+							type: "device.offline",
+							deviceId: device.id,
+							connectionId,
+							reason,
+					  }
+			);
+		}
+	}
 
-  /**
-   * Subscribe a connection's endpoints when it comes online, for drivers whose
-   * manifest declares subscription support. Fires on every `connected` event, so
-   * it covers both the first connect and a subprocess restart (where the driver
-   * process is fresh and its own subscription map is empty). Idempotent: a driver
-   * re-subscribing the same parameter is harmless.
-   */
-  private subscribeEndpoints(host: DriverHost, connectionId: string): void {
-    const driverId = this.driverIds.get(connectionId);
-    if (!driverId || !this.opts.supportsSubscriptions?.(driverId)) return;
-    const devices = this.devicesByConnection.get(connectionId) ?? [];
-    for (const device of devices) {
-      this.log.debug("subscribing endpoint", { connectionId, deviceId: device.id });
-      host.subscribeToEndpoint(toEndpoint(device));
-    }
-  }
+	/**
+	 * Subscribe a connection's endpoints when it comes online, for drivers whose
+	 * manifest declares subscription support. Fires on every `connected` event, so
+	 * it covers both the first connect and a subprocess restart (where the driver
+	 * process is fresh and its own subscription map is empty). Idempotent: a driver
+	 * re-subscribing the same parameter is harmless.
+	 */
+	private subscribeEndpoints(host: DriverHost, connectionId: string): void {
+		const driverId = this.driverIds.get(connectionId);
+		if (!driverId || !this.opts.supportsSubscriptions?.(driverId)) return;
+		const devices = this.devicesByConnection.get(connectionId) ?? [];
+		for (const device of devices) {
+			this.log.debug("subscribing endpoint", {
+				connectionId,
+				deviceId: device.id,
+			});
+			host.subscribeToEndpoint(toEndpoint(device));
+		}
+	}
 
-  // ── live meters (driven by the MeterService) ───────────────
+	// ── live meters (driven by the MeterService) ───────────────
 
-  /**
-   * Register the single sink for live meter readings. The MeterService installs
-   * itself here; readings then bypass the EventBus and go straight to the
-   * browsers currently watching each meter.
-   */
-  setMeterListener(listener: (connectionId: string, update: MeterUpdate) => void): void {
-    this.meterListener = listener;
-  }
+	/**
+	 * Register the single sink for live meter readings. The MeterService installs
+	 * itself here; readings then bypass the EventBus and go straight to the
+	 * browsers currently watching each meter.
+	 */
+	setMeterListener(
+		listener: (connectionId: string, update: MeterUpdate) => void
+	): void {
+		this.meterListener = listener;
+	}
 
-  /** Start streaming one meter parameter on a connection. No-op if not running. */
-  meterSubscribe(connectionId: string, address: Record<string, unknown>): void {
-    const host = this.hosts.get(connectionId);
-    if (!host) {
-      this.log.warn("meterSubscribe: no active driver", { connectionId });
-      return;
-    }
-    host.meterSubscribe(address);
-  }
+	/** Start streaming one meter parameter on a connection. No-op if not running. */
+	meterSubscribe(
+		connectionId: string,
+		address: Record<string, unknown>
+	): void {
+		const host = this.hosts.get(connectionId);
+		if (!host) {
+			this.log.warn("meterSubscribe: no active driver", {connectionId});
+			return;
+		}
+		host.meterSubscribe(address);
+	}
 
-  /** Stop streaming one meter parameter on a connection. */
-  meterUnsubscribe(connectionId: string, address: Record<string, unknown>): void {
-    this.hosts.get(connectionId)?.meterUnsubscribe(address);
-  }
+	/** Stop streaming one meter parameter on a connection. */
+	meterUnsubscribe(
+		connectionId: string,
+		address: Record<string, unknown>
+	): void {
+		this.hosts.get(connectionId)?.meterUnsubscribe(address);
+	}
 
-  /** Resolve a device record (cache, then DB). Used by the MeterService. */
-  getDeviceRecord(deviceId: string): Promise<DeviceRecord> {
-    return this.resolveDevice(deviceId);
-  }
+	/** Resolve a device record (cache, then DB). Used by the MeterService. */
+	getDeviceRecord(deviceId: string): Promise<DeviceRecord> {
+		return this.resolveDevice(deviceId);
+	}
 
-  /**
-   * Execute a command against a device. Serialised per device id to avoid
-   * concurrent commands racing on the same endpoint.
-   */
-  execute(
-    deviceId: string,
-    command: string,
-    params: Record<string, unknown>,
-  ): Promise<import("@gallery/driver-core").CommandResult> {
-    return this.withLock(deviceId, async () => {
-      const device = await this.resolveDevice(deviceId);
-      const host = this.hosts.get(device.connectionId);
-      if (!host) throw new Error(`no active driver for connection ${device.connectionId}`);
+	/**
+	 * Execute a command against a device. Serialised per device id to avoid
+	 * concurrent commands racing on the same endpoint.
+	 */
+	execute(
+		deviceId: string,
+		command: string,
+		params: Record<string, unknown>
+	): Promise<import("@gallery/driver-core").CommandResult> {
+		return this.withLock(deviceId, async () => {
+			const device = await this.resolveDevice(deviceId);
+			const host = this.hosts.get(device.connectionId);
+			if (!host) {
+				this.log.warn("execute: no active driver", {
+					deviceId,
+					connectionId: device.connectionId,
+				});
+				throw new Error(
+					`no active driver for connection ${device.connectionId}`
+				);
+			}
 
-      // Validate params against the manifest before anything reaches the driver.
-      const driverId = this.driverIds.get(device.connectionId);
-      if (driverId) this.opts.validateParams?.(driverId, device.endpointType, command, params);
+			// Validate params against the manifest before anything reaches the driver.
+			const driverId = this.driverIds.get(device.connectionId);
+			if (driverId)
+				this.opts.validateParams?.(
+					driverId,
+					device.endpointType,
+					command,
+					params
+				);
 
-      // Log the command going out to the device.
-      this.log.info("command requested", { deviceId, device: device.name, command, params });
+			// Log the command going out to the device.
+			this.log.info("command requested", {
+				deviceId,
+				device: device.name,
+				command,
+				params,
+			});
 
-      const endpoint = toEndpoint(device);
-      const result = await host.executeCommand(endpoint, command, params);
+			const endpoint = toEndpoint(device);
+			const result = await host.executeCommand(endpoint, command, params);
 
-      if (result.success && result.state) {
-        await this.opts.state.setDeviceState(deviceId, result.state);
-        const full = (await this.opts.state.getDeviceState(deviceId)) ?? result.state;
-        this.opts.eventBus.emit({
-          type: "device.state.changed",
-          deviceId,
-          state: full,
-          source: "command",
-        });
-      }
-      // Log the device's response.
-      this.log[result.success ? "info" : "warn"]("command result", {
-        deviceId,
-        command,
-        success: result.success,
-        durationMs: result.durationMs,
-        state: result.state,
-        error: result.error,
-      });
-      return result;
-    });
-  }
+			if (result.success && result.state) {
+				await this.opts.state.setDeviceState(deviceId, result.state);
+				const full =
+					(await this.opts.state.getDeviceState(deviceId)) ??
+					result.state;
+				this.opts.eventBus.emit({
+					type: "device.state.changed",
+					deviceId,
+					state: full,
+					source: "command",
+				});
+			}
+			// Log the device's response.
+			this.log[result.success ? "info" : "warn"]("command result", {
+				deviceId,
+				command,
+				success: result.success,
+				durationMs: result.durationMs,
+				state: result.state,
+				error: result.error,
+			});
+			return result;
+		});
+	}
 
-  /** Read state: prefer the Redis cache, fall back to querying the device. */
-  async readState(deviceId: string): Promise<Record<string, unknown>> {
-    const cached = await this.opts.state.getDeviceState(deviceId);
-    if (cached) {
-      this.log.debug("state read (cache)", { deviceId, state: cached });
-      return cached;
-    }
+	/** Read state: prefer the Redis cache, fall back to querying the device. */
+	async readState(deviceId: string): Promise<Record<string, unknown>> {
+		const cached = await this.opts.state.getDeviceState(deviceId);
+		if (cached) {
+			this.log.debug("state read (cache)", {deviceId, state: cached});
+			return cached;
+		}
 
-    const device = await this.resolveDevice(deviceId);
-    const host = this.hosts.get(device.connectionId);
-    if (!host) throw new Error(`no active driver for connection ${device.connectionId}`);
+		const device = await this.resolveDevice(deviceId);
+		const host = this.hosts.get(device.connectionId);
+		if (!host)
+			throw new Error(
+				`no active driver for connection ${device.connectionId}`
+			);
 
-    const state = await host.readState(toEndpoint(device));
-    await this.opts.state.setDeviceState(deviceId, state);
-    // Log the device's response.
-    this.log.info("device state read", { deviceId, device: device.name, state });
-    return state;
-  }
+		const state = await host.readState(toEndpoint(device));
+		await this.opts.state.setDeviceState(deviceId, state);
+		// Log the device's response.
+		this.log.info("device state read", {
+			deviceId,
+			device: device.name,
+			state,
+		});
+		return state;
+	}
 
-  /** Whether the connection behind a device is currently connected. */
-  isDeviceConnectionOnline(deviceId: string): boolean {
-    const device = this.deviceCache.get(deviceId);
-    return device ? (this.hosts.get(device.connectionId)?.isConnected() ?? false) : false;
-  }
+	/** Whether the connection behind a device is currently connected. */
+	isDeviceConnectionOnline(deviceId: string): boolean {
+		const device = this.deviceCache.get(deviceId);
+		return device
+			? this.hosts.get(device.connectionId)?.isConnected() ?? false
+			: false;
+	}
 
-  // ── Watchdog API ───────────────────────────────────────────
+	// ── Watchdog API ───────────────────────────────────────────
 
-  /** All connection IDs with a running DriverHost. Used by Watchdog layer 1. */
-  listRunningConnectionIds(): string[] {
-    return [...this.hosts.keys()];
-  }
+	/** All connection IDs with a running DriverHost. Used by Watchdog layer 1. */
+	listRunningConnectionIds(): string[] {
+		return [...this.hosts.keys()];
+	}
 
-  /** Active health check against a connection's driver subprocess. Used by Watchdog layer 1. */
-  healthCheckConnection(connectionId: string): Promise<import("@gallery/driver-core").HealthStatus> {
-    const host = this.hosts.get(connectionId);
-    if (!host) throw new Error(`no running host for connection ${connectionId}`);
-    return host.healthCheck();
-  }
+	/** Active health check against a connection's driver subprocess. Used by Watchdog layer 1. */
+	healthCheckConnection(
+		connectionId: string
+	): Promise<import("@gallery/driver-core").HealthStatus> {
+		const host = this.hosts.get(connectionId);
+		if (!host)
+			throw new Error(`no running host for connection ${connectionId}`);
+		return host.healthCheck();
+	}
 
-  /** Devices registered under a connection (in-memory cache). Used by Watchdog layer 2. */
-  devicesForConnection(connectionId: string): DeviceRecord[] {
-    return this.devicesByConnection.get(connectionId) ?? [];
-  }
+	/** Devices registered under a connection (in-memory cache). Used by Watchdog layer 2. */
+	devicesForConnection(connectionId: string): DeviceRecord[] {
+		return this.devicesByConnection.get(connectionId) ?? [];
+	}
 
-  /**
-   * Per-endpoint health check. Returns null when the driver does not declare
-   * `capabilities.endpointHealth` (so no IPC is sent) or the call times out /
-   * errors. Used by Watchdog layer 2.
-   */
-  async endpointHealthCheck(deviceId: string): Promise<import("@gallery/driver-core").HealthStatus | null> {
-    const device = this.deviceCache.get(deviceId);
-    if (!device) return null;
-    const host = this.hosts.get(device.connectionId);
-    if (!host) return null;
-    // Skip drivers without a per-endpoint probe (e.g. PJLink) — don't even send
-    // the IPC; the connection-level health check already covers them.
-    const driverId = this.driverIds.get(device.connectionId);
-    if (driverId && this.opts.supportsEndpointHealth && !this.opts.supportsEndpointHealth(driverId)) {
-      return null;
-    }
-    try {
-      return await host.endpointHealthCheck(toEndpoint(device));
-    } catch {
-      return null;
-    }
-  }
+	/**
+	 * Per-endpoint health check. Returns null when the driver does not declare
+	 * `capabilities.endpointHealth` (so no IPC is sent) or the call times out /
+	 * errors. Used by Watchdog layer 2.
+	 */
+	async endpointHealthCheck(
+		deviceId: string
+	): Promise<import("@gallery/driver-core").HealthStatus | null> {
+		const device = this.deviceCache.get(deviceId);
+		if (!device) return null;
+		const host = this.hosts.get(device.connectionId);
+		if (!host) return null;
+		// Skip drivers without a per-endpoint probe (e.g. PJLink) — don't even send
+		// the IPC; the connection-level health check already covers them.
+		const driverId = this.driverIds.get(device.connectionId);
+		if (
+			driverId &&
+			this.opts.supportsEndpointHealth &&
+			!this.opts.supportsEndpointHealth(driverId)
+		) {
+			return null;
+		}
+		try {
+			return await host.endpointHealthCheck(toEndpoint(device));
+		} catch {
+			return null;
+		}
+	}
 
-  // ── internals ──────────────────────────────────────────────
+	// ── internals ──────────────────────────────────────────────
 
-  private async resolveDevice(deviceId: string): Promise<DeviceRecord> {
-    const cached = this.deviceCache.get(deviceId);
-    if (cached) return cached;
-    const device = await this.opts.repo.getDevice(deviceId);
-    if (!device) throw new Error(`device not found: ${deviceId}`);
-    this.deviceCache.set(deviceId, device);
-    return device;
-  }
+	private async resolveDevice(deviceId: string): Promise<DeviceRecord> {
+		const cached = this.deviceCache.get(deviceId);
+		if (cached) return cached;
+		const device = await this.opts.repo.getDevice(deviceId);
+		if (!device) throw new Error(`device not found: ${deviceId}`);
+		this.deviceCache.set(deviceId, device);
+		return device;
+	}
 
-  private driverIdOf(connectionId: string): string {
-    return this.driverIds.get(connectionId) ?? "unknown";
-  }
+	private driverIdOf(connectionId: string): string {
+		return this.driverIds.get(connectionId) ?? "unknown";
+	}
 
-  private withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    const run = prev.then(fn, fn);
-    this.locks.set(
-      key,
-      run.then(
-        () => undefined,
-        () => undefined,
-      ),
-    );
-    return run;
-  }
+	private withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+		const prev = this.locks.get(key) ?? Promise.resolve();
+		const run = prev.then(fn, fn);
+		this.locks.set(
+			key,
+			run.then(
+				() => undefined,
+				() => undefined
+			)
+		);
+		return run;
+	}
 }
 
 /** Build the driver-facing endpoint descriptor from a device record. */
 function toEndpoint(device: DeviceRecord): EndpointDescriptor {
-  return { id: device.id, type: device.endpointType, address: device.address, name: device.name };
+	return {
+		id: device.id,
+		type: device.endpointType,
+		address: device.address,
+		name: device.name,
+	};
 }

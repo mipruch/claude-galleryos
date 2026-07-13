@@ -15,6 +15,16 @@
  *
  * Fixtures are addressed by the gateway's *identifying number* (`deviceId`),
  * which is assigned during a scan and differs from the DALI short address.
+ *
+ * `switchable` and `dimmable` are independent gateway features — setting
+ * `dimmable` while `switchable` is off has no visible effect (the gateway
+ * itself reports `dimmable.status: 0` whenever a fixture is switched off; see
+ * `withPreservedBrightness`). So `setBrightness` while off never reaches the
+ * gateway at all — it only remembers the desired level via the per-connection
+ * KV store (`ctx.storage`), and `on` restores it. This is entirely this
+ * driver's own business: the core and UI never see `switchable`/`dimmable`,
+ * only the generic `power`/`brightness` state and `on`/`off`/`setBrightness`
+ * commands — see `executeCommand`/`plan`.
  */
 
 import { EventEmitter } from "node:events";
@@ -58,8 +68,6 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
   private ctx!: DriverContext;
   private online = false;
   private destroyed = false;
-  /** Per-endpoint simulated state used in dry-run mode (keyed by deviceId). */
-  private simState = new Map<number, { power: boolean; brightness: number }>();
 
   async init(config: ConnectionConfig, ctx: DriverContext): Promise<void> {
     this.ctx = ctx;
@@ -118,6 +126,22 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
     }
   }
 
+  /**
+   * Execute a command. `plan()` decides what to send and what the resulting
+   * state is; whether that send actually reaches the gateway is gated on two
+   * independent things — `ctx.dryRun` (never touch hardware) and, for
+   * `setBrightness` alone, the fixture's last known power state (skip when
+   * off — see `plan`). Either way `ctx.storage` (this driver's own KV store)
+   * always gets updated so a later `on` restores the right level.
+   *
+   * Only `on`/`off` update the *gating* flag (`recallPower`), never
+   * `setBrightness` — even though the gateway itself derives `switchable` from
+   * `dimmable` (see `plan`), so a live `setBrightness` down to exactly 0 does
+   * report `power: false` in its echo. Gating on that too would deadlock a
+   * fader dragged through zero and back up: without an explicit `on` in
+   * between, every commit past that point would wrongly skip sending. Gating
+   * is only ever meant to guard the *deliberately switched off* case.
+   */
   async executeCommand(
     endpoint: EndpointDescriptor,
     command: string,
@@ -126,27 +150,20 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
     const start = Date.now();
     const deviceId = this.deviceId(endpoint);
 
-    if (this.ctx.dryRun) {
-      const state = this.applyDryRun(deviceId, command, params);
-      this.ctx.logger.info("dali-lunatone dry-run command", { deviceId, command, params });
-      return { success: true, durationMs: Date.now() - start, state };
-    }
-
     try {
-      const { control, state } = this.translate(command, params);
-      await this.api("POST", `/device/${deviceId}/control`, control);
-      this.online = true;
+      const isOn = (await this.recallPower(endpoint.id)) ?? true;
+      const remembered = await this.recallBrightness(endpoint.id);
+      const { control, state, skipSend } = this.plan(command, params, isOn, remembered);
+
+      if (!skipSend && !this.ctx.dryRun) {
+        await this.api("POST", `/device/${deviceId}/control`, control);
+        this.online = true;
+      }
+
       // `state` is undefined for stateless commands (e.g. scene recall).
       if (state) {
-        if (typeof state.brightness === "number" && state.brightness > 0) {
-          void this.rememberBrightness(endpoint.id, state.brightness);
-        }
-        this.emit("state", {
-          endpointId: endpoint.id,
-          state,
-          source: "echo",
-          timestamp: new Date(),
-        });
+        await this.remember(endpoint.id, command, state);
+        this.emit("state", { endpointId: endpoint.id, state, source: "echo", timestamp: new Date() });
       }
       return { success: true, durationMs: Date.now() - start, state };
     } catch (err) {
@@ -156,12 +173,26 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
     }
   }
 
+  /** Persist what `plan()`'s state implies is now true — power only from an explicit `on`/`off`, brightness whenever known (see the class doc comment on why `setBrightness` never touches the gating flag). */
+  private async remember(endpointId: string, command: string, state: Record<string, unknown>): Promise<void> {
+    if (command === "on" || command === "off") await this.rememberPower(endpointId, state.power as boolean);
+    if (typeof state.brightness === "number") await this.rememberBrightness(endpointId, state.brightness);
+  }
+
   async readState(endpoint: EndpointDescriptor): Promise<Record<string, unknown>> {
     const deviceId = this.deviceId(endpoint);
-    if (this.ctx.dryRun) return { ...this.ensureSim(deviceId) };
+    if (this.ctx.dryRun) {
+      return {
+        power: (await this.recallPower(endpoint.id)) ?? false,
+        brightness: (await this.recallBrightness(endpoint.id)) ?? 0,
+      };
+    }
 
     const device = (await this.api("GET", `/device/${deviceId}`)) as DaliDevice;
     this.online = true;
+    // Deliberately does NOT sync the power-gating flag (`recallPower`) from a
+    // poll — see `executeCommand`'s doc comment on why gating only ever
+    // follows an explicit `on`/`off`, never an incidentally observed value.
     const state = await this.withPreservedBrightness(endpoint.id, deviceState(device));
     this.emit("state", { endpointId: endpoint.id, state, source: "poll", timestamp: new Date() });
     return state;
@@ -194,6 +225,14 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
     return this.ctx.storage.get<number>(lastBrightnessKey(endpointId));
   }
 
+  private rememberPower(endpointId: string, power: boolean): Promise<void> {
+    return this.ctx.storage.set(powerKey(endpointId), power);
+  }
+
+  private async recallPower(endpointId: string): Promise<boolean | undefined> {
+    return this.ctx.storage.get<boolean>(powerKey(endpointId));
+  }
+
   // ── discovery ──────────────────────────────────────────────
 
   async discoverEndpoints(): Promise<EndpointDescriptor[]> {
@@ -224,22 +263,44 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
     throw new Error("dali scan timed out");
   }
 
-  // ── command translation ────────────────────────────────────
+  // ── command planning ────────────────────────────────────────
 
-  /** Map a command to its ControlData body and the resulting echo state. */
-  private translate(
+  /**
+   * Decide a command's ControlData body, its resulting echo state, and
+   * whether the send should be skipped. `on`/`off` never touch `brightness`
+   * except that `on` restores the last remembered level (when known) in the
+   * same request. `setBrightness` never touches the *gating* flag a caller
+   * persists (see `executeCommand`), but its echoed `power` — only when the
+   * request is actually sent — does reflect `level > 0`: the gateway itself
+   * derives `switchable` from `dimmable`, so that's just reporting truth a
+   * touch earlier than the next poll would. Pure — callers persist to
+   * `ctx.storage`.
+   */
+  private plan(
     command: string,
     params: Record<string, unknown>,
-  ): { control: Record<string, unknown>; state?: Record<string, unknown> } {
+    isOn: boolean,
+    remembered: number | undefined,
+  ): { control: Record<string, unknown>; state?: Record<string, unknown>; skipSend: boolean } {
     switch (command) {
-      case "on":
-        return { control: { switchable: true }, state: { power: true } };
+      case "on": {
+        const control: Record<string, unknown> = { switchable: true };
+        const state: Record<string, unknown> = { power: true };
+        if (remembered !== undefined) {
+          control.dimmable = Math.round(remembered * 100);
+          state.brightness = remembered;
+        }
+        return { control, state, skipSend: false };
+      }
       case "off":
-        return { control: { switchable: false }, state: { power: false } };
+        return { control: { switchable: false }, state: { power: false }, skipSend: false };
       case "setBrightness": {
         const level = clamp01(Number(params.level));
-        const percent = Math.round(level * 100);
-        return { control: { dimmable: percent }, state: { power: percent > 0, brightness: level } };
+        const control = { dimmable: Math.round(level * 100) };
+        // While off, the gateway ignores `dimmable` anyway (see the file header
+        // doc comment) — skip the request and just remember the desired level.
+        if (!isOn) return { control, state: { brightness: level }, skipSend: true };
+        return { control, state: { power: level > 0, brightness: level }, skipSend: false };
       }
       case "recall": {
         const scene = Number(params.scene);
@@ -247,39 +308,11 @@ export class DaliLunatoneDriver extends EventEmitter implements IDeviceDriver {
           throw new Error(`invalid scene: ${params.scene} (expected 0..15)`);
         }
         // Scene levels are fixture-defined; we can't predict the resulting state.
-        return { control: { scene } };
+        return { control: { scene }, skipSend: false };
       }
       default:
         throw new Error(`unknown command: ${command}`);
     }
-  }
-
-  private applyDryRun(
-    deviceId: number,
-    command: string,
-    params: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const sim = this.ensureSim(deviceId);
-    switch (command) {
-      case "on": sim.power = true; break;
-      case "off": sim.power = false; break;
-      case "setBrightness": {
-        sim.brightness = clamp01(Number(params.level));
-        sim.power = sim.brightness > 0;
-        break;
-      }
-      case "recall": break; // unknown resulting level
-    }
-    return { ...sim };
-  }
-
-  private ensureSim(deviceId: number): { power: boolean; brightness: number } {
-    let sim = this.simState.get(deviceId);
-    if (!sim) {
-      sim = { power: false, brightness: 0 };
-      this.simState.set(deviceId, sim);
-    }
-    return sim;
   }
 
   private deviceId(endpoint: EndpointDescriptor): number {
@@ -342,4 +375,9 @@ function clamp01(n: number): number {
 /** Per-driver KV key for a fixture's last known non-zero brightness. */
 function lastBrightnessKey(endpointId: string): string {
   return `lastBrightness:${endpointId}`;
+}
+
+/** Per-driver KV key for a fixture's last known power state. */
+function powerKey(endpointId: string): string {
+  return `power:${endpointId}`;
 }

@@ -57,6 +57,30 @@ export function readSelected(value: unknown): number | string {
   return typeof value === 'number' || typeof value === 'string' ? value : 0
 }
 
+/**
+ * Whether a fader should grey itself out because a sibling power/mute binding
+ * on the same device reads off/muted — a purely visual, generic hint. What a
+ * fader commit actually *does* (send a live command vs. let the driver decide
+ * to hold it) is never the UI's call: every commit sends `device:command`
+ * unconditionally, and it's up to the driver to decide whether that reaches
+ * the hardware now or is only remembered for later (e.g. a DALI light's
+ * brightness while it's off — see `DaliLunatoneDriver`'s KV-backed power
+ * tracking). The UI carries no device-specific knowledge of that decision.
+ */
+export function isDimmedByCompanion(
+  widgets: WidgetBinding[],
+  state: Record<string, unknown> | undefined,
+): boolean {
+  const companion = widgets.find(
+    (widget): widget is Extract<WidgetBinding, { kind: 'power' | 'mute' }> =>
+      widget.kind === 'power' || widget.kind === 'mute',
+  )
+  if (!companion) return false
+
+  const raw = readBoolLike(state?.[companion.stateKey])
+  return companion.kind === 'power' ? !raw : raw
+}
+
 /** The `{labelsKey, countKey, fallbackLabel}` shape shared by every "build a numbered, labeled list from connection config" spot — a select widget's live options and an admin form's address field (see `lib/schemaForm.ts`). */
 export interface ConnectionOptionsSpec {
   labelsKey: string

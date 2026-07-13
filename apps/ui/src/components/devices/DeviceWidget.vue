@@ -19,7 +19,7 @@ import DeviceCard from './DeviceCard.vue'
 import GenericWidget from './GenericWidget.vue'
 import BssMeterWidget from './BssMeterWidget.vue'
 import { useDeviceWidgets } from '@/composables/useDeviceWidgets'
-import { readBoolLike } from '@/lib/widgets'
+import { isDimmedByCompanion } from '@/lib/widgets'
 import { useDevicesStore } from '@/stores/devices'
 import type { DeviceRecord } from '@/lib/devices'
 
@@ -35,30 +35,19 @@ const widgets = computed(() => widgetsFor(props.device))
 interface RenderEntry {
   key: number
   binding: WidgetBinding
-  /** Grey the fader out (a sibling power/mute binding says off/muted). */
   dimmed: boolean
-  /** While a sibling *power* binding is off, a fader commit persists instead of sending a live command (see FaderWidget.vue's doc comment). */
-  blockCommit: boolean
 }
 
 /**
  * Pairs each fader with a sibling power/mute binding on the same device, if
- * any, so the fader can grey itself out (and, for a power companion, avoid
- * sending a live command) while the device is off/muted. Pure composition —
- * no driver ever needs to know this happens.
+ * any, so the fader can grey itself out while the device is off/muted (see
+ * `isDimmedByCompanion` in `lib/widgets.ts`) — a visual nicety only. What a
+ * commit actually does once sent is entirely the driver's call, not the UI's.
  */
 const entries = computed<RenderEntry[]>(() =>
   widgets.value.map((binding, key) => {
-    if (binding.kind !== 'fader') return { key, binding, dimmed: false, blockCommit: false }
-
-    const companion = widgets.value.find(
-      (w): w is Extract<WidgetBinding, { kind: 'power' | 'mute' }> => w.kind === 'power' || w.kind === 'mute',
-    )
-    if (!companion) return { key, binding, dimmed: false, blockCommit: false }
-
-    const raw = readBoolLike(store.stateOf(props.device.id)[companion.stateKey])
-    const offOrMuted = companion.kind === 'power' ? !raw : raw
-    return { key, binding, dimmed: offOrMuted, blockCommit: companion.kind === 'power' && offOrMuted }
+    if (binding.kind !== 'fader') return { key, binding, dimmed: false }
+    return { key, binding, dimmed: isDimmedByCompanion(widgets.value, store.stateOf(props.device.id)) }
   }),
 )
 </script>
@@ -73,7 +62,6 @@ const entries = computed<RenderEntry[]>(() =>
         :device="device"
         :binding="entry.binding"
         :dimmed="entry.dimmed"
-        :block-commit="entry.blockCommit"
       />
     </div>
   </DeviceCard>
