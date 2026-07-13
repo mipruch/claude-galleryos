@@ -9,26 +9,28 @@
  * Broadcasting uses Bun's built-in pub/sub (`server.publish` / `ws.subscribe`).
  */
 
-import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
+import type {Server, ServerWebSocket, WebSocketHandler} from "bun";
 import type {
-  ClientEvent,
-  EventOf,
-  GalleryEvent,
-  GalleryEventType,
-  ServerEvent,
-  ServerMessage,
-  ServerMessageData,
+	ClientEvent,
+	EventOf,
+	GalleryEvent,
+	GalleryEventType,
+	ServerEvent,
+	ServerMessage,
+	ServerMessageData,
 } from "@gallery/types";
-import type { ApiContext } from "./context.ts";
-import { errMsg } from "@gallery/driver-core";
-import { logger } from "../logger.ts";
+import type {ApiContext} from "./context.ts";
+import {errMsg} from "@gallery/driver-core";
+import {logger} from "../logger.ts";
 
 const log = logger.child("ws");
 const BROADCAST_TOPIC = "events";
 
 /** Build a typed server→client envelope. `data` is checked against the event. */
-const envelope = <E extends ServerEvent>(event: E, data: ServerMessageData<E>): string =>
-  JSON.stringify({ event, data });
+const envelope = <E extends ServerEvent>(
+	event: E,
+	data: ServerMessageData<E>
+): string => JSON.stringify({event, data});
 
 /**
  * Project each internal event onto its wire message (or `null` to keep it
@@ -36,37 +38,67 @@ const envelope = <E extends ServerEvent>(event: E, data: ServerMessageData<E>): 
  * `GalleryEvent` without a projection here is a compile error — no event can be
  * silently dropped.
  */
-const PROJECTIONS: { [T in GalleryEventType]: (e: EventOf<T>) => ServerMessage | null } = {
-  "device.state.changed": (e) => ({
-    event: "device:state",
-    data: { deviceId: e.deviceId, state: e.state, source: e.source, timestamp: new Date().toISOString() },
-  }),
-  "device.online": (e) => ({ event: "device:online", data: { deviceId: e.deviceId } }),
-  "device.offline": (e) => ({ event: "device:offline", data: { deviceId: e.deviceId, reason: e.reason } }),
-  "connection.connected": (e) => ({ event: "connection:connected", data: { connectionId: e.connectionId } }),
-  "connection.disconnected": (e) => ({
-    event: "connection:disconnected",
-    data: { connectionId: e.connectionId, reason: e.reason },
-  }),
-  "connection.error": (e) => ({ event: "driver:error", data: { connectionId: e.connectionId, message: e.error } }),
-  "scene.execute.requested": () => null,
-  "scene.execute.started": (e) => ({ event: "scene:started", data: { sceneId: e.sceneId, executionId: e.executionId } }),
-  "scene.execute.completed": (e) => ({
-    event: "scene:completed",
-    data: { sceneId: e.sceneId, executionId: e.executionId, durationMs: e.durationMs },
-  }),
-  "scene.execute.failed": (e) => ({
-    event: "scene:failed",
-    data: { sceneId: e.sceneId, executionId: e.executionId, error: e.error },
-  }),
-  "input.osc.received": () => null,
-  "input.tcp.received": () => null,
-  "input.mapping.triggered": () => null,
-  "system.driver.crashed": (e) => ({
-    event: "driver:error",
-    data: { connectionId: e.connectionId, driverId: e.driverId, message: e.error },
-  }),
-  "system.startup.complete": () => null,
+const PROJECTIONS: {
+	[T in GalleryEventType]: (e: EventOf<T>) => ServerMessage | null;
+} = {
+	"device.state.changed": (e) => ({
+		event: "device:state",
+		data: {
+			deviceId: e.deviceId,
+			state: e.state,
+			source: e.source,
+			timestamp: new Date().toISOString(),
+		},
+	}),
+	"device.online": (e) => ({
+		event: "device:online",
+		data: {deviceId: e.deviceId},
+	}),
+	"device.offline": (e) => ({
+		event: "device:offline",
+		data: {deviceId: e.deviceId, reason: e.reason},
+	}),
+	"connection.connected": (e) => ({
+		event: "connection:connected",
+		data: {connectionId: e.connectionId},
+	}),
+	"connection.disconnected": (e) => ({
+		event: "connection:disconnected",
+		data: {connectionId: e.connectionId, reason: e.reason},
+	}),
+	"connection.error": (e) => ({
+		event: "driver:error",
+		data: {connectionId: e.connectionId, message: e.error},
+	}),
+	"scene.execute.requested": () => null,
+	"scene.execute.started": (e) => ({
+		event: "scene:started",
+		data: {sceneId: e.sceneId, executionId: e.executionId},
+	}),
+	"scene.execute.completed": (e) => ({
+		event: "scene:completed",
+		data: {
+			sceneId: e.sceneId,
+			executionId: e.executionId,
+			durationMs: e.durationMs,
+		},
+	}),
+	"scene.execute.failed": (e) => ({
+		event: "scene:failed",
+		data: {sceneId: e.sceneId, executionId: e.executionId, error: e.error},
+	}),
+	"input.osc.received": () => null,
+	"input.tcp.received": () => null,
+	"input.mapping.triggered": () => null,
+	"system.driver.crashed": (e) => ({
+		event: "driver:error",
+		data: {
+			connectionId: e.connectionId,
+			driverId: e.driverId,
+			message: e.error,
+		},
+	}),
+	"system.startup.complete": () => null,
 };
 
 /**
@@ -75,80 +107,117 @@ const PROJECTIONS: { [T in GalleryEventType]: (e: EventOf<T>) => ServerMessage |
  * @returns The `ServerMessage` to broadcast to connected clients, or `null` to drop the event without forwarding.
  */
 export function toClientMessage(e: GalleryEvent): ServerMessage | null {
-  return (PROJECTIONS[e.type] as (ev: GalleryEvent) => ServerMessage | null)(e);
+	return (PROJECTIONS[e.type] as (ev: GalleryEvent) => ServerMessage | null)(
+		e
+	);
 }
 
 /** Build the Bun WebSocket handlers, closing over the API context. */
-export function makeWebSocketHandlers(ctx: ApiContext): WebSocketHandler<unknown> {
-  return {
-    open(ws) {
-      ws.subscribe(BROADCAST_TOPIC);
-      log.info("client connected", { remoteAddress: ws.remoteAddress });
-      ws.send(envelope("hello", { message: "GalleryOS realtime" }));
-    },
-    close(ws, code, reason) {
-      ws.unsubscribe(BROADCAST_TOPIC);
-      // Release any live meters this client was watching (last watcher → BSS
-      // unsubscribe) so a closed tab never leaks a subscription.
-      ctx.meterService.disconnect(ws);
-      log.info("client disconnected", { remoteAddress: ws.remoteAddress, code, reason });
-    },
-    async message(ws, raw) {
-      let msg: { event?: string; data?: Record<string, unknown> };
-      try {
-        msg = JSON.parse(String(raw));
-      } catch {
-        log.warn("invalid message (not JSON)");
-        ws.send(envelope("error", { message: "invalid JSON" }));
-        return;
-      }
-      log.info("message from a client received", { event: msg.event, data: msg.data });
-      await dispatch(ws, ctx, msg.event ?? "", msg.data ?? {});
-    },
-  };
+export function makeWebSocketHandlers(
+	ctx: ApiContext
+): WebSocketHandler<unknown> {
+	return {
+		open(ws) {
+			ws.subscribe(BROADCAST_TOPIC);
+			log.info("client connected", {remoteAddress: ws.remoteAddress});
+			ws.send(envelope("hello", {message: "GalleryOS realtime"}));
+		},
+		close(ws, code, reason) {
+			ws.unsubscribe(BROADCAST_TOPIC);
+			// Release any live meters this client was watching (last watcher → BSS
+			// unsubscribe) so a closed tab never leaks a subscription.
+			ctx.meterService.disconnect(ws);
+			log.info("client disconnected", {
+				remoteAddress: ws.remoteAddress,
+				code,
+				reason,
+			});
+		},
+		async message(ws, raw) {
+			let msg: {event?: string; data?: Record<string, unknown>};
+			try {
+				msg = JSON.parse(String(raw));
+			} catch {
+				log.warn("invalid message (not JSON)");
+				ws.send(envelope("error", {message: "invalid JSON"}));
+				return;
+			}
+			log.info("message from a client received", {
+				event: msg.event,
+				data: msg.data,
+			});
+			await dispatch(ws, ctx, msg.event ?? "", msg.data ?? {});
+		},
+	};
 }
 
 // ── per-event handlers ────────────────────────────────────────────────────────
 
 type WsData = Record<string, unknown>;
-type Handler = (ws: ServerWebSocket<unknown>, ctx: ApiContext, data: WsData) => Promise<void>;
+type Handler = (
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	data: WsData
+) => Promise<void>;
 
 /** Route client messages to their handlers. Unknown events get an error reply. */
 async function dispatch(
-  ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  event: string,
-  data: WsData,
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	event: string,
+	data: WsData
 ): Promise<void> {
-  const handler = CLIENT_HANDLERS[event as ClientEvent];
-  if (handler) return handler(ws, ctx, data);
-  ws.send(envelope("error", { message: `unknown event: ${event || "(none)"}` }));
+	const handler = CLIENT_HANDLERS[event as ClientEvent];
+	if (handler) return handler(ws, ctx, data);
+	ws.send(
+		envelope("error", {message: `unknown event: ${event || "(none)"}`})
+	);
 }
 
 /**
  * Executes a device command and sends the result back to the client.
  */
 async function onDeviceCommand(
-  ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  data: WsData,
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	data: WsData
 ): Promise<void> {
-  const deviceId = String(data.deviceId ?? "");
-  const params = { ...((data.params as Record<string, unknown>) ?? {}) };
-  // `username` is caller-supplied, for log tracing only — not an auth check.
-  log.info("device command", {
-    deviceId,
-    command: data.command,
-    username: data.username ? String(data.username) : undefined,
-  });
-  try {
-    const result = await ctx.deviceManager.execute(deviceId, String(data.command ?? ""), params);
-    ws.send(envelope("device:command:ack", { deviceId, ...result }));
-  } catch (err) {
-    // Mirror the failure shape of a returned CommandResult so the origin UI
-    // can uniformly check `ack.success` to decide stay-vs-revert.
-    ws.send(envelope("device:command:ack", { deviceId, success: false, error: errMsg(err) }));
-  }
+	const deviceId = String(data.deviceId ?? "");
+	const params = {...((data.params as Record<string, unknown>) ?? {})};
+	// `username` is caller-supplied, for log tracing only — not an auth check.
+	log.info("device command", {
+		deviceId,
+		command: data.command,
+		params: params,
+		username: data.username ? String(data.username) : undefined,
+	});
+	try {
+		const result = await ctx.deviceManager.execute(
+			deviceId,
+			String(data.command ?? ""),
+			params
+		);
+		log.info("server -> client device:command:ack", {
+			deviceId,
+			...result,
+		});
+		ws.send(envelope("device:command:ack", {deviceId, ...result}));
+	} catch (err) {
+		// Mirror the failure shape of a returned CommandResult so the origin UI
+		// can uniformly check `ack.success` to decide stay-vs-revert.
+		log.info("server -> client device:command:ack", {
+			deviceId,
+			success: false,
+			error: errMsg(err),
+		});
+		ws.send(
+			envelope("device:command:ack", {
+				deviceId,
+				success: false,
+				error: errMsg(err),
+			})
+		);
+	}
 }
 
 /**
@@ -159,28 +228,41 @@ async function onDeviceCommand(
  * an acknowledgment with the execution details.
  */
 async function onSceneExecute(
-  ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  data: WsData,
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	data: WsData
 ): Promise<void> {
-  const sceneId = String(data.sceneId ?? "");
-  if (!sceneId) {
-    ws.send(envelope("scene:execute:ack", { error: "sceneId required" }));
-    return;
-  }
-  // Validate the scene exists, then trigger the run via the EventBus. The
-  // SceneEngine (subscribed to `scene.execute.requested`) does the work and
-  // emits scene:started / scene:completed / scene:failed, which the broadcast
-  // bridge relays to all clients. We ack immediately with the executionId.
-  const scene = await ctx.scenes.get(sceneId);
-  if (!scene) {
-    ws.send(envelope("scene:execute:ack", { sceneId, error: "scene not found" }));
-    return;
-  }
-  const executionId = crypto.randomUUID();
-  const source = data.source ? String(data.source) : "websocket";
-  ctx.eventBus.emit({ type: "scene.execute.requested", sceneId, source, executionId });
-  ws.send(envelope("scene:execute:ack", { sceneId, executionId, status: "requested" }));
+	const sceneId = String(data.sceneId ?? "");
+	if (!sceneId) {
+		ws.send(envelope("scene:execute:ack", {error: "sceneId required"}));
+		return;
+	}
+	// Validate the scene exists, then trigger the run via the EventBus. The
+	// SceneEngine (subscribed to `scene.execute.requested`) does the work and
+	// emits scene:started / scene:completed / scene:failed, which the broadcast
+	// bridge relays to all clients. We ack immediately with the executionId.
+	const scene = await ctx.scenes.get(sceneId);
+	if (!scene) {
+		ws.send(
+			envelope("scene:execute:ack", {sceneId, error: "scene not found"})
+		);
+		return;
+	}
+	const executionId = crypto.randomUUID();
+	const source = data.source ? String(data.source) : "websocket";
+	ctx.eventBus.emit({
+		type: "scene.execute.requested",
+		sceneId,
+		source,
+		executionId,
+	});
+	ws.send(
+		envelope("scene:execute:ack", {
+			sceneId,
+			executionId,
+			status: "requested",
+		})
+	);
 }
 
 /**
@@ -188,31 +270,31 @@ async function onSceneExecute(
  * (the MeterService ref-counts so only one BSS subscription exists per meter).
  */
 async function onMeterSubscribe(
-  ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  data: WsData,
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	data: WsData
 ): Promise<void> {
-  const deviceId = String(data.deviceId ?? "");
-  if (!deviceId) return;
-  await ctx.meterService.subscribe(ws, deviceId);
+	const deviceId = String(data.deviceId ?? "");
+	if (!deviceId) return;
+	await ctx.meterService.subscribe(ws, deviceId);
 }
 
 /** A meter widget dismounted on a client: stop forwarding its meters. */
 async function onMeterUnsubscribe(
-  ws: ServerWebSocket<unknown>,
-  ctx: ApiContext,
-  data: WsData,
+	ws: ServerWebSocket<unknown>,
+	ctx: ApiContext,
+	data: WsData
 ): Promise<void> {
-  const deviceId = String(data.deviceId ?? "");
-  if (!deviceId) return;
-  await ctx.meterService.unsubscribe(ws, deviceId);
+	const deviceId = String(data.deviceId ?? "");
+	if (!deviceId) return;
+	await ctx.meterService.unsubscribe(ws, deviceId);
 }
 
 const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
-  "device:command": onDeviceCommand,
-  "scene:execute": onSceneExecute,
-  "meter:subscribe": onMeterSubscribe,
-  "meter:unsubscribe": onMeterUnsubscribe,
+	"device:command": onDeviceCommand,
+	"scene:execute": onSceneExecute,
+	"meter:subscribe": onMeterSubscribe,
+	"meter:unsubscribe": onMeterUnsubscribe,
 };
 
 // ── broadcast bridge ──────────────────────────────────────────────────────────
@@ -230,29 +312,38 @@ const CLIENT_HANDLERS: Partial<Record<ClientEvent, Handler>> = {
  * driver errors) always pass through.
  */
 export function setupBroadcast(server: Server<unknown>, ctx: ApiContext): void {
-  const lastStateByDevice = new Map<string, string>();
+	const lastStateByDevice = new Map<string, string>();
 
-  ctx.eventBus.onAny((event) => {
-    const message = toClientMessage(event);
-    if (!message) {
-      log.debug("broadcast skipped (no client mapping)", { type: event.type });
-      return;
-    }
+	ctx.eventBus.onAny((event) => {
+		const message = toClientMessage(event);
+		if (!message) {
+			log.debug("broadcast skipped (no client mapping)", {
+				type: event.type,
+			});
+			return;
+		}
 
-    if (event.type === "device.state.changed") {
-      const serialized = JSON.stringify(event.state);
-      if (lastStateByDevice.get(event.deviceId) === serialized) {
-        log.info("device:state echo (duplicate, not broadcast)", {
-          deviceId: event.deviceId,
-          source: event.source,
-          state: event.state,
-        });
-        return;
-      }
-      lastStateByDevice.set(event.deviceId, serialized);
-    }
+		if (event.type === "device.state.changed") {
+			const serialized = JSON.stringify(event.state);
+			if (lastStateByDevice.get(event.deviceId) === serialized) {
+				log.info("device:state echo (duplicate, not broadcast)", {
+					deviceId: event.deviceId,
+					source: event.source,
+					state: event.state,
+				});
+				return;
+			}
+			lastStateByDevice.set(event.deviceId, serialized);
+		}
 
-    const recipients = server.publish(BROADCAST_TOPIC, JSON.stringify(message));
-    log.info("broadcast →", { event: message.event, recipients, data: message.data });
-  });
+		const recipients = server.publish(
+			BROADCAST_TOPIC,
+			JSON.stringify(message)
+		);
+		log.info("broadcast →", {
+			event: message.event,
+			recipients,
+			data: message.data,
+		});
+	});
 }
