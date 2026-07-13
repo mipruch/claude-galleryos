@@ -795,6 +795,29 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `selectValueOf()` in `lib/schemaForm.ts` does a real `String()`
         conversion; unit-tested directly, plus verified live against an
         existing seeded device.
+  - [x] **Mobile-responsive User UI:** the original spec target ("fully
+        responsive: 375px (phone) → 768px (tablet) → 1024px+", README §11)
+        was never actually met once routing landed — `AppSidebar.vue` was a
+        fixed `w-56` panel, always visible, so on a phone it ate most of the
+        screen and the header/toolbar/grid had no room left. `AppSidebar.vue`
+        is now a `fixed` off-canvas drawer below `md:` (768px), toggled by a
+        hamburger button in `UserLayout.vue`'s header, with a backdrop and
+        auto-close on navigation; a CSS-only `md:static md:translate-x-0`
+        override restores the original always-visible layout at `md:` and up
+        (no resize listener needed). New module-level
+        `composables/useSidebar.ts` (same singleton-ref pattern as
+        `useCommandPalette.ts`) shares the open state between the header and
+        the sidebar. Also fixed: `ConnectionStatus.vue`'s popover had a fixed
+        `w-96` that overflowed any viewport narrower than 384px
+        (`w-[calc(100vw-2rem)] max-w-96`); `BssMeterWidget.vue`'s meter row
+        could overflow a narrow card when a device has many meters
+        (`overflow-x-auto`); header text/kbd hints hide below `sm:` so it
+        fits a 320px screen without wrapping. Scoped to the User UI only, per
+        request — admin portal and kiosk viewer untouched. Verified with
+        Playwright screenshots at 320/375/768/1280px (mocked API data, real
+        device grid) — no horizontal overflow at any width, desktop/tablet
+        layout pixel-identical to before. `bun run test:ui` (195 tests) and
+        `bun run typecheck:ui` unaffected.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
   - [x] **`/admin/workflows`** (`views/admin/WorkflowsView.vue` +
         `views/admin/WorkflowSceneView.vue`) — a 2D canvas view over data the

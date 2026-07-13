@@ -11,7 +11,7 @@ import SceneBar from '@/components/scenes/SceneBar.vue'
 </script>
 
 <template>
-  <div class="px-6 py-6 max-w-5xl mx-auto">
+  <div class="px-4 py-6 sm:px-6 max-w-5xl mx-auto">
     <SceneBar />
     <DeviceToolbar />
     <DeviceGrid />

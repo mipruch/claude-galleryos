@@ -2486,6 +2486,47 @@ možnosti se objeví až po prvním úspěšném výběru.
   (`null`/`undefined` → `''`), otestovaná zvlášť
   (`apps/ui/src/__tests__/schemaForm.spec.ts`).
 
+#### Implementováno (mobilní responzivita — sidebar, hlavička, popover)
+
+Původní spec (níže, "Plně responzivní: 375px → 768px → 1024px+") nebyl u
+prvního routovaného řezu dodržen — `AppSidebar.vue` byl napevno `w-56`, vždy
+viditelný, takže na telefonu (375px a méně) zabíral přes polovinu šířky a
+zbytek layoutu (hlavička, toolbar, grid karet) se prakticky nedal používat.
+Oprava se týká **jen User UI** (`/`, `/rooms/:id`, `/schedules`, …) — Admin UI
+a kiosk viewer mají vlastní shell a nebyly měněny.
+
+- **Off-canvas sidebar pod `md:` (768px)** — `AppSidebar.vue` je nově `fixed`
+  panel posunutý mimo obrazovku (`-translate-x-full`), otevíraný hamburger
+  tlačítkem v hlavičce (`UserLayout.vue`). Od `md:` výš čisté CSS (`md:static
+  md:translate-x-0`) vynutí původní, vždy viditelný layout bez ohledu na stav
+  — není potřeba žádný resize listener. Otevřený panel má **backdrop** (klik
+  zavře) a vlastní **X tlačítko**; klik na libovolný nav odkaz zavře panel po
+  navigaci (`onNavigate` obalí `RouterLink`'s `navigate`). Sdílený
+  otevřený/zavřený stav žije v novém `composables/useSidebar.ts` (modulový
+  singleton ref, stejný vzor jako `useCommandPalette.ts`), takže hamburger v
+  hlavičce a zavírací akce v sidebaru na sebe nemusí prop-drillovat.
+- **Hlavička (`UserLayout.vue`)** — hamburger (`md:hidden`) vlevo od titulku;
+  vpravo se pod `sm:` skryje textový popisek tlačítka Search, klávesová
+  zkratka (`⌘K`/`Ctrl K`) i slovo „Live"/„Offline" (zůstává jen ikona +
+  `aria-label`/`role="status"` pro čtečky), aby se hlavička vešla i na 320px
+  širokou obrazovku beze zalamování.
+- **`ConnectionStatus.vue`'s popover** měl napevno `w-96` (384px) — širší než
+  leckterý telefon, takže přetékal mimo viewport. Nahrazeno
+  `w-[calc(100vw-2rem)] max-w-96`: na malé obrazovce se zúží s 1rem okrajem po
+  stranách, na `sm:`+ se chová jako dřív. Sdílená komponenta s Admin UI, ale
+  změna je čistě aditivní (jen strop šířky), takže admin desktop vzhled je
+  beze změny.
+- **`BssMeterWidget.vue`** — řádek metrů (`justify-around`, bez zalamování)
+  dostal `overflow-x-auto`, aby zařízení s hodně metry na úzké kartě
+  nevytáhlo celou stránku do horizontálního scrollu.
+- Drobné doladění paddingu (`DevicesView.vue`, `SchedulesView.vue`: `px-6` →
+  `px-4 sm:px-6`) pro víc místa na nejmenších telefonech.
+- Ověřeno Playwright screenshoty (320/375/768/1280px, se zamockovaným API) —
+  bez horizontálního přetečení na žádné šířce, grid karet se na mobilu správně
+  zlomí do jednoho sloupce, drawer/backdrop/hamburger fungují, desktop/tablet
+  layout beze změny. `bun run test:ui` (195 testů) a `bun run typecheck:ui`
+  beze změny/beze chyb.
+
 ### Princip fungování
 
 User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `ui_layouts`). Při načtení stránky User UI stáhne aktivní layout přes `GET /api/v1/layouts?default=true` a renderuje widgety dle `config.pages[].widgets`.
