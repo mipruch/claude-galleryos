@@ -69,6 +69,7 @@ export function makeSchedule(over: Partial<ScheduledJobDTO> = {}): ScheduledJobD
     cron: '0 9 * * *',
     timezone: 'Europe/Prague',
     enabled: true,
+    position: null,
     lastRunAt: null,
     nextRunAt: null,
     createdAt: NOW,
@@ -117,8 +118,10 @@ export function makeMapping(over: Partial<InputMappingDTO> = {}): InputMappingDT
     targetCommand: null,
     paramsTemplate: {},
     enabled: true,
+    position: null,
     createdAt: NOW,
     updatedAt: NOW,
+    ...over,
   }
 }
 

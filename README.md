@@ -424,6 +424,9 @@ CREATE TABLE scene_actions (
   on_failure      VARCHAR(20) NOT NULL DEFAULT 'continue',
   -- 'abort' | 'continue' | 'rollback'
   -- Rollback je aplikován pouze na 'reversible' příkazy.
+  position        JSONB,
+  -- { x, y } — poslední pozice uzlu na workflow canvasu (§10, /admin/workflows).
+  -- Čistě zobrazovací údaj; SceneEngine ho nikdy nečte.
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT scene_actions_target_chk CHECK (
     (device_id IS NOT NULL AND child_scene_id IS NULL AND command IS NOT NULL)
@@ -472,6 +475,7 @@ CREATE TABLE scheduled_jobs (
   cron          VARCHAR(100) NOT NULL,     -- CRON výraz, např. '0 8 * * 1-5'
   timezone      VARCHAR(50) NOT NULL DEFAULT 'Europe/Prague',
   enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  position      JSONB,                     -- { x, y } na workflow canvasu (§10)
   last_run_at   TIMESTAMPTZ,
   next_run_at   TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -498,6 +502,7 @@ CREATE TABLE input_mappings (
   -- Klíče jsou názvy params, hodnoty jsou buď literály nebo reference na args:
   -- { "level": "{arg[0]}", "muted": false }
   enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  position      JSONB,                     -- { x, y } na workflow canvasu (§10)
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1991,6 +1996,26 @@ Zbývající admin stránka (layouts) přidá další řez — viz PLAN §"Prior
 - Seznam OSC/TCP mapování
 - Formulář: protocol, pattern, target (scene nebo device + command), params_template
 - Test panel: zadej protocol + adresu + args, uvidíš, co by se stalo
+
+#### `/admin/workflows` — Workflow canvas
+
+2D canvas (Vue Flow) nad daty, která už spravují stránky Mappings/Schedules/Scenes
+— nejde o nový automatizační engine, jen o jejich prostorové zobrazení a propojení.
+
+- **Routing mapa** (`/admin/workflows`): trigger uzly (`input_mappings`,
+  `scheduled_jobs`) propojené s cílovými uzly (scene / device). Tažení nové
+  hrany přepíše cíl mapování/harmonogramu — stejná mutace jako ve stávajících
+  formulářích; dvojklik na trigger otevře existující `MappingFormDialog` /
+  `ScheduleFormDialog` místo duplicitního formuláře na canvasu.
+- Dvojklik na scénu otevře její vlastní canvas (`/admin/workflows/scenes/:id`)
+  s akcemi seřazenými do "stage" sloupců podle `parallel_group`. Záměrně bez
+  hran mezi jednotlivými akcemi — `SceneEngine` nezná závislost mezi akcemi,
+  jen bariéry mezi skupinami (`planGroups`), takže spojnice mezi kroky by
+  tvrdila závislost, která neexistuje. Tažení uzlu mezi sloupci akci přeřadí
+  do jiné `parallel_group`.
+- Jediný nový perzistovaný údaj je `position` (jsonb) na `scene_actions` /
+  `input_mappings` / `scheduled_jobs` — čistě rozvržení, nic exekučního.
+  Neumístěné uzly se automaticky rozloží knihovnou `dagre`.
 
 #### `/layouts` — Builder User UI
 

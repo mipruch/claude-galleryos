@@ -8,7 +8,7 @@
 
 import type { Server } from "bun";
 import { errMsg } from "@gallery/driver-core";
-import type { ApiError } from "@gallery/types";
+import type { ApiError, CanvasPosition } from "@gallery/types";
 import { logger } from "../logger.ts";
 
 const httpLog = logger.child("api.http");
@@ -116,6 +116,19 @@ export function asObject(value: unknown, field: string): Record<string, unknown>
     throw new HttpError(400, "BAD_REQUEST", `field '${field}' must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+/**
+ * Coerce a value to a workflow-canvas node position, or throw 400. `null` is
+ * accepted (no saved position — the client will auto-layout the node).
+ */
+export function asCanvasPosition(value: unknown, field: string): CanvasPosition | null {
+  if (value === null) return null;
+  const obj = asObject(value, field);
+  if (typeof obj.x !== "number" || typeof obj.y !== "number") {
+    throw new HttpError(400, "BAD_REQUEST", `field '${field}' must be {x: number, y: number} or null`);
+  }
+  return { x: obj.x, y: obj.y };
 }
 
 /**

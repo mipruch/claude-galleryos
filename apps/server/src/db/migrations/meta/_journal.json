@@ -49,6 +49,13 @@
       "when": 1783900000000,
       "tag": "0006_bss_matrix_endpoint_type",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783948441420,
+      "tag": "0007_workflow_canvas_positions",
+      "breakpoints": true
     }
   ]
 }

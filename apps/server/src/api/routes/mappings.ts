@@ -26,6 +26,7 @@ import type {
 import type { ApiContext } from "../context.ts";
 import {
   HttpError,
+  asCanvasPosition,
   asObject,
   json,
   noContent,
@@ -114,6 +115,7 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
           targetCommand,
           ...(paramsTemplate !== undefined ? { paramsTemplate } : {}),
           ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+          ...(body.position !== undefined ? { position: asCanvasPosition(body.position, "position") } : {}),
         };
         const created = await ctx.mappings.create(values);
         if (!created) throw new HttpError(500, "INTERNAL_ERROR", "failed to create mapping");
@@ -190,6 +192,7 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
           }
           patch.enabled = body.enabled;
         }
+        if (body.position !== undefined) patch.position = asCanvasPosition(body.position, "position");
 
         // Validate the *effective* target (merge of patch over the current row).
         await assertTargetResolvable(

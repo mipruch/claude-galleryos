@@ -19,7 +19,18 @@ import {
   SceneValidationError,
 } from "../../core/SceneEngine.ts";
 import type { ApiContext } from "../context.ts";
-import { HttpError, paramId, json, noContent, query, readJson, requireFields, route, type RouteMap } from "../http.ts";
+import {
+  HttpError,
+  asCanvasPosition,
+  paramId,
+  json,
+  noContent,
+  query,
+  readJson,
+  requireFields,
+  route,
+  type RouteMap,
+} from "../http.ts";
 
 /**
  * Converts SceneEngine errors to HTTP errors with appropriate status codes.
@@ -81,6 +92,7 @@ function parseActions(raw: unknown): SceneActionInput[] | undefined {
       parallelGroup: a.parallelGroup !== undefined ? Number(a.parallelGroup) : undefined,
       delayMs: a.delayMs !== undefined ? Number(a.delayMs) : undefined,
       onFailure: a.onFailure as "abort" | "continue" | undefined,
+      position: a.position !== undefined ? asCanvasPosition(a.position, `actions[${i}].position`) : undefined,
     };
   });
 }

@@ -317,6 +317,7 @@ function toActionRow(sceneId: string, a: SceneActionInput, index: number): typeo
     parallelGroup: a.parallelGroup ?? 0,
     delayMs: a.delayMs ?? 0,
     onFailure: a.onFailure ?? "continue",
+    position: a.position ?? null,
   };
 }
 

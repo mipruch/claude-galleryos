@@ -14,6 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import type { CanvasPosition } from "./canvas.ts";
 import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
@@ -227,6 +228,11 @@ export const sceneActions = pgTable(
     command: varchar("command", { length: 100 }),
     params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
     onFailure: varchar("on_failure", { length: 20 }).$type<OnFailure>().notNull().default("continue"),
+    // Where this action's node was last dropped on the scene's workflow canvas
+    // (packages/types/src/canvas.ts). Purely a layout hint — null until the
+    // scene is opened on the canvas, at which point it gets an auto-layout
+    // position; never read by the SceneEngine.
+    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -278,6 +284,8 @@ export const scheduledJobs = pgTable("scheduled_jobs", {
   cron: varchar("cron", { length: 100 }).notNull(),
   timezone: varchar("timezone", { length: 50 }).notNull().default("Europe/Prague"),
   enabled: boolean("enabled").notNull().default(true),
+  // Node position on the workflow routing-map canvas (see scene_actions.position).
+  position: jsonb("position").$type<CanvasPosition | null>(),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -300,6 +308,8 @@ export const inputMappings = pgTable(
     targetCommand: varchar("target_command", { length: 100 }),
     paramsTemplate: jsonb("params_template").$type<Record<string, unknown>>().notNull().default({}),
     enabled: boolean("enabled").notNull().default(true),
+    // Node position on the workflow routing-map canvas (see scene_actions.position).
+    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

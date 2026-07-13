@@ -73,6 +73,7 @@ describe('toActionInput', () => {
       parallelGroup: undefined,
       delayMs: 300,
       onFailure: 'continue',
+      position: null,
     })
   })
 
@@ -85,6 +86,7 @@ describe('toActionInput', () => {
       parallelGroup: undefined,
       delayMs: undefined,
       onFailure: 'continue',
+      position: null,
     })
   })
 })

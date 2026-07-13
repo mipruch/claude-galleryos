@@ -24,6 +24,7 @@ function mapping(partial: Partial<InputMapping>): InputMapping {
     targetCommand: partial.targetCommand ?? null,
     paramsTemplate: partial.paramsTemplate ?? {},
     enabled: partial.enabled ?? true,
+    position: partial.position ?? null,
     createdAt: partial.createdAt ?? new Date(),
     updatedAt: partial.updatedAt ?? new Date(),
   };

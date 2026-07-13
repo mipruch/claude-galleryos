@@ -12,6 +12,7 @@
  */
 
 import type { Jsonify } from "./json.ts";
+import type { CanvasPosition } from "./canvas.ts";
 import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
@@ -118,6 +119,8 @@ export interface SceneActionInput {
   delayMs?: number;
   /** "continue" (default) or "abort". */
   onFailure?: OnFailure;
+  /** Node position on the scene's workflow canvas. Omit to leave unchanged. */
+  position?: CanvasPosition | null;
 }
 
 export interface SceneCreateInput {
@@ -144,6 +147,8 @@ export interface ScheduleCreateInput {
   /** IANA timezone (e.g. "Europe/Prague"). Defaults server-side if omitted. */
   timezone?: string;
   enabled?: boolean;
+  /** Node position on the workflow routing-map canvas. Omit to leave unchanged. */
+  position?: CanvasPosition | null;
 }
 
 export type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
@@ -212,6 +217,8 @@ export interface InputMappingCreateInput {
   targetCommand?: string | null;
   paramsTemplate?: Record<string, unknown>;
   enabled?: boolean;
+  /** Node position on the workflow routing-map canvas. Omit to leave unchanged. */
+  position?: CanvasPosition | null;
 }
 
 export type InputMappingUpdateInput = Partial<InputMappingCreateInput>;

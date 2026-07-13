@@ -23,6 +23,7 @@ import type { ApiContext } from "../context.ts";
 import { CronParseError, computeNextRuns, parseCron } from "../../core/cron.ts";
 import {
   HttpError,
+  asCanvasPosition,
   json,
   noContent,
   paramId,
@@ -87,6 +88,7 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
           enabled: body.enabled as boolean | undefined,
+          ...(body.position !== undefined ? { position: asCanvasPosition(body.position, "position") } : {}),
         });
         if (!created) throw new HttpError(500, "INTERNAL_ERROR", "failed to create schedule");
 
@@ -128,6 +130,7 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
           }
           patch.enabled = body.enabled;
         }
+        if (body.position !== undefined) patch.position = asCanvasPosition(body.position, "position");
 
         const updated = await ctx.schedules.update(id, patch);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "schedule not found");

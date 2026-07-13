@@ -22,6 +22,7 @@ import {
   VideoIcon,
   UsersIcon,
   WaypointsIcon,
+  WorkflowIcon,
 } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -50,6 +51,7 @@ const items: NavItem[] = [
   { to: '/admin/iframes', label: 'Iframes', icon: AppWindowIcon, enabled: true },
   { to: '/admin/cameras', label: 'Cameras', icon: VideoIcon, enabled: true },
   { to: '/admin/mappings', label: 'Mappings', icon: WaypointsIcon, enabled: true },
+  { to: '/admin/workflows', label: 'Workflows', icon: WorkflowIcon, enabled: true },
   { to: '/admin/layouts', label: 'Layouts', icon: LayoutTemplateIcon, enabled: true },
   { to: '/admin/logs', label: 'Logs', icon: ScrollTextIcon, enabled: true },
   { to: '/admin/users', label: 'Users', icon: UsersIcon, enabled: true },

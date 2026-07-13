@@ -484,7 +484,7 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         `meta.admin` with a router-level auth-guard placeholder (auth deferred —
         P6; structural separation only for now). Not-yet-built admin sections show
         as disabled in the nav.
-  - [~] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, layouts, logs, settings
+  - [~] Admin pages: dashboard, rooms, connections, devices, scenes, schedules, mappings, workflows, layouts, logs, settings
     - [x] **`/admin/logs`** (`views/admin/LogsView.vue`) — Logs/Executions tabs,
           filters (level/source/entity/time), pagination, Refresh + auto-poll,
           per-row metadata detail, CSV export. Fetch/refresh based (no `log` WS
@@ -796,6 +796,28 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         conversion; unit-tested directly, plus verified live against an
         existing seeded device.
   - [~] Remaining shared stores: [x] system, [x] logs, [x] drivers · [ ] layout
+  - [x] **`/admin/workflows`** (`views/admin/WorkflowsView.vue` +
+        `views/admin/WorkflowSceneView.vue`) — a 2D canvas view over data the
+        Mappings/Schedules/Scenes pages already manage, not a new automation
+        engine. A Vue Flow "routing map": trigger nodes for `input_mappings`/
+        `scheduled_jobs` connect to `scene`/`device` target nodes (drawing a
+        connection calls the same store `update()` the existing forms use;
+        double-clicking a trigger opens the existing `MappingFormDialog`/
+        `ScheduleFormDialog` rather than a second form). Double-clicking a
+        scene node drills into `/admin/workflows/scenes/:id`, laying that
+        scene's actions out as "stage" columns — one per distinct
+        `parallelGroup`. Deliberately no action-to-action edges:
+        `SceneEngine.planGroups` only has group barriers, not per-action
+        dependencies, so a connecting line would claim a dependency that
+        isn't real; dragging a node across columns re-groups it instead. The
+        only new persisted concept is a `position: jsonb` column on
+        `scene_actions`/`input_mappings`/`scheduled_jobs`
+        (`packages/types/src/canvas.ts`, migration `0007`) — reads, target
+        rewiring, and action edits (`SceneActionRow` reused as the node
+        inspector) all go through the existing repos/routes/stores.
+        Unpositioned nodes auto-layout with `@dagrejs/dagre`. New pure
+        `lib/workflowGraph.ts` (unit-tested) builds both graphs from data the
+        mappings/schedules/scenes/devices stores already hold.
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 
