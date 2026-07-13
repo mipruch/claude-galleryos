@@ -53,7 +53,7 @@ const upcomingTail = (id: string): string[] => store.previewsFor(id).slice(1)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-6 py-6">
+  <div class="mx-auto max-w-3xl px-4 py-6 sm:px-6">
     <!-- Body toolbar: count + manual refresh. -->
     <div class="mb-4 flex items-center justify-between">
       <p class="text-muted-foreground text-sm">

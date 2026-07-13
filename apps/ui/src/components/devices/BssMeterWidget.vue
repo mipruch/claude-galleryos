@@ -54,7 +54,7 @@ onUnmounted(() => meters.unsubscribe(props.device.id))
 </script>
 
 <template>
-  <div class="flex items-stretch justify-around gap-2">
+  <div class="flex items-stretch justify-around gap-2 overflow-x-auto">
     <div
       v-for="(meter, i) in definitions"
       :key="`${meter.object}:${meter.param ?? 0}:${i}`"

@@ -32,7 +32,7 @@ onMounted(() => store.init())
       <ChevronDownIcon class="size-3 opacity-60" />
     </PopoverTrigger>
 
-    <PopoverContent align="end" class="w-96 p-0">
+    <PopoverContent align="end" class="w-[calc(100vw-2rem)] max-w-96 p-0">
       <div class="border-b px-4 py-3">
         <h2 class="text-sm font-semibold">Connections</h2>
         <p class="text-muted-foreground text-xs">

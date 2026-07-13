@@ -7,17 +7,19 @@
  */
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
+import { MenuIcon, SearchIcon, WifiIcon, WifiOffIcon } from '@lucide/vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
 import CommandPalette from '@/components/command/CommandPalette.vue'
 import { useDevicesStore } from '@/stores/devices'
 import { useCommandPalette } from '@/composables/useCommandPalette'
+import { useSidebar } from '@/composables/useSidebar'
 
 const store = useDevicesStore()
 const route = useRoute()
 
 const { openPalette } = useCommandPalette()
+const { toggle: toggleSidebar } = useSidebar()
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const shortcutHint = computed(() => (isMac ? '⌘K' : 'Ctrl K'))
@@ -56,12 +58,22 @@ const pageSubtitle = computed(() => {
       <AppSidebar />
 
       <div class="flex min-w-0 flex-1 flex-col">
-        <header class="flex items-center justify-between gap-4 border-b px-6 py-4">
-          <div class="min-w-0">
-            <h2 class="truncate text-xl font-semibold tracking-tight">{{ pageTitle }}</h2>
-            <p class="text-muted-foreground text-sm">{{ pageSubtitle }}</p>
+        <header class="flex items-center justify-between gap-2 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
+          <div class="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              class="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring shrink-0 rounded-md p-2 outline-none focus-visible:ring-2 md:hidden"
+              aria-label="Open menu"
+              @click="toggleSidebar()"
+            >
+              <MenuIcon class="size-5" />
+            </button>
+            <div class="min-w-0">
+              <h2 class="truncate text-xl font-semibold tracking-tight">{{ pageTitle }}</h2>
+              <p class="text-muted-foreground truncate text-sm">{{ pageSubtitle }}</p>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               class="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs outline-none focus-visible:ring-2"
@@ -71,7 +83,7 @@ const pageSubtitle = computed(() => {
               <SearchIcon class="size-3.5" />
               <span class="hidden sm:inline">Search</span>
               <kbd
-                class="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-sans text-[10px]"
+                class="bg-muted text-muted-foreground hidden rounded px-1.5 py-0.5 font-sans text-[10px] sm:inline"
               >
                 {{ shortcutHint }}
               </kbd>
@@ -84,9 +96,11 @@ const pageSubtitle = computed(() => {
               :class="
                 store.connected ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground'
               "
+              role="status"
+              :aria-label="store.connected ? 'Live' : 'Offline'"
             >
               <component :is="store.connected ? WifiIcon : WifiOffIcon" class="size-4" />
-              {{ store.connected ? 'Live' : 'Offline' }}
+              <span class="hidden sm:inline">{{ store.connected ? 'Live' : 'Offline' }}</span>
             </span>
           </div>
         </header>
