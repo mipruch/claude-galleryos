@@ -1000,6 +1000,41 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           separate DOM subtree from the edge's own hover target), not just
           the edge path, so moving onto the button to click it can't hide it
           first.
+  - [x] **Multi-select, keyboard shortcut, and library-search fixes.** Direct
+        feedback on the canvas's interaction feel, all verified against the
+        live app (Playwright caught the first one — the type-checker had
+        nothing to say about it):
+        - `onNodeDragStop` was reading the single `event.node` (whichever the
+          pointer grabbed) and only persisting that one's position. Vue Flow
+          already *moves* every multi-selected node together when you drag
+          one; the bug was that only the grabbed node's new spot got saved,
+          so the rest snapped back to their last-saved position on the next
+          reactive rebuild. Fixed to iterate `event.nodes` (every node that
+          actually moved) and persist each one — confirmed by reloading after
+          a group drag and seeing every node stay put, not just the one.
+        - Box-select-by-dragging-a-rectangle now holds **Cmd/Ctrl**
+          (`:selection-key-code="['Meta', 'Control']"`) instead of Vue Flow's
+          default Shift — confirmed Shift+drag no longer selects anything and
+          Ctrl+drag selects both nodes in a rectangle.
+        - **Return/Enter deletes the active node**, calling the exact same
+          function its inspector's own trash button does
+          (`TriggerInspector`/`WorkflowTargetInspector` now `defineExpose`
+          their `remove()`, called via a template ref from `WorkflowsView`'s
+          window-level `keydown` listener) rather than duplicating the
+          deletion logic. Guarded against firing while focus is in an input/
+          textarea/select/button/contenteditable — confirmed pressing Enter
+          to submit the trigger name form saves instead of deleting, and
+          pressing it with the canvas focused deletes the selected node and
+          closes its inspector.
+        - New search box in the library panel filters both the Scenes and
+          Devices sections by name, reusing the device-grid/scene-list
+          search primitives (`lib/text.ts`'s `searchTerms`/`normalize`/
+          `matchesAllTerms`) instead of a one-off substring match, so
+          diacritic-folding and multi-term matching behave the same
+          everywhere search exists in the app. Empty-state copy
+          ("All scenes are on the canvas") was stale from before the
+          library-always-shows-everything redesign — fixed to distinguish
+          "nothing exists yet" from "nothing matches the search."
 
 See README §5, §10–11 for full spec; see §11 for the implemented slice.
 

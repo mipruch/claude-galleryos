@@ -30,7 +30,7 @@
  * (`WorkflowSceneView`) instead, a separate route reusing the same
  * graph/canvas building blocks at a deeper zoom level.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   VueFlow,
@@ -147,6 +147,29 @@ function selectNodeIfCreated<T extends { id: string }>(
   selectedNodeId.value = toNodeId(created.id)
 }
 
+// Whichever inspector is currently mounted (mutually exclusive, see template)
+// exposes its own `remove()` — the Enter shortcut below calls the exact same
+// function the inspector's own delete button does, so there's one definition
+// of "how to delete the active node," not two.
+const triggerInspectorRef = ref<InstanceType<typeof TriggerInspector> | null>(null)
+const targetInspectorRef = ref<InstanceType<typeof WorkflowTargetInspector> | null>(null)
+
+/** Elements Enter already has its own meaning on — never hijack it there (typing, submitting, picking a Select option). */
+const KEY_HANDLING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'])
+
+/** Return/Enter deletes the currently active node — same effect as its inspector's own trash button. */
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' || !selection.value) return
+  const target = event.target as HTMLElement | null
+  if (target && (KEY_HANDLING_TAGS.has(target.tagName) || target.isContentEditable)) return
+  event.preventDefault()
+  if (selection.value.kind === 'trigger') void triggerInspectorRef.value?.remove()
+  else void targetInspectorRef.value?.remove()
+}
+
+onMounted(() => window.addEventListener('keydown', onWindowKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
+
 // ── canvas interactions ────────────────────────────────────────────────────
 
 /** Toolbar "+": a bare, unwired trigger — selected immediately so the inspector opens for naming it. */
@@ -198,10 +221,19 @@ const POSITION_UPDATERS: Record<string, (id: string, position: NodePosition) => 
   target: (id, position) => void workflowTargetsStore.update(id, { position }),
 }
 
-/** Persist a dragged trigger's or target's position — every node kind is draggable and now sticks. */
-function onNodeDragStop({ node }: NodeDragEvent): void {
-  const { kind, value } = parseNodeId(node.id)
-  POSITION_UPDATERS[kind]?.(value, { x: node.position.x, y: node.position.y })
+/**
+ * Persist every dragged node's position — every kind is draggable and now
+ * sticks. `nodes` (not the singular `node`) is every node that actually
+ * moved: for a multi-selected drag that's the whole selection, not just the
+ * one the pointer grabbed, so each one's move is saved instead of only the
+ * grabbed node's (the rest would otherwise snap back to their last-saved spot
+ * on the next reactive rebuild).
+ */
+function onNodeDragStop({ nodes: draggedNodes }: NodeDragEvent): void {
+  for (const node of draggedNodes) {
+    const { kind, value } = parseNodeId(node.id)
+    POSITION_UPDATERS[kind]?.(value, { x: node.position.x, y: node.position.y })
+  }
 }
 
 interface ConnectAction {
@@ -287,6 +319,7 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
           :nodes="nodes"
           :edges="edges"
           :delete-key-code="null"
+          :selection-key-code="['Meta', 'Control']"
           :min-zoom="0.25"
           @node-click="onNodeClick"
           @node-drag-stop="onNodeDragStop"
@@ -325,12 +358,14 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
       <aside v-if="selection" class="w-96 shrink-0 overflow-y-auto border-l p-3">
         <TriggerInspector
           v-if="selection.kind === 'trigger'"
+          ref="triggerInspectorRef"
           :key="selectedNodeId ?? undefined"
           :data="selection.data"
           @remove="clearSelection"
         />
         <WorkflowTargetInspector
           v-else
+          ref="targetInspectorRef"
           :key="selectedNodeId ?? undefined"
           :target="selection.data.target"
           :available-args="selection.data.availableArgs"

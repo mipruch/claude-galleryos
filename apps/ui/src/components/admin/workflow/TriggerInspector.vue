@@ -91,6 +91,10 @@ async function remove(): Promise<void> {
   else await schedulesStore.remove(props.data.schedule.id)
   emit('remove')
 }
+
+// Lets the parent view's Enter-key shortcut delete the active node through
+// the exact same function its own trash button calls.
+defineExpose({ remove })
 </script>
 
 <template>

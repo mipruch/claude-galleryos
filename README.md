@@ -2211,6 +2211,24 @@ stránky výše slouží jen k monitorování, přepnutí enable/disable a smaz�
   Neumístěné triggery se automaticky rozloží knihovnou `dagre`; instance
   naproti tomu má `position` vždy (`NOT NULL` — existence řádku *je*
   umístění, viz §5), takže dagre řeší jen trigger uzly bez uložené pozice.
+- **Multi-select a klávesové zkratky** (Vue Flow nativní chování, doladěné
+  přímým feedbackem): tažení výběrového obdélníku po plátně drží **Cmd/Ctrl**
+  (`selectionKeyCode`), ne výchozí Shift — Shift zůstává volný pro budoucí
+  použití. Tažení jednoho z více vybraných uzlů posune **všechny** vybrané
+  (Vue Flow to už kreslí samo), a `onNodeDragStop` teď persistuje pozici
+  **každého** uzlu z `event.nodes` (ne jen toho jednoho, co pointer skutečně
+  chytil) — dřív se uložila jen pozice chyceného uzlu a ostatní se po dalším
+  reaktivním překreslení vrátily na starou pozici, protože nic jejich vizuální
+  posun nepersistovalo. **Return/Enter** smaže aktivní (vybraný) uzel stejnou
+  cestou jako tlačítko koše v jeho inspectoru (`WorkflowsView`
+  volá `defineExpose`d `remove()` na aktuálně vykresleném inspectoru) — s
+  hlídáním, že focus není v inputu/textarey/selectu/tlačítku/contenteditable,
+  aby Enter při psaní jména nebo odesílání formuláře uzel nesmazal místo
+  uložení.
+- **Hledání v knihovně** — textové pole nad seznamy Scenes/Devices filtruje
+  obě sekce podle jména, sdílené s vyhledáváním v gridu zařízení a v seznamu
+  scén (`lib/text.ts` — `searchTerms`/`normalize`/`matchesAllTerms`, stejné
+  diakritice-insensitivní víceslovné AND matchování).
 
 #### `/layouts` — Builder User UI
 
