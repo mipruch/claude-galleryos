@@ -56,6 +56,48 @@
       "when": 1783948441420,
       "tag": "0007_workflow_canvas_positions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783966736527,
+      "tag": "0008_trigger_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783988831289,
+      "tag": "0009_scene_device_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783989807252,
+      "tag": "0010_drop_trigger_action_position",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784021100603,
+      "tag": "0011_workflow_targets_add",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784021121356,
+      "tag": "0012_workflow_targets_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784021168959,
+      "tag": "0013_workflow_targets_finalize",
+      "breakpoints": true
     }
   ]
 }

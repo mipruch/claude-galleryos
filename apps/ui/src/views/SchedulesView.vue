@@ -7,26 +7,39 @@
  * (display-side conversion). There are no controls to create/edit/toggle a
  * schedule here — this page is purely for monitoring; that lives in the admin UI.
  *
+ * A schedule fires 0..N `trigger_actions`, each wired to a `workflow_targets`
+ * instance (scene run or device command), not a single scene like before —
+ * the summary line lists whatever's wired, resolved through those instances.
+ *
  * Schedules have no live socket event, so we re-fetch on an interval and tick a
  * `now` clock so the relative labels ("in 5 min", "tomorrow") stay fresh.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CalendarClockIcon, ClockIcon, HistoryIcon, RefreshCwIcon } from '@lucide/vue'
+import type { WorkflowTargetDTO } from '@gallery/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSchedulesStore } from '@/stores/schedules'
+import { useTriggerActionsStore } from '@/stores/triggerActions'
+import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
 import { useScenesStore } from '@/stores/scenes'
+import { useDevicesStore } from '@/stores/devices'
 import { formatDateTime, formatRelative, nextRunOf } from '@/lib/schedules'
+import { resolveTargetNames, targetSummary } from '@/lib/workflowTargets'
 import { sceneIcon } from '@/lib/scenes'
 
 const store = useSchedulesStore()
+const triggerActionsStore = useTriggerActionsStore()
+const workflowTargetsStore = useWorkflowTargetsStore()
 const scenes = useScenesStore()
+const devices = useDevicesStore()
 
 /** Live clock driving the relative labels; ticked every 30s. */
 const now = ref(Date.now())
 
-// Re-fetch periodically (next_run_at only changes when a job fires) and tick the
-// clock more often so "in N minutes" counts down without a network round-trip.
+// Re-fetch periodically (next_run_at only changes when a job fires, and the
+// same for wiring) and tick the clock more often so "in N minutes" counts
+// down without a network round-trip.
 const REFETCH_MS = 60_000
 const TICK_MS = 30_000
 let refetch: ReturnType<typeof setInterval> | undefined
@@ -34,7 +47,15 @@ let tick: ReturnType<typeof setInterval> | undefined
 
 onMounted(() => {
   void store.fetchAll()
-  refetch = setInterval(() => void store.fetchAll(), REFETCH_MS)
+  void triggerActionsStore.fetchAll()
+  void workflowTargetsStore.fetchAll()
+  void scenes.fetchAll()
+  void devices.fetchAll()
+  refetch = setInterval(() => {
+    void store.fetchAll()
+    void triggerActionsStore.fetchAll()
+    void workflowTargetsStore.fetchAll()
+  }, REFETCH_MS)
   tick = setInterval(() => (now.value = Date.now()), TICK_MS)
 })
 onBeforeUnmount(() => {
@@ -42,10 +63,26 @@ onBeforeUnmount(() => {
   if (tick) clearInterval(tick)
 })
 
-const sceneName = (sceneId: string): string =>
-  scenes.records.find((s) => s.id === sceneId)?.name ?? 'Unknown scene'
-const sceneIconFor = (sceneId: string) =>
-  sceneIcon(scenes.records.find((s) => s.id === sceneId)?.icon)
+/** The workflow-target instances a schedule's trigger actions are wired to. */
+function wiredTargets(scheduleId: string): WorkflowTargetDTO[] {
+  const workflowTargetIds = new Set(
+    triggerActionsStore.records.filter((a) => a.scheduleId === scheduleId).map((a) => a.workflowTargetId),
+  )
+  return workflowTargetsStore.records.filter((t) => workflowTargetIds.has(t.id))
+}
+
+/** One summary line per instance wired to a schedule. */
+function actionSummaries(scheduleId: string): string[] {
+  return wiredTargets(scheduleId).map((target) =>
+    targetSummary(target.targetType, resolveTargetNames(target, scenes.records, devices.records)),
+  )
+}
+
+/** The icon of a schedule's first scene-type instance, else a generic clock. */
+function scheduleIcon(scheduleId: string) {
+  const firstScene = wiredTargets(scheduleId).find((t) => t.targetType === 'scene.execute')
+  return firstScene ? sceneIcon(scenes.records.find((s) => s.id === firstScene.targetId)?.icon) : CalendarClockIcon
+}
 
 const schedules = computed(() => store.enabledSchedules)
 /** Runs after the soonest one — the "then" list shown under the headline run. */
@@ -102,15 +139,13 @@ const upcomingTail = (id: string): string[] => store.previewsFor(id).slice(1)
       <Card v-for="job in schedules" :key="job.id">
         <CardHeader>
           <div class="flex items-start gap-3">
-            <component
-              :is="sceneIconFor(job.sceneId)"
-              class="text-muted-foreground mt-0.5 size-5 shrink-0"
-            />
+            <component :is="scheduleIcon(job.id)" class="text-muted-foreground mt-0.5 size-5 shrink-0" />
             <div class="min-w-0 flex-1">
               <CardTitle class="truncate">{{ job.name }}</CardTitle>
-              <p class="text-muted-foreground mt-0.5 truncate text-sm">
-                Runs <span class="text-foreground">{{ sceneName(job.sceneId) }}</span>
+              <p v-if="actionSummaries(job.id).length" class="text-muted-foreground mt-0.5 truncate text-sm">
+                {{ actionSummaries(job.id).join(' · ') }}
               </p>
+              <p v-else class="text-muted-foreground mt-0.5 text-sm italic">No actions wired yet</p>
             </div>
           </div>
         </CardHeader>

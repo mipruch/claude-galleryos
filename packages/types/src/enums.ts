@@ -13,5 +13,5 @@ export type ExecutionStatus = "running" | "completed" | "failed" | "aborted" | "
 /** Transport an input mapping listens on (`input_mappings.protocol`). */
 export type InputProtocol = "osc" | "tcp" | "http";
 
-/** What a matched input mapping does (`input_mappings.target_type`). */
-export type InputTargetType = "scene.execute" | "device.command" | "event.emit";
+/** What a trigger action does (`trigger_actions.target_type`) — run a scene, or call one device command. */
+export type TriggerTargetType = "scene.execute" | "device.command";

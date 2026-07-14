@@ -1,26 +1,43 @@
 <script setup lang="ts">
 /**
- * Workflow routing map — a spatial view over the mappings/schedules/scenes/
- * devices the admin already manages elsewhere. Every node is a projection of
- * an existing row; the canvas adds nothing to the execution model beyond
- * `position` (see `packages/types/src/canvas.ts`). Editing a trigger's target
- * by dragging a connection reuses the same store mutations the Mappings/
- * Schedules admin pages already call; editing a trigger's other fields opens
- * the existing `MappingFormDialog`/`ScheduleFormDialog` rather than
- * duplicating their forms here. Double-clicking* a scene node drills into its
- * own action-stage canvas (`WorkflowSceneView`), a separate route reusing the
- * same graph/canvas building blocks at a deeper zoom level.
+ * Workflow routing map — a spatial view over the mappings/schedules the admin
+ * manages, the `workflow_targets` instances they can fire (a placed,
+ * independently-configured scene run or device command — a scene/device may
+ * have any number of these), and the `trigger_actions` wiring one to the
+ * other. Every node projects an existing row; the canvas adds nothing to the
+ * execution model beyond `position` (see `packages/types/src/canvas.ts`).
  *
- * Deleting a mapping/schedule stays on their existing admin list pages — the
- * canvas is for arranging and wiring, not a second CRUD surface.
+ * Creation, wiring, editing and deletion all happen here — this is now the
+ * only place a trigger gets its name/pattern/cron edited and a target gets
+ * its command/params configured (the old MappingFormDialog/ScheduleFormDialog
+ * are gone; the Mappings/Schedules admin list pages route "New"/"Edit" here,
+ * the latter via `?select=<nodeId>`).
+ *
+ * A wire (trigger action) has no node of its own and nothing to configure —
+ * dragging a connection from a trigger to a target atomically creates one;
+ * the edge itself only shows a hover tooltip (signal args its owning
+ * mapping's pattern captures) and an inline delete button
+ * (`TriggerActionEdge`). Clicking a target node — not the wire — opens its
+ * inspector, since command/params live on the target instance (see
+ * `workflowGraph.ts`'s module doc): this lets the same device appear as two
+ * independent instances, e.g. one "on" and one "off". A target only appears
+ * on the canvas once it's been dragged there from the library panel (left
+ * sidebar, which always lists every scene/device — placing one always adds a
+ * new instance, never "moves" an existing one) or created that way earlier.
+ *
+ * A scene-type target has nothing else to configure (a scene run takes no
+ * params), so its inspector shows a button into its own action-stage canvas
+ * (`WorkflowSceneView`) instead, a separate route reusing the same
+ * graph/canvas building blocks at a deeper zoom level.
  */
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   VueFlow,
   useNodesInitialized,
   useVueFlow,
   type Connection,
+  type EdgeMouseEvent,
   type NodeDragEvent,
   type NodeMouseEvent,
 } from '@vue-flow/core'
@@ -30,43 +47,68 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import { PlusIcon, WaypointsIcon } from '@lucide/vue'
-import type { InputMappingDTO, ScheduledJobDTO } from '@gallery/types'
 import { useMappingsStore } from '@/stores/mappings'
 import { useSchedulesStore } from '@/stores/schedules'
+import { useTriggerActionsStore } from '@/stores/triggerActions'
+import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
-import { buildRoutingGraph, parseNodeId, type RoutingNode } from '@/lib/workflowGraph'
+import {
+  buildRoutingGraph,
+  mappingNodeId,
+  parseNodeId,
+  scheduleNodeId,
+  targetNodeId,
+  type RoutingNodeData,
+  type RoutingNode,
+  type RoutingEdge,
+  type TriggerOwnerKind,
+} from '@/lib/workflowGraph'
+import { readLibraryDragPayload } from '@/lib/libraryDrag'
 import { Button } from '@/components/ui/button'
-import MappingFormDialog from '@/components/admin/MappingFormDialog.vue'
-import ScheduleFormDialog from '@/components/admin/ScheduleFormDialog.vue'
 import TriggerNode from '@/components/admin/workflow/TriggerNode.vue'
 import TargetNode from '@/components/admin/workflow/TargetNode.vue'
+import TriggerActionEdge from '@/components/admin/workflow/TriggerActionEdge.vue'
+import LibraryPanel from '@/components/admin/workflow/LibraryPanel.vue'
+import TriggerInspector from '@/components/admin/workflow/TriggerInspector.vue'
+import WorkflowTargetInspector from '@/components/admin/workflow/WorkflowTargetInspector.vue'
 
 const router = useRouter()
+const route = useRoute()
 const mappingsStore = useMappingsStore()
 const schedulesStore = useSchedulesStore()
+const triggerActionsStore = useTriggerActionsStore()
+const workflowTargetsStore = useWorkflowTargetsStore()
 const scenesStore = useScenesStore()
 const devicesStore = useDevicesStore()
-const { fitView } = useVueFlow()
+const { fitView, project, vueFlowRef } = useVueFlow()
 const nodesInitialized = useNodesInitialized()
 
-onMounted(() => {
-  mappingsStore.fetchAll()
-  schedulesStore.fetchAll()
-  scenesStore.fetchAll()
-  devicesStore.fetchAll()
+onMounted(async () => {
+  await Promise.all([
+    mappingsStore.fetchAll(),
+    schedulesStore.fetchAll(),
+    triggerActionsStore.fetchAll(),
+    workflowTargetsStore.fetchAll(),
+    scenesStore.fetchAll(),
+    devicesStore.fetchAll(),
+  ])
+  // Deep-link from the Mappings/Schedules list pages' Edit action.
+  const select = route.query.select
+  if (typeof select === 'string') selectedNodeId.value = select
 })
 
-const graph = computed(() =>
-  buildRoutingGraph({
-    mappings: mappingsStore.records,
-    schedules: schedulesStore.records,
-    scenes: scenesStore.records,
-    devices: devicesStore.records,
-  }),
-)
+const graphInput = computed(() => ({
+  mappings: mappingsStore.records,
+  schedules: schedulesStore.records,
+  triggerActions: triggerActionsStore.records,
+  workflowTargets: workflowTargetsStore.records,
+  scenes: scenesStore.records,
+  devices: devicesStore.records,
+}))
+const graph = computed(() => buildRoutingGraph(graphInput.value))
 const nodes = computed<RoutingNode[]>(() => graph.value.nodes)
-const edges = computed(() => graph.value.edges)
+const edges = computed<RoutingEdge[]>(() => graph.value.edges)
 
 // `fit-view-on-init` fits as soon as <VueFlow> mounts — before the fetches
 // above resolve and before Vue Flow has measured the real nodes' bounds
@@ -77,81 +119,176 @@ watch(nodesInitialized, (ready) => {
   if (ready) void fitView()
 })
 
-// ── trigger dialogs (reused as-is, not reimplemented for the canvas) ──────
+// ── selection → right-sidebar inspector (hidden when nothing is selected) ──
 
-const mappingDialogOpen = ref(false)
-const selectedMapping = ref<InputMappingDTO | null>(null)
-function openMappingDialog(mapping: InputMappingDTO | null): void {
-  selectedMapping.value = mapping
-  mappingDialogOpen.value = true
+/** Which inspector (if any) the current selection drives — a single source of truth for the template. */
+type Selection =
+  | { kind: 'trigger'; data: Extract<RoutingNodeData, { kind: 'mapping' | 'schedule' }> }
+  | { kind: 'target'; data: Extract<RoutingNodeData, { kind: 'target' }> }
+
+const selectedNodeId = ref<string | null>(null)
+const selection = computed<Selection | null>(() => {
+  const data = nodes.value.find((n) => n.id === selectedNodeId.value)?.data
+  if (data?.kind === 'mapping' || data?.kind === 'schedule') return { kind: 'trigger', data }
+  if (data?.kind === 'target') return { kind: 'target', data }
+  return null
+})
+
+function clearSelection(): void {
+  selectedNodeId.value = null
 }
 
-const scheduleDialogOpen = ref(false)
-const selectedSchedule = ref<ScheduledJobDTO | null>(null)
-function openScheduleDialog(schedule: ScheduledJobDTO | null): void {
-  selectedSchedule.value = schedule
-  scheduleDialogOpen.value = true
+/** Select a just-created node so its inspector opens — a no-op if creation failed. */
+function selectNodeIfCreated<T extends { id: string }>(
+  created: T | null,
+  toNodeId: (id: string) => string,
+): void {
+  if (!created) return
+  selectedNodeId.value = toNodeId(created.id)
 }
+
+// Whichever inspector is currently mounted (mutually exclusive, see template)
+// exposes its own `remove()` — the Delete shortcut below calls the exact same
+// function the inspector's own delete button does, so there's one definition
+// of "how to delete the active node," not two.
+const triggerInspectorRef = ref<InstanceType<typeof TriggerInspector> | null>(null)
+const targetInspectorRef = ref<InstanceType<typeof WorkflowTargetInspector> | null>(null)
+
+/** Elements Delete/Backspace already has its own meaning on — never hijack it there (editing text, picking a Select option). */
+const KEY_HANDLING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'])
+/** Both keyboards' "delete" key — Mac's sends `Backspace`, Windows/Linux's own `Delete` key sends `Delete`. */
+const DELETE_KEYS = new Set(['Delete', 'Backspace'])
+
+/** Delete/Backspace removes the currently active node — same effect as its inspector's own trash button. */
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (!DELETE_KEYS.has(event.key) || !selection.value) return
+  const target = event.target as HTMLElement | null
+  if (target && (KEY_HANDLING_TAGS.has(target.tagName) || target.isContentEditable)) return
+  event.preventDefault()
+  if (selection.value.kind === 'trigger') void triggerInspectorRef.value?.remove()
+  else void targetInspectorRef.value?.remove()
+}
+
+onMounted(() => window.addEventListener('keydown', onWindowKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onWindowKeydown))
 
 // ── canvas interactions ────────────────────────────────────────────────────
 
+/** Toolbar "+": a bare, unwired trigger — selected immediately so the inspector opens for naming it. */
+async function createTrigger(kind: TriggerOwnerKind): Promise<void> {
+  if (kind === 'mapping') {
+    selectNodeIfCreated(
+      await mappingsStore.create({
+        name: 'New mapping',
+        protocol: 'osc',
+        pattern: '/',
+        enabled: true,
+      }),
+      mappingNodeId,
+    )
+    return
+  }
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  selectNodeIfCreated(
+    await schedulesStore.create({
+      name: 'New schedule',
+      cron: '0 8 * * *',
+      timezone: browserTz,
+      enabled: true,
+    }),
+    scheduleNodeId,
+  )
+}
+
+/** Every node kind just selects on click — a target's own inspector is where "open the scene editor" now lives. */
 function onNodeClick({ node }: NodeMouseEvent): void {
-  const { kind, value } = parseNodeId(node.id)
-  if (kind === 'mapping') openMappingDialog(mappingsStore.records.find((m) => m.id === value) ?? null)
-  else if (kind === 'schedule') openScheduleDialog(schedulesStore.records.find((s) => s.id === value) ?? null)
-  else if (kind === 'scene') router.push({ name: 'admin-workflow-scene', params: { id: value } })
+  const { kind } = parseNodeId(node.id)
+  if (kind === 'mapping' || kind === 'schedule' || kind === 'target') selectedNodeId.value = node.id
 }
 
-/** Persist a dragged trigger's position. Scene/device nodes auto-layout, so their drag is session-only. */
-function onNodeDragStop({ node }: NodeDragEvent): void {
-  const { kind, value } = parseNodeId(node.id)
-  const position = { x: node.position.x, y: node.position.y }
-  if (kind === 'mapping') void mappingsStore.update(value, { position })
-  else if (kind === 'schedule') void schedulesStore.update(value, { position })
+const hoveredEdgeId = ref<string | null>(null)
+function onEdgeMouseEnter({ edge }: EdgeMouseEvent): void {
+  hoveredEdgeId.value = edge.id
+}
+function onEdgeMouseLeave(): void {
+  hoveredEdgeId.value = null
 }
 
-type ConnectAction =
-  | { kind: 'mapping-to-scene'; mappingId: string; sceneId: string }
-  | { kind: 'mapping-to-device'; mappingId: string; deviceId: string }
-  | { kind: 'schedule-to-scene'; scheduleId: string; sceneId: string }
+type NodePosition = { x: number; y: number }
+
+/** Per-kind position persistence, keyed the same way `parseNodeId` tags a node id. */
+const POSITION_UPDATERS: Record<string, (id: string, position: NodePosition) => void> = {
+  mapping: (id, position) => void mappingsStore.update(id, { position }),
+  schedule: (id, position) => void schedulesStore.update(id, { position }),
+  target: (id, position) => void workflowTargetsStore.update(id, { position }),
+}
 
 /**
- * What a connection means, if anything — pure, so the pairing rules (a
- * schedule can only ever target a scene, etc.) are easy to reason about apart
- * from the store calls / dialog-opening they trigger.
+ * Persist every dragged node's position — every kind is draggable and now
+ * sticks. `nodes` (not the singular `node`) is every node that actually
+ * moved: for a multi-selected drag that's the whole selection, not just the
+ * one the pointer grabbed, so each one's move is saved instead of only the
+ * grabbed node's (the rest would otherwise snap back to their last-saved spot
+ * on the next reactive rebuild).
+ */
+function onNodeDragStop({ nodes: draggedNodes }: NodeDragEvent): void {
+  for (const node of draggedNodes) {
+    const { kind, value } = parseNodeId(node.id)
+    POSITION_UPDATERS[kind]?.(value, { x: node.position.x, y: node.position.y })
+  }
+}
+
+interface ConnectAction {
+  ownerKind: TriggerOwnerKind
+  ownerId: string
+  workflowTargetId: string
+}
+
+/**
+ * What a connection means, if anything — pure, so the pairing rule (trigger
+ * → target, nothing else) is easy to reason about apart from the store call
+ * it triggers.
  */
 function resolveConnectAction(connection: Connection): ConnectAction | null {
   const source = parseNodeId(connection.source)
   const target = parseNodeId(connection.target)
-  if (source.kind === 'mapping' && target.kind === 'scene') {
-    return { kind: 'mapping-to-scene', mappingId: source.value, sceneId: target.value }
-  }
-  if (source.kind === 'mapping' && target.kind === 'device') {
-    return { kind: 'mapping-to-device', mappingId: source.value, deviceId: target.value }
-  }
-  if (source.kind === 'schedule' && target.kind === 'scene') {
-    return { kind: 'schedule-to-scene', scheduleId: source.value, sceneId: target.value }
-  }
-  // Any other pairing (e.g. a schedule dropped on a device) isn't a target
-  // shape the server accepts.
-  return null
+  if (source.kind !== 'mapping' && source.kind !== 'schedule') return null
+  if (target.kind !== 'target') return null
+  return { ownerKind: source.kind, ownerId: source.value, workflowTargetId: target.value }
 }
 
-/** Drawing a connection rewires a trigger's target — the same mutation the Mappings/Schedules forms make. */
-function onConnect(connection: Connection): void {
-  const action = resolveConnectAction(connection)
-  if (!action) return
+/** Drawing a connection to a target wires it — the target itself is unchanged (and already selectable to configure). */
+async function onConnect(connection: Connection): Promise<void> {
+  const resolved = resolveConnectAction(connection)
+  if (!resolved) return
 
-  if (action.kind === 'mapping-to-scene') {
-    void mappingsStore.update(action.mappingId, { targetType: 'scene.execute', targetId: action.sceneId, targetCommand: null })
-  } else if (action.kind === 'mapping-to-device') {
-    // Which command to run can't be inferred from an edge drop — open the
-    // form (pre-filled) so the user picks one, same as editing it by hand.
-    const mapping = mappingsStore.records.find((m) => m.id === action.mappingId)
-    if (mapping) openMappingDialog({ ...mapping, targetType: 'device.command', targetId: action.deviceId, targetCommand: '' })
-  } else if (action.kind === 'schedule-to-scene') {
-    void schedulesStore.update(action.scheduleId, { sceneId: action.sceneId })
-  }
+  const owner =
+    resolved.ownerKind === 'mapping'
+      ? { mappingId: resolved.ownerId }
+      : { scheduleId: resolved.ownerId }
+  const created = await triggerActionsStore.create({
+    ...owner,
+    workflowTargetId: resolved.workflowTargetId,
+  })
+  if (created) selectedNodeId.value = targetNodeId(resolved.workflowTargetId)
+}
+
+/** A drop event's page position, translated into flow coordinates (accounting for the pane's own offset). */
+function dropPosition(event: DragEvent): NodePosition {
+  const bounds = vueFlowRef.value?.getBoundingClientRect() ?? { left: 0, top: 0 }
+  return project({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+}
+
+/** Dropping a library card always places a brand new instance — the library never empties, so the same scene/device can be dropped again for a second, independently-configured node. */
+async function onLibraryDrop(event: DragEvent): Promise<void> {
+  const payload = readLibraryDragPayload(event)
+  if (!payload) return
+  const created = await workflowTargetsStore.create({
+    targetType: payload.kind === 'scene' ? 'scene.execute' : 'device.command',
+    targetId: payload.id,
+    position: dropPosition(event),
+  })
+  selectNodeIfCreated(created, targetNodeId)
 }
 </script>
 
@@ -163,39 +300,92 @@ function onConnect(connection: Connection): void {
         <p class="font-medium">Trigger routing</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" @click="openScheduleDialog(null)">
+        <Button variant="outline" size="sm" @click="createTrigger('schedule')">
           <PlusIcon class="size-4" />
           New schedule
         </Button>
-        <Button size="sm" @click="openMappingDialog(null)">
+        <Button size="sm" @click="createTrigger('mapping')">
           <PlusIcon class="size-4" />
           New mapping
         </Button>
       </div>
     </div>
 
-    <div class="min-h-0 flex-1">
-      <VueFlow
-        :nodes="nodes"
-        :edges="edges"
-        :delete-key-code="null"
-        :min-zoom="0.25"
-        @node-click="onNodeClick"
-        @node-drag-stop="onNodeDragStop"
-        @connect="onConnect"
-      >
-        <Background :gap="20" />
-        <Controls :show-interactive="false" />
-        <template #node-trigger="props">
-          <TriggerNode :data="props.data" :selected="props.selected" />
-        </template>
-        <template #node-target="props">
-          <TargetNode :data="props.data" :selected="props.selected" />
-        </template>
-      </VueFlow>
-    </div>
+    <div class="flex min-h-0 flex-1">
+      <aside class="w-56 shrink-0 overflow-y-auto border-r p-3">
+        <LibraryPanel :scenes="scenesStore.records" :devices="devicesStore.records" />
+      </aside>
 
-    <MappingFormDialog v-model:open="mappingDialogOpen" :mapping="selectedMapping" />
-    <ScheduleFormDialog v-model:open="scheduleDialogOpen" :schedule="selectedSchedule" />
+      <div class="min-w-0 flex-1" @dragover.prevent @drop="onLibraryDrop">
+        <VueFlow
+          :nodes="nodes"
+          :edges="edges"
+          :delete-key-code="null"
+          :selection-key-code="['Meta', 'Control']"
+          :min-zoom="0.25"
+          @node-click="onNodeClick"
+          @node-drag-stop="onNodeDragStop"
+          @connect="onConnect"
+          @edge-mouse-enter="onEdgeMouseEnter"
+          @edge-mouse-leave="onEdgeMouseLeave"
+          @pane-click="clearSelection"
+        >
+          <Background :gap="20" />
+          <Controls :show-interactive="false" />
+          <template #node-trigger="props">
+            <TriggerNode :data="props.data" :selected="props.selected" />
+          </template>
+          <template #node-target="props">
+            <TargetNode :data="props.data" :selected="props.selected" />
+          </template>
+          <template #edge-trigger-action="props">
+            <TriggerActionEdge
+              :id="props.id"
+              :source-x="props.sourceX"
+              :source-y="props.sourceY"
+              :target-x="props.targetX"
+              :target-y="props.targetY"
+              :source-position="props.sourcePosition"
+              :target-position="props.targetPosition"
+              :marker-end="props.markerEnd"
+              :data="props.data"
+              :selected="props.selected"
+              :hovered="hoveredEdgeId === props.id"
+            />
+          </template>
+        </VueFlow>
+      </div>
+
+      <!-- Inspector: the canvas replacement for the old Mapping/Schedule/target dialogs. -->
+      <aside v-if="selection" class="w-96 shrink-0 overflow-y-auto border-l p-3">
+        <TriggerInspector
+          v-if="selection.kind === 'trigger'"
+          ref="triggerInspectorRef"
+          :key="selectedNodeId ?? undefined"
+          :data="selection.data"
+          @remove="clearSelection"
+        />
+        <WorkflowTargetInspector
+          v-else
+          ref="targetInspectorRef"
+          :key="selectedNodeId ?? undefined"
+          :target="selection.data.target"
+          :available-args="selection.data.availableArgs"
+          :has-signal-wire="selection.data.hasSignalWire"
+          @remove="clearSelection"
+        />
+      </aside>
+    </div>
   </div>
 </template>
+
+<style>
+.vue-flow__controls-button {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+
+  svg {
+    fill: var(--foreground);
+  }
+}
+</style>

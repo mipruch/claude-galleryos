@@ -1,17 +1,18 @@
 <script setup lang="ts">
 /**
- * Admin schedules list — every CRON job with its scene, expression, timezone
- * and soonest upcoming run, plus enable/disable, edit and delete. Reuses
- * `useSchedulesStore` (now with CRUD) and `useScenesStore` for scene names.
+ * Admin schedules list — every CRON job with its expression, timezone and
+ * soonest upcoming run, plus enable/disable and delete. Creating and wiring a
+ * schedule's trigger actions both happen on the workflow canvas now (the old
+ * ScheduleFormDialog is gone); "New" and "Edit" here just navigate there, the
+ * latter with the row pre-selected.
  */
 import { onMounted, ref } from 'vue'
 import { CalendarClockIcon, PencilIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
 import type { ScheduledJobDTO } from '@gallery/types'
+import { useRouter } from 'vue-router'
 import { useSchedulesStore } from '@/stores/schedules'
-import { useScenesStore } from '@/stores/scenes'
 import { formatDateTime, formatRelative, nextRunOf } from '@/lib/schedules'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
@@ -24,34 +25,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import ScheduleFormDialog from '@/components/admin/ScheduleFormDialog.vue'
 
+const router = useRouter()
 const store = useSchedulesStore()
-const scenes = useScenesStore()
 
 onMounted(() => {
   store.fetchAll()
-  scenes.fetchAll()
 })
 
-const sceneName = (id: string) => scenes.records.find((s) => s.id === id)?.name ?? id
 const nowMs = Date.now()
 const nextRun = (s: ScheduledJobDTO) => nextRunOf(s, store.previewsFor(s.id))
 
-// ── dialog + delete state ───────────────────────────────────────────────────
-const formOpen = ref(false)
-const editing = ref<ScheduledJobDTO | null>(null)
+function openOnCanvas(s?: ScheduledJobDTO): void {
+  router.push({ name: 'admin-workflows', query: s ? { select: `schedule:${s.id}` } : {} })
+}
+
+// ── delete state ────────────────────────────────────────────────────────────
 const toDelete = ref<ScheduledJobDTO | null>(null)
 const deleteOpen = ref(false)
 
-function openCreate(): void {
-  editing.value = null
-  formOpen.value = true
-}
-function openEdit(s: ScheduledJobDTO): void {
-  editing.value = s
-  formOpen.value = true
-}
 function askDelete(s: ScheduledJobDTO): void {
   toDelete.value = s
   deleteOpen.value = true
@@ -68,7 +60,7 @@ async function confirmDelete(): Promise<void> {
   <div class="flex flex-col gap-4 p-6">
     <div class="flex items-center justify-between gap-4">
       <p class="text-muted-foreground text-sm">{{ store.records.length }} schedule(s)</p>
-      <Button @click="openCreate">
+      <Button @click="openOnCanvas()">
         <PlusIcon class="size-4" />
         New schedule
       </Button>
@@ -79,7 +71,6 @@ async function confirmDelete(): Promise<void> {
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Scene</TableHead>
             <TableHead>CRON</TableHead>
             <TableHead>Timezone</TableHead>
             <TableHead>Next run</TableHead>
@@ -90,9 +81,6 @@ async function confirmDelete(): Promise<void> {
         <TableBody>
           <TableRow v-for="s in store.records" :key="s.id">
             <TableCell class="font-medium">{{ s.name }}</TableCell>
-            <TableCell>
-              <Badge variant="secondary">{{ sceneName(s.sceneId) }}</Badge>
-            </TableCell>
             <TableCell class="font-mono text-xs">{{ s.cron }}</TableCell>
             <TableCell class="text-muted-foreground">{{ s.timezone }}</TableCell>
             <TableCell class="text-muted-foreground">
@@ -106,7 +94,7 @@ async function confirmDelete(): Promise<void> {
             </TableCell>
             <TableCell class="text-right">
               <div class="flex justify-end gap-1">
-                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(s)">
+                <Button variant="ghost" size="icon-sm" aria-label="Edit on canvas" @click="openOnCanvas(s)">
                   <PencilIcon class="size-4" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(s)">
@@ -117,22 +105,20 @@ async function confirmDelete(): Promise<void> {
           </TableRow>
 
           <TableRow v-if="!store.records.length">
-            <TableCell colspan="7" class="text-muted-foreground py-10 text-center">
+            <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
               <CalendarClockIcon class="mx-auto mb-2 size-6 opacity-50" />
-              No schedules yet. Create one to run a scene on a timer.
+              No schedules yet. Create one on the workflow canvas to run a scene or device action on a timer.
             </TableCell>
           </TableRow>
         </TableBody>
       </Table>
     </div>
 
-    <ScheduleFormDialog v-model:open="formOpen" :schedule="editing" />
-
     <AlertDialog v-model:open="deleteOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{{ toDelete?.name }}”?</AlertDialogTitle>
-          <AlertDialogDescription>This unregisters the timer and removes the schedule.</AlertDialogDescription>
+          <AlertDialogDescription>This unregisters the timer and removes the schedule and any trigger actions wired to it.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>

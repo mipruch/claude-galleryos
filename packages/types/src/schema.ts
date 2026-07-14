@@ -15,7 +15,7 @@
 
 import { sql } from "drizzle-orm";
 import type { CanvasPosition } from "./canvas.ts";
-import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
+import type { InputProtocol, OnFailure, TriggerTargetType } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
   bigserial,
@@ -273,14 +273,13 @@ export const sceneExecutions = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────
-// scheduled_jobs — CRON schedules
+// scheduled_jobs — CRON schedules. Purely "when": what runs lives in
+// trigger_actions below, so a schedule can exist unwired (no rows yet)
+// and later fan out to several actions — it no longer embeds a target.
 // ─────────────────────────────────────────────────────────────
 export const scheduledJobs = pgTable("scheduled_jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 100 }).notNull(),
-  sceneId: uuid("scene_id")
-    .notNull()
-    .references(() => scenes.id, { onDelete: "cascade" }),
   cron: varchar("cron", { length: 100 }).notNull(),
   timezone: varchar("timezone", { length: 50 }).notNull().default("Europe/Prague"),
   enabled: boolean("enabled").notNull().default(true),
@@ -294,7 +293,8 @@ export const scheduledJobs = pgTable("scheduled_jobs", {
 });
 
 // ─────────────────────────────────────────────────────────────
-// input_mappings — OSC/TCP/HTTP signal → action
+// input_mappings — OSC/TCP/HTTP signal → match. Purely "when" too, same
+// reasoning as scheduled_jobs: what runs lives in trigger_actions.
 // ─────────────────────────────────────────────────────────────
 export const inputMappings = pgTable(
   "input_mappings",
@@ -303,10 +303,6 @@ export const inputMappings = pgTable(
     name: varchar("name", { length: 100 }).notNull(),
     protocol: varchar("protocol", { length: 20 }).$type<InputProtocol>().notNull(),
     pattern: varchar("pattern", { length: 255 }).notNull(),
-    targetType: varchar("target_type", { length: 50 }).$type<InputTargetType>().notNull(),
-    targetId: uuid("target_id"),
-    targetCommand: varchar("target_command", { length: 100 }),
-    paramsTemplate: jsonb("params_template").$type<Record<string, unknown>>().notNull().default({}),
     enabled: boolean("enabled").notNull().default(true),
     // Node position on the workflow routing-map canvas (see scene_actions.position).
     position: jsonb("position").$type<CanvasPosition | null>(),
@@ -314,6 +310,74 @@ export const inputMappings = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index("idx_input_mappings_protocol").on(t.protocol, t.enabled)],
+);
+
+// ─────────────────────────────────────────────────────────────
+// workflow_targets — a scene or device *instance* placed on the workflow
+// canvas: what to run and (for a device) which command + params. A scene or
+// device may have any number of these — placing the same one twice gives two
+// independently-configured, independently-positioned nodes (e.g. one "Dimmer
+// · setLevel(1)" and another "Dimmer · setLevel(0)" for the same physical
+// device), not a shared singleton. `targetId` carries no hard FK (it means a
+// scene or a device depending on `targetType`, checked in the route layer,
+// same as scene_actions' device_id).
+//
+// `targetCommand`/`params` apply only to `device.command` — a `scene.execute`
+// instance runs the scene as-is, no configuration of its own. `params` is
+// either literal values or `{arg[0]}`/`{:name}` tokens the dispatcher
+// substitutes from a firing mapping's signal (see core/templating.ts); which
+// tokens are available to reference depends on which mappings are wired to
+// this instance, not on the instance itself.
+//
+// `position` is NOT NULL: existence on this table *is* placement — there is
+// no "referenced but unplaced" state to represent (see trigger_actions below,
+// which can only wire to an instance that already exists here).
+// ─────────────────────────────────────────────────────────────
+export const workflowTargets = pgTable(
+  "workflow_targets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    targetType: varchar("target_type", { length: 50 }).$type<TriggerTargetType>().notNull(),
+    targetId: uuid("target_id").notNull(),
+    targetCommand: varchar("target_command", { length: 100 }),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    position: jsonb("position").$type<CanvasPosition>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("idx_workflow_targets_target").on(t.targetType, t.targetId)],
+);
+
+// ─────────────────────────────────────────────────────────────
+// trigger_actions — which trigger fires which placed workflow_targets
+// instance: a pure link, one row per wire, so a single trigger can fan out to
+// several instances and a single instance can be fed by several triggers.
+// `scheduleId` XOR `mappingId` names the owning trigger; `workflowTargetId`
+// must already exist (the canvas can only wire to an already-placed
+// instance — drawing the connection is what creates this row).
+// ─────────────────────────────────────────────────────────────
+export const triggerActions = pgTable(
+  "trigger_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scheduleId: uuid("schedule_id").references(() => scheduledJobs.id, { onDelete: "cascade" }),
+    mappingId: uuid("mapping_id").references(() => inputMappings.id, { onDelete: "cascade" }),
+    workflowTargetId: uuid("workflow_target_id")
+      .notNull()
+      .references(() => workflowTargets.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("idx_trigger_actions_schedule").on(t.scheduleId),
+    index("idx_trigger_actions_mapping").on(t.mappingId),
+    index("idx_trigger_actions_target").on(t.workflowTargetId),
+    check(
+      "trigger_actions_owner_chk",
+      sql`(${t.scheduleId} IS NOT NULL AND ${t.mappingId} IS NULL)
+        OR (${t.mappingId} IS NOT NULL AND ${t.scheduleId} IS NULL)`,
+    ),
+  ],
 );
 
 // ─────────────────────────────────────────────────────────────

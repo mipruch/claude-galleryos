@@ -1,12 +1,23 @@
 /**
- * Scheduler tests — hermetic, with a virtual clock and fake timers (no real
- * `setTimeout`, no DB, no SceneEngine). We control time explicitly and advance it
- * to fire timers, then assert: jobs are armed with the right next-run, firing
- * runs the scene with `source: "scheduler"` and re-arms the following occurrence,
- * disabled jobs are skipped, and the dynamic add/remove/reload API tracks state.
+ * Scheduler tests — hermetic, with a virtual clock, fake timers, a fake
+ * trigger-actions source, and a fake dispatcher (no real `setTimeout`, no DB, no
+ * SceneEngine/DeviceManager — those are the TriggerActionDispatcher's concern).
+ * We control time explicitly and advance it to fire timers, then assert: jobs
+ * are armed with the right next-run, firing dispatches the job's wired trigger
+ * actions with `source: "scheduler"` and re-arms the following occurrence, a job
+ * with no wired actions yet still re-arms without dispatching, disabled jobs are
+ * skipped, and the dynamic add/remove/reload API tracks state.
+ *
+ * `dispatchActions` awaits the trigger-actions repo before calling the
+ * dispatcher, so — unlike the old single-microtask-deep fake SceneEngine call —
+ * the fire-and-forget chain is a few microtasks deep. `advanceTo` flushes with a
+ * real macrotask tick (`setTimeout(…, 0)`) rather than a single
+ * `await Promise.resolve()`, since the JS event loop always fully drains the
+ * microtask queue before running the next macrotask, regardless of chain depth.
  */
 
 import { describe, expect, test } from "bun:test";
+import type { DispatchableTriggerAction } from "../../src/core/TriggerActionDispatcher.ts";
 import { Scheduler, type ScheduledJobRecord } from "../../src/core/Scheduler.ts";
 import { logger } from "../../src/logger.ts";
 
@@ -37,21 +48,44 @@ function makeClock(start = T0) {
         nowMs = pick.fireAt;
         timers.delete(pick.id);
         pick.cb();
-        await Promise.resolve(); // let the (synchronous-call) async chains settle
+        // Flush the fire-and-forget dispatch chain (a few microtasks deep — see
+        // file header) before checking for the next due timer.
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
       nowMs = target;
     },
   };
 }
 
-/** Fake SceneEngine recording calls synchronously (independent of promise timing). */
-function makeEngine(status = "completed") {
-  const calls: Array<{ sceneId: string; source: string; sourceDetail?: string }> = [];
+/** Build a trigger action (already joined with its workflow_target) with sensible defaults. */
+function triggerAction(partial: Partial<DispatchableTriggerAction> = {}): DispatchableTriggerAction {
+  return {
+    id: partial.id ?? crypto.randomUUID(),
+    targetType: partial.targetType ?? "scene.execute",
+    targetId: partial.targetId ?? "s1",
+    targetCommand: partial.targetCommand ?? null,
+    params: partial.params ?? {},
+  };
+}
+
+/** Fake trigger-actions source keyed by scheduleId (mutable so tests can rewire). */
+function makeTriggerActionsSource(byJob: Record<string, DispatchableTriggerAction[]> = {}) {
+  return {
+    byJob,
+    async listDispatchableByScheduleId(scheduleId: string) {
+      return byJob[scheduleId] ?? [];
+    },
+  };
+}
+
+/** Fake dispatcher recording calls synchronously up to its own await boundary. */
+function makeDispatcher() {
+  const calls: Array<{ actionIds: string[]; source: string; sourceDetail: string }> = [];
   return {
     calls,
-    executeScene(sceneId: string, source: string, opts?: { sourceDetail?: string }) {
-      calls.push({ sceneId, source, sourceDetail: opts?.sourceDetail });
-      return Promise.resolve({ status });
+    async dispatchAll(actions: readonly DispatchableTriggerAction[], source: string, sourceDetail: string) {
+      calls.push({ actionIds: actions.map((a) => a.id), source, sourceDetail });
+      return actions.map((a) => ({ triggerActionId: a.id, targetType: a.targetType, ok: true }));
     },
   };
 }
@@ -84,7 +118,6 @@ function job(p: Partial<ScheduledJobRecord> = {}): ScheduledJobRecord {
   return {
     id: "j1",
     name: "Job 1",
-    sceneId: "s1",
     cron: "*/15 * * * *", // every 15 minutes
     timezone: "UTC",
     enabled: true,
@@ -92,19 +125,21 @@ function job(p: Partial<ScheduledJobRecord> = {}): ScheduledJobRecord {
   };
 }
 
-function makeScheduler(jobs: ScheduledJobRecord[]) {
+function makeScheduler(jobs: ScheduledJobRecord[], actionsByJob: Record<string, DispatchableTriggerAction[]> = {}) {
   const clock = makeClock();
-  const engine = makeEngine();
+  const triggerActions = makeTriggerActionsSource(actionsByJob);
+  const dispatcher = makeDispatcher();
   const repo = makeJobsRepo(jobs);
   const scheduler = new Scheduler({
     jobs: repo,
-    sceneEngine: engine,
+    triggerActions,
+    dispatcher,
     logger,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
   });
-  return { scheduler, clock, engine, repo };
+  return { scheduler, clock, dispatcher, triggerActions, repo };
 }
 
 describe("Scheduler — startup", () => {
@@ -122,12 +157,12 @@ describe("Scheduler — startup", () => {
     expect(repo.nextRunAt.has("j2")).toBe(false);
   });
 
-  test("warns but does not auto-run a missed job (no scene fired on startup)", async () => {
+  test("warns but does not auto-run a missed job (no dispatch on startup)", async () => {
     const missed = job({ id: "j1", nextRunAt: new Date(T0 - 3_600_000) }); // 1h overdue
-    const { scheduler, engine } = makeScheduler([missed]);
+    const { scheduler, dispatcher } = makeScheduler([missed], { j1: [triggerAction()] });
     await scheduler.start();
 
-    expect(engine.calls).toHaveLength(0); // missed run is NOT auto-executed
+    expect(dispatcher.calls).toHaveLength(0); // missed run is NOT auto-executed
     expect(scheduler.scheduledCount).toBe(1); // but it is re-armed going forward
   });
 
@@ -140,27 +175,39 @@ describe("Scheduler — startup", () => {
 });
 
 describe("Scheduler — firing", () => {
-  test("fires the scene with source 'scheduler' and re-arms the next run", async () => {
-    const { scheduler, clock, engine, repo } = makeScheduler([job({ id: "j1", sceneId: "s1" })]);
+  test("dispatches the job's wired trigger actions with source 'scheduler' and re-arms the next run", async () => {
+    const wired = triggerAction({ id: "ta1", targetId: "s1" });
+    const { scheduler, clock, dispatcher, repo } = makeScheduler([job({ id: "j1" })], { j1: [wired] });
     await scheduler.start();
 
     // Advance to the first fire (10:15Z).
     await clock.advanceTo(Date.parse("2026-06-21T10:15:00Z"));
 
-    expect(engine.calls).toHaveLength(1);
-    expect(engine.calls[0]).toEqual({ sceneId: "s1", source: "scheduler", sourceDetail: "scheduler:j1" });
+    expect(dispatcher.calls).toHaveLength(1);
+    expect(dispatcher.calls[0]).toEqual({ actionIds: ["ta1"], source: "scheduler", sourceDetail: "scheduler:j1" });
     expect(repo.lastRunAt.get("j1")?.toISOString()).toBe("2026-06-21T10:15:00.000Z");
     // Re-armed for the following occurrence (10:30Z), still exactly one timer.
     expect(scheduler.scheduledCount).toBe(1);
     expect(repo.nextRunAt.get("j1")?.toISOString()).toBe("2026-06-21T10:30:00.000Z");
   });
 
-  test("fires repeatedly as time advances across multiple occurrences", async () => {
-    const { scheduler, clock, engine } = makeScheduler([job()]);
+  test("a job with no wired trigger actions still fires (re-arms, persists last-run) but never dispatches", async () => {
+    const { scheduler, clock, dispatcher, repo } = makeScheduler([job({ id: "j1" })]); // no actions wired
+    await scheduler.start();
+
+    await clock.advanceTo(Date.parse("2026-06-21T10:15:00Z"));
+
+    expect(dispatcher.calls).toHaveLength(0);
+    expect(repo.lastRunAt.get("j1")?.toISOString()).toBe("2026-06-21T10:15:00.000Z");
+    expect(scheduler.scheduledCount).toBe(1);
+  });
+
+  test("dispatches repeatedly as time advances across multiple occurrences", async () => {
+    const { scheduler, clock, dispatcher } = makeScheduler([job()], { j1: [triggerAction()] });
     await scheduler.start();
 
     await clock.advanceTo(Date.parse("2026-06-21T11:00:00Z")); // 10:15,10:30,10:45,11:00
-    expect(engine.calls).toHaveLength(4);
+    expect(dispatcher.calls).toHaveLength(4);
   });
 });
 
@@ -176,13 +223,15 @@ describe("Scheduler — dynamic API", () => {
   });
 
   test("removeJob cancels a job's timer", async () => {
-    const { scheduler, clock, engine } = makeScheduler([job({ id: "j1" })]);
+    const { scheduler, clock, dispatcher } = makeScheduler([job({ id: "j1" })], {
+      j1: [triggerAction()],
+    });
     await scheduler.start();
     scheduler.removeJob("j1");
     expect(scheduler.scheduledCount).toBe(0);
 
     await clock.advanceTo(Date.parse("2026-06-21T11:00:00Z"));
-    expect(engine.calls).toHaveLength(0); // never fires after removal
+    expect(dispatcher.calls).toHaveLength(0); // never fires after removal
   });
 
   test("reloadJob arms when enabled and cancels when disabled", async () => {
@@ -212,7 +261,10 @@ describe("Scheduler — dynamic API", () => {
 
 describe("Scheduler — stop", () => {
   test("stop cancels all timers; nothing fires afterwards", async () => {
-    const { scheduler, clock, engine } = makeScheduler([job({ id: "j1" }), job({ id: "j2" })]);
+    const { scheduler, clock, dispatcher } = makeScheduler([job({ id: "j1" }), job({ id: "j2" })], {
+      j1: [triggerAction()],
+      j2: [triggerAction()],
+    });
     await scheduler.start();
     expect(scheduler.scheduledCount).toBe(2);
 
@@ -220,6 +272,6 @@ describe("Scheduler — stop", () => {
     expect(scheduler.scheduledCount).toBe(0);
 
     await clock.advanceTo(Date.parse("2026-06-21T12:00:00Z"));
-    expect(engine.calls).toHaveLength(0);
+    expect(dispatcher.calls).toHaveLength(0);
   });
 });

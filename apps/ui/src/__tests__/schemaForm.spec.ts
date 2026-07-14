@@ -50,6 +50,37 @@ describe('schemaToFields', () => {
     expect(schemaToFields(undefined)).toEqual([])
   })
 
+  describe('bounded number fields (Slider-driving minimum/maximum/step)', () => {
+    it('carries minimum/maximum through and steps by 1 for an integer field', () => {
+      const field = schemaToFields(schema).find((f) => f.key === 'port')!
+      expect(field.minimum).toBe(1)
+      expect(field.maximum).toBe(65535)
+      expect(field.step).toBe(1)
+    })
+
+    it('steps by a hundredth of the range for a continuous number field (e.g. a 0..1 fader level)', () => {
+      const levelSchema: JsonSchema = {
+        type: 'object',
+        properties: { level: { type: 'number', title: 'Level', minimum: 0, maximum: 1 } },
+      }
+      const field = schemaToFields(levelSchema).find((f) => f.key === 'level')!
+      expect(field.minimum).toBe(0)
+      expect(field.maximum).toBe(1)
+      expect(field.step).toBeCloseTo(0.01)
+    })
+
+    it('leaves minimum/maximum/step unset without both bounds declared', () => {
+      const unboundedSchema: JsonSchema = {
+        type: 'object',
+        properties: { amount: { type: 'number', title: 'Amount', minimum: 0 } },
+      }
+      const field = schemaToFields(unboundedSchema).find((f) => f.key === 'amount')!
+      expect(field.minimum).toBe(0)
+      expect(field.maximum).toBeUndefined()
+      expect(field.step).toBeUndefined()
+    })
+  })
+
   // A `connectionEnum` field (e.g. Extron's output number) resolves into a
   // labeled dropdown once the owning connection's config is known, without
   // changing its kind/validation — it's still a plain `number` field.

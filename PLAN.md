@@ -849,8 +849,229 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         Unpositioned nodes auto-layout with `@dagrejs/dagre`. New pure
         `lib/workflowGraph.ts` (unit-tested) builds both graphs from data the
         mappings/schedules/scenes/devices stores already hold.
+  - [x] **`trigger_actions` redesign — optional targets, N actions per
+        trigger.** Follow-up to the routing map above: `scheduled_jobs`/
+        `input_mappings` no longer carry a target at all (dropped
+        `scene_id`/`target_type`/`target_id`/`target_command`/
+        `params_template`) — a schedule or mapping is now a pure "when" row,
+        valid and savable with zero actions wired to it. What runs lives in a
+        new `trigger_actions` table (mirrors `scene_actions`'s shape: a
+        one-to-many child with an XOR-FK CHECK constraint, here
+        `schedule_id`/`mapping_id`), giving each trigger 0..N actions that
+        each independently target `scene.execute` or `device.command`;
+        `event.emit` was dropped from `TriggerTargetType` — a trigger action
+        runs a scene or a device command, nothing else. An unwired action
+        (dropped on the canvas before a target is picked) is a normal, valid
+        row; the dispatcher just skips it at fire time.
+        - New shared `TriggerActionDispatcher` (`core/TriggerActionDispatcher.ts`)
+          is the single place a `trigger_actions` row becomes a real effect,
+          used by both `Scheduler` (literal params, fetched fresh from the
+          repo on every cron fire — no cache to invalidate on a wiring edit)
+          and `InputMapper` (params template-evaluated against the ingress
+          signal's args/path params, cached alongside the mapping and
+          reloaded on a mapping- or trigger-action edit). Template evaluation
+          moved out of `input/patterns.ts` into a new shared
+          `core/templating.ts` since both dispatch paths need it now, not
+          just `InputMapper`.
+        - New `triggerActionsRepo` + REST `/api/v1/trigger-actions` (CRUD),
+          with an owner-XOR-target-type validation that mirrors the DB CHECK
+          constraint; a given `targetId` must resolve to a real scene/device,
+          but an absent one is accepted (unwired). `/mappings` and
+          `/schedules` routes dropped their target validation entirely.
+        - Canvas is now a 3-tier graph — trigger → its 0..N trigger-action
+          nodes → each action's resolved target — instead of the earlier
+          2-tier trigger → target. Dragging a connection **straight from a
+          trigger to a target** auto-creates and wires a new trigger action in
+          one gesture (so routing one schedule to several scenes/devices is N
+          drag gestures, not N clicks through a form); dragging from an
+          existing action node to a target just rewires that one action. A
+          "+" under every trigger creates a bare, unwired action and selects
+          it so the inspector opens for picking a target by hand. Scenes are
+          always shown as target nodes (bounded, admin-managed list) so one
+          can be wired up before any trigger points at it yet; devices only
+          appear once some action already targets them (avoids cluttering the
+          canvas with every device up front — a new device target is picked
+          via the inspector's Select, and its node appears once wired).
+        - **The canvas is now the only place a trigger/action's fields get
+          set** — `MappingFormDialog`/`ScheduleFormDialog` are deleted, per
+          the explicit design call to replace them with the canvas's own
+          right-sidebar inspector (new `TriggerInspector.vue` for
+          name/enabled/protocol+pattern or cron+timezone, and
+          `TriggerActionInspector.vue` + `TriggerActionDeviceFields.vue` for
+          target type/scene or device+command/params). The Mappings/Schedules
+          admin list pages are now pure monitoring + toggle + delete; their
+          "New"/"Edit" actions navigate to `/admin/workflows` (Edit via
+          `?select=<nodeId>` to pre-select the row's node and open its
+          inspector). The user-facing `/schedules` monitoring page now lists
+          every wired trigger action's summary per schedule instead of a
+          single scene name, since a schedule can fire more than one action.
+  - [x] **Canvas UX redesign — edges instead of action nodes, drag-and-drop
+        library, persisted target positions, widget-based params.** Follow-up
+        to the 3-tier canvas above, from direct admin feedback on it: the
+        action-node tier is gone, `position` moved from `trigger_actions` to
+        `scenes`/`devices` (migrations `0009`, `0010`), and raw-JSON param
+        editing became typed widgets.
+        - `lib/workflowGraph.ts`'s `buildRoutingGraph` is now a 2-tier graph:
+          one node per trigger and per placed-or-wired target, one **edge**
+          per `trigger_action` connecting a trigger straight to its target.
+          The action has no node of its own — its id and full row travel as
+          the edge's `data`, so selecting the edge (`@edge-click`) is how
+          `TriggerActionInspector` opens, the same way selecting a node
+          always has. Because an edge needs both endpoints to exist, a
+          `trigger_action` can no longer be created unwired — drawing a
+          connection from an already-visible trigger to an already-visible
+          target *is* what creates it, atomically wired. `TriggerActionNode.vue`,
+          `TriggerActionDeviceFields.vue`, and the routing map's "+" buttons
+          (`addActionNodeId`/`parseAddActionValue`) are deleted; the scene
+          stage canvas's own unrelated "+" buttons are untouched.
+        - New `position: jsonb` column on `scenes`/`devices` (migration
+          `0009`), threaded through their create/update routes/repos exactly
+          like every other positioned row; `trigger_actions.position` (no
+          longer meaningful — nothing renders it as a node) is dropped
+          (migration `0010`). A scene/device only renders as a canvas node
+          once it has a saved `position` *or* some `trigger_action` already
+          targets it (`unplacedLibraryItems` is the complementary set) — this
+          also fixes the pre-existing bug where an auto-shown, unpositioned
+          target's dragged position never persisted (there was no column to
+          save it to before this).
+        - New left-sidebar **library panel** (`LibraryPanel.vue` +
+          `LibraryList.vue`) lists every scene/device not yet on the
+          canvas as an HTML5-draggable card (`lib/libraryDrag.ts` — a tiny
+          `dataTransfer` wire-format shared by the drag source and the
+          canvas's drop handler). Dropping one onto the pane converts the
+          drop's screen position to flow coordinates
+          (`useVueFlow().project()`, adjusted for the pane's own bounding
+          rect) and saves it as that scene/device's `position` — which is
+          what makes `buildRoutingGraph` start rendering it, so a trigger can
+          then be wired to it. Placing a target is now strictly separate from
+          wiring one, per the explicit design ask.
+        - `TriggerActionInspector.vue` no longer has target-type/target
+          Selects (both are fixed by the edge that created the action, shown
+          as a read-only summary; changing them means deleting the action and
+          drawing a new connection) or a raw-JSON params textarea. A
+          `device.command` action's params render as typed widgets resolved
+          from the command's schema (`schemaToFields` — boolean → Switch,
+          enum → Select, number/string → Input), split into
+          `TriggerActionParamField.vue`/`TriggerActionEnumSelect.vue` to keep
+          the per-kind widget switch from ballooning the parent's branching
+          (`fallow audit`-driven: CRAP 306 critical → 20-42 range). A
+          mapping-owned action additionally gets a per-field "From
+          signal"/"Use a value" toggle to reference the firing signal
+          (`{arg[0]}`/`{:name}`) instead of a literal value — defaulted on if
+          the stored value already looks like a token — never shown for a
+          schedule-owned action (no signal to reference).
+        - Fan-out (one trigger, several targets) and fan-in (several triggers,
+          one target) both keep working exactly as before: each is just an
+          independent edge, nothing gates how many can share a source or
+          target.
+  - [x] **Unlimited-instances redesign — `workflow_targets`, click-node
+        wiring, signal-arg hover, Slider widget.** Follow-up to the edge-based
+        canvas above, from direct admin feedback on it: a scene/device is a DB
+        singleton, but the canvas needed independently-placed,
+        independently-configured *instances* of one — e.g. the same device
+        twice, once wired "on" and once "off" — which `position`-on-`scenes`/
+        `devices` couldn't represent (one row, one node, one config).
+        - New `workflow_targets` table (migrations `0011`–`0013`, staged
+          add/backfill/finalize since drizzle-kit's rename-heuristic prompt
+          can't run non-interactively when a diff both adds and drops
+          same-named columns in one pass) is the placed instance: `targetType`/
+          `targetId`/`targetCommand`/`params` moved here from
+          `trigger_actions`, and `position` moved here from `scenes`/`devices`
+          (dropped there entirely — a scene/device is no longer a canvas node
+          in its own right, only through however many `workflow_targets` rows
+          reference it). Unlike a trigger, `position` here is `NOT NULL`:
+          existence on this table *is* placement, so `buildRoutingGraph`
+          renders every row unconditionally, no "unplaced" filter to speak of.
+          `trigger_actions` is trimmed to a pure link (`id`, `scheduleId`
+          XOR `mappingId`, `workflowTargetId`) — no more per-row command/
+          params, so a schedule/mapping can now wire to two different
+          instances of the same device with two different commands, and the
+          old "unwired action" state (`targetId IS NULL`) is impossible by
+          construction (`workflowTargetId` is a `NOT NULL` FK).
+        - Dispatch reads a joined `DispatchableTriggerAction` shape (`id` +
+          the wired target's `targetType`/`targetId`/`targetCommand`/`params`)
+          assembled via SQL JOIN in `triggerActionsRepo`
+          (`listDispatchableByScheduleId`/`listDispatchableByMappingIds`),
+          not native columns — `TriggerActionDispatcher`'s old "not wired to a
+          target" branch is now dead code and was deleted along with it.
+        - **Clicking a target node — not the edge — opens its inspector**
+          (renamed `TriggerActionInspector` → `WorkflowTargetInspector`),
+          since command/params now live on the instance. The edge itself is a
+          custom Vue Flow component (`TriggerActionEdge.vue`) that opens
+          nothing on click; hovering (or selecting) it shows a floating
+          tooltip with the named path-params its owning mapping's pattern
+          captures (`patternParamNames`, a client-side mirror of
+          `input/patterns.ts`'s split algorithm) and an inline delete button.
+          The same params surface in the target's own inspector as "Available
+          from signal: …" — the deduped union across every incoming
+          mapping-owned wire (`hasSignalWire`/`availableArgs`, computed once
+          in `buildRoutingGraph` and carried on the target node's data).
+        - Left-sidebar **library panel now always lists every scene/device**,
+          full stop — `unplacedLibraryItems` is deleted; dropping a card
+          always creates a **new** `workflow_targets` row (never moves an
+          existing one), so the same scene/device can be placed any number of
+          times. `TargetNode.vue`'s subtitle shows the *instance's own*
+          configured command (or "Pick a command…"), not the device's generic
+          type, so two instances of one device read as visibly distinct.
+        - Bounded number params (`minimum`+`maximum` both declared, e.g. a
+          0..1 fader level) render as a `Slider` instead of a plain number
+          `Input` — `schemaToFields` gained `minimum`/`maximum`/`step` fields,
+          consumed by both the target inspector's param field
+          (`WorkflowTargetParamField.vue`, renamed from
+          `TriggerActionParamField.vue`) and the pre-existing scene-action
+          editor (`SceneActionRow.vue`), sharing the same schema-derived
+          bounds.
+        - Playwright verification against the live app caught a real bug the
+          type-checker and unit tests couldn't: the edge's delete button
+          called `store.remove(props.id)`, but `id` is the edge's namespaced
+          Vue Flow id (`trigger-action:<uuid>`), not the trigger-action row's
+          own id — every inline wire-delete 500'd. Fixed to use
+          `data.triggerAction.id`. Also hardened the hover overlay to stay
+          open while the pointer is over the floating button itself (a
+          separate DOM subtree from the edge's own hover target), not just
+          the edge path, so moving onto the button to click it can't hide it
+          first.
+  - [x] **Multi-select, keyboard shortcut, and library-search fixes.** Direct
+        feedback on the canvas's interaction feel, all verified against the
+        live app (Playwright caught the first one — the type-checker had
+        nothing to say about it):
+        - `onNodeDragStop` was reading the single `event.node` (whichever the
+          pointer grabbed) and only persisting that one's position. Vue Flow
+          already *moves* every multi-selected node together when you drag
+          one; the bug was that only the grabbed node's new spot got saved,
+          so the rest snapped back to their last-saved position on the next
+          reactive rebuild. Fixed to iterate `event.nodes` (every node that
+          actually moved) and persist each one — confirmed by reloading after
+          a group drag and seeing every node stay put, not just the one.
+        - Box-select-by-dragging-a-rectangle now holds **Cmd/Ctrl**
+          (`:selection-key-code="['Meta', 'Control']"`) instead of Vue Flow's
+          default Shift — confirmed Shift+drag no longer selects anything and
+          Ctrl+drag selects both nodes in a rectangle.
+        - **Delete/Backspace deletes the active node** (both keys, since a
+          Mac keyboard's "delete" key itself sends `Backspace` — only a
+          Windows/Linux `Delete` key sends `Delete`), calling the exact same
+          function its inspector's own trash button does
+          (`TriggerInspector`/`WorkflowTargetInspector` now `defineExpose`
+          their `remove()`, called via a template ref from `WorkflowsView`'s
+          window-level `keydown` listener) rather than duplicating the
+          deletion logic. Guarded against firing while focus is in an input/
+          textarea/select/button/contenteditable, so deleting text in the
+          trigger name field doesn't also delete the node — confirmed
+          pressing Delete with the canvas focused removes the selected node
+          and closes its inspector, and pressing it mid-edit in the Name
+          field just edits the text. (First shipped bound to Enter instead by
+          a misreading of "delete key" — fixed.)
+        - New search box in the library panel filters both the Scenes and
+          Devices sections by name, reusing the device-grid/scene-list
+          search primitives (`lib/text.ts`'s `searchTerms`/`normalize`/
+          `matchesAllTerms`) instead of a one-off substring match, so
+          diacritic-folding and multi-term matching behave the same
+          everywhere search exists in the app. Empty-state copy
+          ("All scenes are on the canvas") was stale from before the
+          library-always-shows-everything redesign — fixed to distinguish
+          "nothing exists yet" from "nothing matches the search."
 
-See README §10–11 for full spec; see §11 for the implemented slice.
+See README §5, §10–11 for full spec; see §11 for the implemented slice.
 
 ---
 

@@ -1,8 +1,10 @@
 /**
- * Schedule routes — CRUD for CRON jobs plus a next-runs preview.
+ * Schedule routes — CRUD for CRON jobs plus a next-runs preview. A schedule is
+ * purely "when" (cron + timezone); what runs is `trigger_actions` wired to it,
+ * so a schedule with none yet is still a valid row.
  *
  *   GET    /api/v1/schedules              list all jobs
- *   POST   /api/v1/schedules             create { name, sceneId, cron, timezone?, enabled? }
+ *   POST   /api/v1/schedules             create { name, cron, timezone?, enabled?, position? }
  *   GET    /api/v1/schedules/:id         one job
  *   PUT    /api/v1/schedules/:id         update (reloads the live timer)
  *   DELETE /api/v1/schedules/:id         delete (unregisters the timer)
@@ -68,15 +70,11 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
 
       POST: route(async (req) => {
         const body = await readJson(req);
-        requireFields(body, ["name", "sceneId", "cron"]);
+        requireFields(body, ["name", "cron"]);
         const cron = String(body.cron);
         assertValidCron(cron);
         const timezone = body.timezone !== undefined ? String(body.timezone) : undefined;
         if (timezone !== undefined) assertValidTimezone(timezone);
-
-        // Fail with a clean 400 rather than a raw FK-violation 500.
-        const scene = await ctx.scenes.get(String(body.sceneId));
-        if (!scene) throw new HttpError(400, "BAD_REQUEST", `scene not found: ${body.sceneId}`);
 
         if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
           throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
@@ -84,7 +82,6 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
 
         const created = await ctx.schedules.create({
           name: String(body.name),
-          sceneId: String(body.sceneId),
           cron,
           ...(timezone !== undefined ? { timezone } : {}),
           enabled: body.enabled as boolean | undefined,
@@ -111,11 +108,6 @@ export function schedulesRoutes(ctx: ApiContext): RouteMap {
 
         const patch: Record<string, unknown> = {};
         if (body.name !== undefined) patch.name = String(body.name);
-        if (body.sceneId !== undefined) {
-          const scene = await ctx.scenes.get(String(body.sceneId));
-          if (!scene) throw new HttpError(400, "BAD_REQUEST", `scene not found: ${body.sceneId}`);
-          patch.sceneId = String(body.sceneId);
-        }
         if (body.cron !== undefined) {
           assertValidCron(String(body.cron));
           patch.cron = String(body.cron);

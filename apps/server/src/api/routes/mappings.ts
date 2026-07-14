@@ -1,9 +1,10 @@
 /**
  * Input-mapping routes — CRUD for the OSC/TCP/HTTP ingress rules plus a dry-run
- * matcher.
+ * matcher. A mapping is purely "when" (protocol + address pattern); what runs is
+ * `trigger_actions` wired to it, so a mapping with none yet is still a valid row.
  *
  *   GET    /api/v1/mappings              list all rules (?protocol= ?enabled=)
- *   POST   /api/v1/mappings              create { name, protocol, pattern, targetType, … }
+ *   POST   /api/v1/mappings              create { name, protocol, pattern, enabled?, position? }
  *   GET    /api/v1/mappings/:id          one rule
  *   PUT    /api/v1/mappings/:id          update
  *   DELETE /api/v1/mappings/:id          delete
@@ -11,23 +12,14 @@
  *   POST   /api/v1/mappings/test         { protocol, address, args? } → matches (no dispatch)
  *
  * Every mutation writes the DB *and* reloads the live {@link InputMapper} cache so
- * changes take effect without a restart. Targets are validated up front: the
- * referenced scene/device must exist, and `targetType` decides which of
- * `targetId`/`targetCommand` are required (→ 400) — so a bad rule never reaches
- * the matcher.
+ * changes take effect without a restart.
  */
 
-import type {
-  InputMappingTestResult,
-  InputProtocol,
-  InputTargetType,
-  NewInputMapping,
-} from "@gallery/types";
+import type { InputMappingTestResult, InputProtocol, NewInputMapping } from "@gallery/types";
 import type { ApiContext } from "../context.ts";
 import {
   HttpError,
   asCanvasPosition,
-  asObject,
   json,
   noContent,
   paramId,
@@ -39,43 +31,11 @@ import {
 } from "../http.ts";
 
 const PROTOCOLS: readonly InputProtocol[] = ["osc", "tcp", "http"];
-const TARGET_TYPES: readonly InputTargetType[] = ["scene.execute", "device.command", "event.emit"];
 
 function assertProtocol(value: unknown): asserts value is InputProtocol {
   if (!PROTOCOLS.includes(value as InputProtocol)) {
     throw new HttpError(400, "BAD_REQUEST", `protocol must be one of: ${PROTOCOLS.join(", ")}`);
   }
-}
-
-function assertTargetType(value: unknown): asserts value is InputTargetType {
-  if (!TARGET_TYPES.includes(value as InputTargetType)) {
-    throw new HttpError(400, "BAD_REQUEST", `targetType must be one of: ${TARGET_TYPES.join(", ")}`);
-  }
-}
-
-/**
- * Validate that the target referenced by a (possibly partial) rule exists and
- * carries the fields its `targetType` needs. `targetType`/`targetId`/
- * `targetCommand` may come from the request or the existing row (on PUT).
- */
-async function assertTargetResolvable(
-  ctx: ApiContext,
-  targetType: InputTargetType,
-  targetId: string | null | undefined,
-  targetCommand: string | null | undefined,
-): Promise<void> {
-  if (targetType === "scene.execute") {
-    if (!targetId) throw new HttpError(400, "BAD_REQUEST", "scene.execute requires targetId");
-    const scene = await ctx.scenes.get(targetId);
-    if (!scene) throw new HttpError(400, "BAD_REQUEST", `scene not found: ${targetId}`);
-  } else if (targetType === "device.command") {
-    if (!targetId || !targetCommand) {
-      throw new HttpError(400, "BAD_REQUEST", "device.command requires targetId and targetCommand");
-    }
-    const device = await ctx.devices.get(targetId);
-    if (!device) throw new HttpError(400, "BAD_REQUEST", `device not found: ${targetId}`);
-  }
-  // event.emit needs no concrete target.
 }
 
 export function mappingsRoutes(ctx: ApiContext): RouteMap {
@@ -91,29 +51,16 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
 
       POST: route(async (req) => {
         const body = await readJson(req);
-        requireFields(body, ["name", "protocol", "pattern", "targetType"]);
+        requireFields(body, ["name", "protocol", "pattern"]);
         assertProtocol(body.protocol);
-        assertTargetType(body.targetType);
-
-        const targetId = body.targetId !== undefined && body.targetId !== null ? String(body.targetId) : null;
-        const targetCommand =
-          body.targetCommand !== undefined && body.targetCommand !== null ? String(body.targetCommand) : null;
-        const paramsTemplate =
-          body.paramsTemplate !== undefined ? asObject(body.paramsTemplate, "paramsTemplate") : undefined;
         if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
           throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
         }
-
-        await assertTargetResolvable(ctx, body.targetType, targetId, targetCommand);
 
         const values: NewInputMapping = {
           name: String(body.name),
           protocol: body.protocol,
           pattern: String(body.pattern),
-          targetType: body.targetType,
-          targetId,
-          targetCommand,
-          ...(paramsTemplate !== undefined ? { paramsTemplate } : {}),
           ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
           ...(body.position !== undefined ? { position: asCanvasPosition(body.position, "position") } : {}),
         };
@@ -144,11 +91,7 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
           matches: matches.map((m) => ({
             id: m.mapping.id,
             name: m.mapping.name,
-            targetType: m.mapping.targetType,
-            targetId: m.mapping.targetId,
-            targetCommand: m.mapping.targetCommand,
             pathParams: m.pathParams,
-            params: m.params,
           })),
         };
         return json(result);
@@ -175,17 +118,6 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
           patch.protocol = body.protocol;
         }
         if (body.pattern !== undefined) patch.pattern = String(body.pattern);
-        if (body.targetType !== undefined) {
-          assertTargetType(body.targetType);
-          patch.targetType = body.targetType;
-        }
-        if (body.targetId !== undefined) patch.targetId = body.targetId === null ? null : String(body.targetId);
-        if (body.targetCommand !== undefined) {
-          patch.targetCommand = body.targetCommand === null ? null : String(body.targetCommand);
-        }
-        if (body.paramsTemplate !== undefined) {
-          patch.paramsTemplate = asObject(body.paramsTemplate, "paramsTemplate");
-        }
         if (body.enabled !== undefined) {
           if (typeof body.enabled !== "boolean") {
             throw new HttpError(400, "BAD_REQUEST", "enabled must be a boolean");
@@ -193,14 +125,6 @@ export function mappingsRoutes(ctx: ApiContext): RouteMap {
           patch.enabled = body.enabled;
         }
         if (body.position !== undefined) patch.position = asCanvasPosition(body.position, "position");
-
-        // Validate the *effective* target (merge of patch over the current row).
-        await assertTargetResolvable(
-          ctx,
-          patch.targetType ?? current.targetType,
-          patch.targetId !== undefined ? patch.targetId : current.targetId,
-          patch.targetCommand !== undefined ? patch.targetCommand : current.targetCommand,
-        );
 
         const updated = await ctx.mappings.update(id, patch);
         if (!updated) throw new HttpError(404, "NOT_FOUND", "mapping not found");

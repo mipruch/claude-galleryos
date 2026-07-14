@@ -48,9 +48,14 @@ import type {
   ScheduleUpdateInput,
   SceneUpdateInput,
   SceneWithActionsDTO,
+  TriggerActionCreateInput,
+  TriggerActionDTO,
   UserCreateInput,
   UserDTO,
   UserUpdateInput,
+  WorkflowTargetCreateInput,
+  WorkflowTargetDTO,
+  WorkflowTargetUpdateInput,
 } from '@gallery/types'
 import { fetchJson } from './http'
 
@@ -270,6 +275,27 @@ export const api = {
     /** Dry-run a sample signal against the enabled rules (no dispatch). */
     test: (input: { protocol: string; address: string; args?: unknown[] }) =>
       post<InputMappingTestResult>('/mappings/test', input),
+  },
+
+  triggerActions: {
+    /** All actions, or scoped to one owner via `?scheduleId=`/`?mappingId=`. */
+    list: (filter?: { scheduleId?: string; mappingId?: string }) =>
+      get<TriggerActionDTO[]>(
+        `/trigger-actions${qs({ scheduleId: filter?.scheduleId, mappingId: filter?.mappingId })}`,
+      ),
+    get: (id: string) => get<TriggerActionDTO>(`/trigger-actions/${id}`),
+    create: (input: TriggerActionCreateInput) => post<TriggerActionDTO>('/trigger-actions', input),
+    remove: (id: string) => del(`/trigger-actions/${id}`),
+  },
+
+  workflowTargets: {
+    /** Every placed instance (a scene/device may have any number of these). */
+    list: () => get<WorkflowTargetDTO[]>('/workflow-targets'),
+    get: (id: string) => get<WorkflowTargetDTO>(`/workflow-targets/${id}`),
+    create: (input: WorkflowTargetCreateInput) => post<WorkflowTargetDTO>('/workflow-targets', input),
+    update: (id: string, input: WorkflowTargetUpdateInput) =>
+      put<WorkflowTargetDTO>(`/workflow-targets/${id}`, input),
+    remove: (id: string) => del(`/workflow-targets/${id}`),
   },
 
   drivers: {

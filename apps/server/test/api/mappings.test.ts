@@ -1,10 +1,11 @@
 /**
  * Mapping routes tests — hermetic (no DB).
  *
- * Mounts the real route map on an ephemeral Bun.serve with fake repos, a fake
- * scenes/devices lookup, and a fake InputMapper injected via ApiContext, then
- * drives it over HTTP. Verifies CRUD, target validation, the toggle, the
- * dry-run `/test` matcher, and that every mutation reloads the live mapper cache.
+ * Mounts the real route map on an ephemeral Bun.serve with a fake repo and a
+ * fake InputMapper injected via ApiContext, then drives it over HTTP. A mapping
+ * is purely "when" (protocol + pattern) — no target fields — so these tests
+ * cover CRUD, the toggle, the dry-run `/test` matcher, and that every mutation
+ * reloads the live mapper cache. Target wiring lives in `trigger-actions.test.ts`.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -21,11 +22,8 @@ const row = {
   name: "Run welcome",
   protocol: "tcp",
   pattern: "/scene/execute",
-  targetType: "scene.execute",
-  targetId: "s1",
-  targetCommand: null,
-  paramsTemplate: {},
   enabled: true,
+  position: null,
 };
 
 const fakeMappings = {
@@ -51,22 +49,17 @@ const fakeMappings = {
   },
 };
 
-const fakeScenes = { async get(id: string) { return id === "s1" ? { id } : undefined; } };
-const fakeDevices = { async get(id: string) { return id === "d1" ? { id } : undefined; } };
-
 // Fake InputMapper: counts reloads and runs a tiny matcher for /test.
 const fakeMapper = {
   reload: async () => void reloadCount++,
   match: (signal: { protocol: string; address: string; args?: unknown[] }) =>
     signal.protocol === "tcp" && signal.address === "/scene/execute"
-      ? [{ mapping: row, pathParams: {}, params: {} }]
+      ? [{ mapping: row, pathParams: {} }]
       : [],
 };
 
 const ctx = {
   mappings: fakeMappings,
-  scenes: fakeScenes,
-  devices: fakeDevices,
   inputMapper: fakeMapper,
 } as unknown as ApiContext;
 
@@ -106,70 +99,29 @@ describe("mappings CRUD", () => {
     expect((await req("GET", "/api/v1/mappings?protocol=carrier-pigeon")).status).toBe(400);
   });
 
-  test("POST creates a scene.execute mapping and reloads the cache", async () => {
+  test("POST creates a mapping and reloads the cache", async () => {
     const { status, body } = await req("POST", "/api/v1/mappings", {
       name: "Run welcome",
       protocol: "tcp",
       pattern: "/scene/execute",
-      targetType: "scene.execute",
-      targetId: "s1",
     });
     expect(status).toBe(201);
     expect(body.id).toBe("m-new");
-    expect(lastCreate).toMatchObject({ targetId: "s1", targetCommand: null });
+    expect(lastCreate).toMatchObject({ name: "Run welcome", protocol: "tcp", pattern: "/scene/execute" });
     expect(reloadCount).toBe(1);
   });
 
-  test("POST device.command requires targetId + targetCommand", async () => {
-    const { status } = await req("POST", "/api/v1/mappings", {
-      name: "Dim",
-      protocol: "osc",
-      pattern: "/dim/:level",
-      targetType: "device.command",
-      targetId: "d1", // no targetCommand
-    });
-    expect(status).toBe(400);
-    expect(reloadCount).toBe(0);
-  });
-
-  test("POST device.command succeeds with a known device", async () => {
-    const { status } = await req("POST", "/api/v1/mappings", {
-      name: "Dim",
-      protocol: "osc",
-      pattern: "/dim/:level",
-      targetType: "device.command",
-      targetId: "d1",
-      targetCommand: "setLevel",
-      paramsTemplate: { level: "{:level}" },
-    });
-    expect(status).toBe(201);
-    expect(lastCreate).toMatchObject({ paramsTemplate: { level: "{:level}" } });
-  });
-
-  test("POST rejects an unknown scene target", async () => {
-    const { status, body } = await req("POST", "/api/v1/mappings", {
-      name: "Bad",
-      protocol: "tcp",
-      pattern: "/x",
-      targetType: "scene.execute",
-      targetId: "nope",
-    });
-    expect(status).toBe(400);
-    expect(body.code).toBe("BAD_REQUEST");
-  });
-
-  test("POST rejects an unknown targetType", async () => {
-    const { status } = await req("POST", "/api/v1/mappings", {
-      name: "Bad",
-      protocol: "tcp",
-      pattern: "/x",
-      targetType: "self.destruct",
-    });
-    expect(status).toBe(400);
-  });
-
-  test("POST requires name/protocol/pattern/targetType", async () => {
+  test("POST requires name/protocol/pattern", async () => {
     expect((await req("POST", "/api/v1/mappings", { name: "x" })).status).toBe(400);
+  });
+
+  test("POST rejects an unknown protocol", async () => {
+    const { status } = await req("POST", "/api/v1/mappings", {
+      name: "Bad",
+      protocol: "carrier-pigeon",
+      pattern: "/x",
+    });
+    expect(status).toBe(400);
   });
 
   test("GET /mappings/:id → 404 for unknown", async () => {
@@ -183,13 +135,6 @@ describe("mappings CRUD", () => {
     expect(ok.body.name).toBe("Renamed");
     expect(reloadCount).toBe(1);
     expect((await req("PUT", "/api/v1/mappings/nope", { name: "x" })).status).toBe(404);
-  });
-
-  test("PUT re-validates the effective target", async () => {
-    // Switching the existing scene.execute row to device.command without a
-    // command must fail even though other fields are untouched.
-    const { status } = await req("PUT", "/api/v1/mappings/m1", { targetType: "device.command" });
-    expect(status).toBe(400);
   });
 
   test("DELETE → 204 + reload, unknown → 404", async () => {
@@ -212,7 +157,7 @@ describe("mappings CRUD", () => {
 });
 
 describe("POST /mappings/test (dry-run)", () => {
-  test("reports a match with evaluated params", async () => {
+  test("reports a match with captured path params", async () => {
     const { status, body } = await req("POST", "/api/v1/mappings/test", {
       protocol: "tcp",
       address: "/scene/execute",
@@ -220,7 +165,7 @@ describe("POST /mappings/test (dry-run)", () => {
     expect(status).toBe(200);
     expect(body.matched).toBe(true);
     expect(body.matches).toHaveLength(1);
-    expect(body.matches[0]).toMatchObject({ id: "m1", targetType: "scene.execute" });
+    expect(body.matches[0]).toMatchObject({ id: "m1", name: "Run welcome", pathParams: {} });
   });
 
   test("reports no match", async () => {

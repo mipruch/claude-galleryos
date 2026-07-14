@@ -1,32 +1,51 @@
 /**
- * InputMapper tests — hermetic, with fake repo/sceneEngine/deviceManager and a
- * real EventBus. Covers cache reload, protocol-scoped matching, the three
- * dispatch targets (scene.execute / device.command / event.emit), templated
- * params reaching the device, and graceful failure when a rule is malformed.
+ * InputMapper tests — hermetic, with a fake mappings repo, a fake trigger-action
+ * source, and a fake dispatcher (never a real SceneEngine/DeviceManager — those
+ * are the TriggerActionDispatcher's concern, covered in
+ * `trigger-action-dispatcher.test.ts`). Covers cache reload (joining each
+ * mapping with its wired trigger actions), protocol-scoped matching, dispatch
+ * fan-out per matched mapping, the template context handed to the dispatcher,
+ * and mappings with no wired actions yet (a normal, valid state).
  */
 
 import { describe, expect, test } from "bun:test";
-import type { CommandResult } from "@gallery/driver-core";
 import type { InputMapping } from "@gallery/types";
-import { EventBus } from "../../src/core/EventBus.ts";
-import { InputMapper, type MapperDeviceManager, type MapperSceneEngine } from "../../src/input/InputMapper.ts";
+import {
+  InputMapper,
+  type MappedTriggerAction,
+  type MapperDispatcher,
+  type TriggerActionSource,
+} from "../../src/input/InputMapper.ts";
+import type {
+  DispatchableTriggerAction,
+  TemplateContext,
+  TriggerDispatchOutcome,
+} from "../../src/core/TriggerActionDispatcher.ts";
 import { logger } from "../../src/logger.ts";
 
 /** Build an InputMapping row with sensible defaults. */
-function mapping(partial: Partial<InputMapping>): InputMapping {
+function mapping(partial: Partial<InputMapping> = {}): InputMapping {
   return {
     id: partial.id ?? crypto.randomUUID(),
     name: partial.name ?? "rule",
     protocol: partial.protocol ?? "tcp",
     pattern: partial.pattern ?? "/scene/execute",
-    targetType: partial.targetType ?? "scene.execute",
-    targetId: partial.targetId ?? null,
-    targetCommand: partial.targetCommand ?? null,
-    paramsTemplate: partial.paramsTemplate ?? {},
     enabled: partial.enabled ?? true,
     position: partial.position ?? null,
     createdAt: partial.createdAt ?? new Date(),
     updatedAt: partial.updatedAt ?? new Date(),
+  };
+}
+
+/** Build a trigger action (already joined with its workflow_target) wired to a mapping. */
+function triggerAction(partial: Partial<MappedTriggerAction> = {}): MappedTriggerAction {
+  return {
+    id: partial.id ?? crypto.randomUUID(),
+    mappingId: partial.mappingId ?? null,
+    targetType: partial.targetType ?? "scene.execute",
+    targetId: partial.targetId ?? "t1",
+    targetCommand: partial.targetCommand ?? null,
+    params: partial.params ?? {},
   };
 }
 
@@ -37,26 +56,32 @@ function fakeRepo(rows: InputMapping[]) {
   };
 }
 
-function fakeSceneEngine() {
-  const calls: Array<{ sceneId: string; source: string; sourceDetail?: string }> = [];
-  const engine: MapperSceneEngine = {
-    async startScene(sceneId, source, opts) {
-      calls.push({ sceneId, source, sourceDetail: opts?.sourceDetail });
-      return { executionId: "exec-1", sceneId, status: "running" };
-    },
+function fakeTriggerActions(rows: MappedTriggerAction[]): TriggerActionSource {
+  return {
+    listDispatchableByMappingIds: async (mappingIds: string[]) =>
+      rows.filter((a) => a.mappingId && mappingIds.includes(a.mappingId)),
   };
-  return { engine, calls };
 }
 
-function fakeDeviceManager(result: Partial<CommandResult> = {}) {
-  const calls: Array<{ deviceId: string; command: string; params: Record<string, unknown> }> = [];
-  const dm: MapperDeviceManager = {
-    async execute(deviceId, command, params) {
-      calls.push({ deviceId, command, params });
-      return { success: true, durationMs: 1, ...result };
+function fakeDispatcher() {
+  const calls: Array<{
+    actions: DispatchableTriggerAction[];
+    source: string;
+    sourceDetail: string;
+    template?: TemplateContext;
+  }> = [];
+  const dispatcher: MapperDispatcher = {
+    async dispatchAll(actions, source, sourceDetail, template) {
+      calls.push({ actions: [...actions], source, sourceDetail, template });
+      const outcomes: TriggerDispatchOutcome[] = actions.map((a) => ({
+        triggerActionId: a.id,
+        targetType: a.targetType,
+        ok: true,
+      }));
+      return outcomes;
     },
   };
-  return { dm, calls };
+  return { dispatcher, calls };
 }
 
 describe("InputMapper — cache", () => {
@@ -66,14 +91,16 @@ describe("InputMapper — cache", () => {
       mapping({ protocol: "osc", enabled: true }),
       mapping({ protocol: "osc", enabled: false }),
     ]);
-    const m = new InputMapper({ repo, logger });
+    const { dispatcher } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
     expect(m.size()).toBe(2);
   });
 
   test("reload picks up edits", async () => {
     const repo = fakeRepo([mapping({ protocol: "tcp" })]);
-    const m = new InputMapper({ repo, logger });
+    const { dispatcher } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
     expect(m.size()).toBe(1);
     repo.rows.push(mapping({ protocol: "tcp" }));
@@ -88,136 +115,102 @@ describe("InputMapper — match", () => {
       mapping({ protocol: "tcp", pattern: "/go" }),
       mapping({ protocol: "osc", pattern: "/go" }),
     ]);
-    const m = new InputMapper({ repo, logger });
+    const { dispatcher } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
     const hits = m.match({ protocol: "osc", address: "/go" });
     expect(hits).toHaveLength(1);
     expect(hits[0]!.mapping.protocol).toBe("osc");
   });
 
-  test("captures path params and evaluates the template", async () => {
-    const repo = fakeRepo([
-      mapping({
-        protocol: "osc",
-        pattern: "/dim/:level",
-        targetType: "device.command",
-        targetId: "d1",
-        targetCommand: "setLevel",
-        paramsTemplate: { level: "{:level}" },
-      }),
-    ]);
-    const m = new InputMapper({ repo, logger });
+  test("captures path params (pure — no dispatch, no trigger actions resolved)", async () => {
+    const repo = fakeRepo([mapping({ protocol: "osc", pattern: "/dim/:level" })]);
+    const { dispatcher } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
     const [hit] = m.match({ protocol: "osc", address: "/dim/0.5" });
     expect(hit!.pathParams).toEqual({ level: "0.5" });
-    expect(hit!.params).toEqual({ level: 0.5 });
   });
 
   test("a non-matching address yields no hits", async () => {
     const repo = fakeRepo([mapping({ protocol: "tcp", pattern: "/scene/execute" })]);
-    const m = new InputMapper({ repo, logger });
+    const { dispatcher } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
     expect(m.match({ protocol: "tcp", address: "/nope" })).toEqual([]);
   });
 });
 
-describe("InputMapper — dispatch", () => {
-  test("scene.execute runs the scene with protocol as source", async () => {
-    const repo = fakeRepo([
-      mapping({ protocol: "tcp", pattern: "/scene/execute", targetType: "scene.execute", targetId: "s1" }),
-    ]);
-    const { engine, calls } = fakeSceneEngine();
-    const m = new InputMapper({ repo, logger, sceneEngine: engine });
+describe("InputMapper — handle/dispatch", () => {
+  test("dispatches a matched mapping's wired trigger actions with a template context", async () => {
+    const rule = mapping({ protocol: "tcp", pattern: "/scene/execute" });
+    const wired = triggerAction({ mappingId: rule.id, targetType: "scene.execute", targetId: "s1" });
+    const repo = fakeRepo([rule]);
+    const { dispatcher, calls } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([wired]), dispatcher, logger });
     await m.start();
-    const outcomes = await m.handle({ protocol: "tcp", address: "/scene/execute" });
-    expect(outcomes).toHaveLength(1);
-    expect(outcomes[0]!.ok).toBe(true);
-    expect(calls).toEqual([{ sceneId: "s1", source: "tcp", sourceDetail: "tcp:/scene/execute" }]);
+
+    const outcomes = await m.handle({ protocol: "tcp", address: "/scene/execute", args: ["x"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.actions).toEqual([wired]);
+    expect(calls[0]!.source).toBe("tcp");
+    expect(calls[0]!.sourceDetail).toBe("tcp:/scene/execute");
+    expect(calls[0]!.template).toEqual({ args: ["x"], pathParams: {} });
+    expect(outcomes).toEqual([{ triggerActionId: wired.id, targetType: "scene.execute", ok: true }]);
   });
 
-  test("device.command runs the templated command", async () => {
-    const repo = fakeRepo([
-      mapping({
-        protocol: "osc",
-        pattern: "/dim/:level",
-        targetType: "device.command",
-        targetId: "d1",
-        targetCommand: "setLevel",
-        paramsTemplate: { level: "{:level}" },
-      }),
-    ]);
-    const { dm, calls } = fakeDeviceManager();
-    const m = new InputMapper({ repo, logger, deviceManager: dm });
+  test("path params captured by the pattern reach the template context", async () => {
+    const rule = mapping({ protocol: "osc", pattern: "/dim/:level" });
+    const wired = triggerAction({ mappingId: rule.id, targetType: "device.command", targetId: "d1", targetCommand: "setLevel" });
+    const repo = fakeRepo([rule]);
+    const { dispatcher, calls } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([wired]), dispatcher, logger });
     await m.start();
+
     await m.handle({ protocol: "osc", address: "/dim/0.75" });
-    expect(calls).toEqual([{ deviceId: "d1", command: "setLevel", params: { level: 0.75 } }]);
+
+    expect(calls[0]!.template).toEqual({ args: [], pathParams: { level: "0.75" } });
   });
 
-  test("a failed device command surfaces ok:false", async () => {
-    const repo = fakeRepo([
-      mapping({
-        protocol: "tcp",
-        pattern: "/x",
-        targetType: "device.command",
-        targetId: "d1",
-        targetCommand: "on",
-      }),
-    ]);
-    const { dm } = fakeDeviceManager({ success: false, error: "offline" });
-    const m = new InputMapper({ repo, logger, deviceManager: dm });
+  test("a mapping with no wired trigger actions dispatches nothing", async () => {
+    const rule = mapping({ protocol: "tcp", pattern: "/go" });
+    const repo = fakeRepo([rule]);
+    const { dispatcher, calls } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([]), dispatcher, logger });
     await m.start();
-    const [outcome] = await m.handle({ protocol: "tcp", address: "/x" });
-    expect(outcome!.ok).toBe(false);
-    expect(outcome!.detail).toBe("offline");
-  });
 
-  test("event.emit publishes input.mapping.triggered on the bus", async () => {
-    const repo = fakeRepo([
-      mapping({
-        id: "m-evt",
-        name: "doorbell",
-        protocol: "tcp",
-        pattern: "/ring",
-        targetType: "event.emit",
-        paramsTemplate: { who: "{arg[0]}" },
-      }),
-    ]);
-    const bus = new EventBus();
-    const seen: unknown[] = [];
-    bus.on("input.mapping.triggered", (e) => seen.push(e));
-    const m = new InputMapper({ repo, logger, eventBus: bus });
-    await m.start();
-    await m.handle({ protocol: "tcp", address: "/ring", args: ["visitor"] });
-    expect(seen).toEqual([
-      { type: "input.mapping.triggered", mappingId: "m-evt", name: "doorbell", params: { who: "visitor" } },
-    ]);
-  });
+    const outcomes = await m.handle({ protocol: "tcp", address: "/go" });
 
-  test("a scene.execute rule with no targetId fails gracefully (no throw)", async () => {
-    const repo = fakeRepo([
-      mapping({ protocol: "tcp", pattern: "/go", targetType: "scene.execute", targetId: null }),
-    ]);
-    const { engine, calls } = fakeSceneEngine();
-    const m = new InputMapper({ repo, logger, sceneEngine: engine });
-    await m.start();
-    const [outcome] = await m.handle({ protocol: "tcp", address: "/go" });
-    expect(outcome!.ok).toBe(false);
+    expect(outcomes).toEqual([]);
     expect(calls).toHaveLength(0);
   });
 
-  test("multiple rules on the same address all fire", async () => {
-    const repo = fakeRepo([
-      mapping({ protocol: "tcp", pattern: "/all", targetType: "scene.execute", targetId: "s1" }),
-      mapping({ protocol: "tcp", pattern: "/all", targetType: "event.emit", name: "log" }),
-    ]);
-    const { engine } = fakeSceneEngine();
-    const bus = new EventBus();
-    let events = 0;
-    bus.on("input.mapping.triggered", () => events++);
-    const m = new InputMapper({ repo, logger, sceneEngine: engine, eventBus: bus });
+  test("a non-matching address dispatches nothing", async () => {
+    const rule = mapping({ protocol: "tcp", pattern: "/go" });
+    const wired = triggerAction({ mappingId: rule.id, targetId: "s1" });
+    const repo = fakeRepo([rule]);
+    const { dispatcher, calls } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([wired]), dispatcher, logger });
     await m.start();
+
+    expect(await m.handle({ protocol: "tcp", address: "/nope" })).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("multiple matching mappings each dispatch their own wired actions separately", async () => {
+    const ruleA = mapping({ id: "m1", protocol: "tcp", pattern: "/all" });
+    const ruleB = mapping({ id: "m2", protocol: "tcp", pattern: "/all" });
+    const actionA = triggerAction({ mappingId: "m1", targetId: "s1" });
+    const actionB = triggerAction({ mappingId: "m2", targetId: "s2" });
+    const repo = fakeRepo([ruleA, ruleB]);
+    const { dispatcher, calls } = fakeDispatcher();
+    const m = new InputMapper({ repo, triggerActions: fakeTriggerActions([actionA, actionB]), dispatcher, logger });
+    await m.start();
+
     const outcomes = await m.handle({ protocol: "tcp", address: "/all" });
+
+    expect(calls).toHaveLength(2);
     expect(outcomes).toHaveLength(2);
-    expect(events).toBe(1);
   });
 });

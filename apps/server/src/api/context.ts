@@ -10,6 +10,7 @@ import type { MeterService } from "../core/MeterService.ts";
 import type { SceneEngine } from "../core/SceneEngine.ts";
 import type { Scheduler } from "../core/Scheduler.ts";
 import type { StreamManager } from "../core/StreamManager.ts";
+import type { TriggerActionDispatcher } from "../core/TriggerActionDispatcher.ts";
 import type { InputMapper } from "../input/InputMapper.ts";
 import type {
   camerasRepo,
@@ -25,7 +26,9 @@ import type {
   sceneExecutionsRepo,
   scenesRepo,
   scheduledJobsRepo,
+  triggerActionsRepo,
   usersRepo,
+  workflowTargetsRepo,
 } from "../db/repositories.ts";
 
 export interface ApiContext {
@@ -53,6 +56,9 @@ export interface ApiContext {
   scheduler: Scheduler;
   mappings: typeof inputMappingsRepo;
   inputMapper: InputMapper;
+  triggerActions: typeof triggerActionsRepo;
+  workflowTargets: typeof workflowTargetsRepo;
+  dispatcher: TriggerActionDispatcher;
   /** Server start time (epoch ms) for uptime reporting. */
   startedAt: number;
 }

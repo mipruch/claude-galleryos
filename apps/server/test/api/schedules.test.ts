@@ -1,10 +1,12 @@
 /**
  * Schedules routes tests — hermetic (no DB / no real Scheduler).
  *
- * Mounts the real route map on an ephemeral Bun.serve with fake repos + a fake
- * Scheduler injected via ApiContext, then drives it over HTTP. Verifies request
- * shaping, cron/timezone validation (→ 400), scene-existence checks, the next-runs
- * preview, and that every mutation also notifies the live Scheduler.
+ * Mounts the real route map on an ephemeral Bun.serve with a fake repo + a fake
+ * Scheduler injected via ApiContext, then drives it over HTTP. A schedule is
+ * purely "when" (cron + timezone) — no target field — so these tests cover
+ * request shaping, cron/timezone validation (→ 400), the next-runs preview, and
+ * that every mutation also notifies the live Scheduler. Target wiring lives in
+ * `trigger-actions.test.ts`.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -20,7 +22,6 @@ let schedulerCalls: Array<{ fn: string; arg: unknown }>;
 const baseJob = {
   id: "j1",
   name: "Morning lights",
-  sceneId: "s1",
   cron: "30 8 * * 1-5",
   timezone: "Europe/Prague",
   enabled: true,
@@ -57,12 +58,6 @@ const fakeSchedules = {
   },
 };
 
-const fakeScenes = {
-  async get(id: string) {
-    return id === "s1" ? { id: "s1", name: "Scene 1", actions: [] } : undefined;
-  },
-};
-
 const fakeScheduler = {
   addJob: (job: unknown) => schedulerCalls.push({ fn: "addJob", arg: job }),
   removeJob: (id: unknown) => schedulerCalls.push({ fn: "removeJob", arg: id }),
@@ -73,7 +68,6 @@ const fakeScheduler = {
 
 const ctx = {
   schedules: fakeSchedules,
-  scenes: fakeScenes,
   scheduler: fakeScheduler,
 } as unknown as ApiContext;
 
@@ -112,7 +106,6 @@ describe("schedules CRUD", () => {
   test("POST creates a job and arms the scheduler", async () => {
     const { status, body } = await req("POST", "/api/v1/schedules", {
       name: "Evening",
-      sceneId: "s1",
       cron: "0 22 * * *",
       timezone: "UTC",
     });
@@ -124,7 +117,6 @@ describe("schedules CRUD", () => {
   test("POST rejects an invalid cron with 400 (and never touches the scheduler)", async () => {
     const { status, body } = await req("POST", "/api/v1/schedules", {
       name: "Bad",
-      sceneId: "s1",
       cron: "99 8 * * *",
     });
     expect(status).toBe(400);
@@ -135,31 +127,19 @@ describe("schedules CRUD", () => {
   test("POST rejects an invalid timezone with 400", async () => {
     const { status } = await req("POST", "/api/v1/schedules", {
       name: "Bad TZ",
-      sceneId: "s1",
       cron: "0 8 * * *",
       timezone: "Mars/Olympus",
     });
     expect(status).toBe(400);
   });
 
-  test("POST rejects an unknown scene with 400", async () => {
-    const { status, body } = await req("POST", "/api/v1/schedules", {
-      name: "Ghost scene",
-      sceneId: "nope",
-      cron: "0 8 * * *",
-    });
-    expect(status).toBe(400);
-    expect(body.error).toContain("scene not found");
-  });
-
-  test("POST requires name, sceneId and cron", async () => {
+  test("POST requires name and cron", async () => {
     expect((await req("POST", "/api/v1/schedules", { name: "x" })).status).toBe(400);
   });
 
   test("POST rejects a non-boolean enabled with 400", async () => {
     const { status } = await req("POST", "/api/v1/schedules", {
       name: "x",
-      sceneId: "s1",
       cron: "0 8 * * *",
       enabled: "yes",
     });

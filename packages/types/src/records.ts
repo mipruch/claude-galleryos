@@ -13,7 +13,7 @@
 
 import type { Jsonify } from "./json.ts";
 import type { CanvasPosition } from "./canvas.ts";
-import type { InputProtocol, InputTargetType, OnFailure } from "./enums.ts";
+import type { InputProtocol, OnFailure, TriggerTargetType } from "./enums.ts";
 import type { KioskConfig } from "./kiosk.ts";
 import {
   cameras,
@@ -29,7 +29,9 @@ import {
   sceneExecutions,
   scenes,
   scheduledJobs,
+  triggerActions,
   users,
+  workflowTargets,
 } from "./schema.ts";
 
 // ── in-memory rows (server side) ─────────────────────────────
@@ -52,6 +54,10 @@ export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type NewScheduledJob = typeof scheduledJobs.$inferInsert;
 export type InputMapping = typeof inputMappings.$inferSelect;
 export type NewInputMapping = typeof inputMappings.$inferInsert;
+export type TriggerAction = typeof triggerActions.$inferSelect;
+export type NewTriggerAction = typeof triggerActions.$inferInsert;
+export type WorkflowTarget = typeof workflowTargets.$inferSelect;
+export type NewWorkflowTarget = typeof workflowTargets.$inferInsert;
 export type Role = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -81,6 +87,8 @@ export type KioskDTO = Jsonify<Kiosk>;
 export type CameraDTO = Omit<Jsonify<Camera>, "username" | "password">;
 export type ScheduledJobDTO = Jsonify<ScheduledJob>;
 export type InputMappingDTO = Jsonify<InputMapping>;
+export type TriggerActionDTO = Jsonify<TriggerAction>;
+export type WorkflowTargetDTO = Jsonify<WorkflowTarget>;
 export type RoleDTO = Jsonify<RoleWithDevices>;
 /**
  * A user as the REST API exposes it: the serialized row with `passwordHash`
@@ -138,10 +146,13 @@ export type SceneUpdateInput = Partial<SceneCreateInput>;
 
 // ── schedules (CRON jobs) ────────────────────────────────────
 
-/** Body accepted by `POST /schedules`. */
+/**
+ * Body accepted by `POST /schedules`. Purely "when" — no target: a fresh
+ * schedule fires nothing until it has `trigger_actions` wired to it (see
+ * `TriggerActionCreateInput`), so it's a valid, savable row on its own.
+ */
 export interface ScheduleCreateInput {
   name: string;
-  sceneId: string;
   /** 5-field cron expression, interpreted in `timezone`. */
   cron: string;
   /** IANA timezone (e.g. "Europe/Prague"). Defaults server-side if omitted. */
@@ -190,32 +201,19 @@ export type CameraUpdateInput = Partial<CameraCreateInput>;
 // ── input mappings (OSC/TCP/HTTP ingress → action) ───────────
 
 /**
- * Body accepted by `POST /mappings` — one rule mapping an incoming signal to an
- * action.
+ * Body accepted by `POST /mappings` — one rule matching an incoming signal.
+ * Purely "when", same as schedules: what runs is `trigger_actions` wired to
+ * it, not a field here, so a mapping with none yet is still a valid row.
  *
  * A `pattern` matches the signal address: either exact (`/scene/execute`) or
- * parameterised with `:name` segments (`/dim/:level`), the latter capturing the
- * matched segment for use in `paramsTemplate`.
- *
- * `paramsTemplate` values are either literals (passed through unchanged) or
- * reference tokens substituted from the signal: `{arg[0]}` for the Nth positional
- * argument, `{:name}` for a captured path param. A value that is exactly one token
- * keeps the referenced value's type; a token embedded in a larger string
- * interpolates as text.
- *
- * `targetId`/`targetCommand` requirements depend on `targetType`:
- *   - `scene.execute`  → `targetId` = scene id (no command)
- *   - `device.command` → `targetId` = device id + `targetCommand`
- *   - `event.emit`     → neither required (the mapping name identifies the event)
+ * parameterised with `:name` segments (`/dim/:level`), the latter capturing
+ * the matched segment for the wired trigger actions' `params` tokens to draw
+ * from (see `TriggerActionCreateInput`).
  */
 export interface InputMappingCreateInput {
   name: string;
   protocol: InputProtocol;
   pattern: string;
-  targetType: InputTargetType;
-  targetId?: string | null;
-  targetCommand?: string | null;
-  paramsTemplate?: Record<string, unknown>;
   enabled?: boolean;
   /** Node position on the workflow routing-map canvas. Omit to leave unchanged. */
   position?: CanvasPosition | null;
@@ -225,21 +223,59 @@ export type InputMappingUpdateInput = Partial<InputMappingCreateInput>;
 
 /**
  * Result of `POST /mappings/test` — a dry-run that matches a sample signal
- * against the enabled mappings without dispatching anything. Each match reports
- * the rule that fired, the path params captured from `:name` segments, and the
- * params after applying `paramsTemplate`.
+ * against the enabled mappings without dispatching anything. Each match
+ * reports the rule that fired and the path params captured from `:name`
+ * segments; it doesn't resolve trigger actions; that's a dispatch-time concern.
  */
 export interface InputMappingTestResult {
   matched: boolean;
   matches: Array<{
     id: string;
     name: string;
-    targetType: InputTargetType;
-    targetId: string | null;
-    targetCommand: string | null;
     pathParams: Record<string, string>;
-    params: Record<string, unknown>;
   }>;
+}
+
+// ── workflow targets (a scene/device instance placed on the canvas) ──
+
+/**
+ * Body accepted by `POST /workflow-targets` — one placed instance: a scene to
+ * run, or a device command to send with its params. A scene/device may have
+ * any number of these (placing it twice gives two independently-configured
+ * nodes), so `targetId` alone never identifies a row here — `id` does.
+ *
+ * `targetCommand`/`params` only apply to `device.command`; a `scene.execute`
+ * instance has nothing else to configure. `position` is required — creating
+ * one *is* placing it on the canvas, there's no unplaced state to represent.
+ */
+export interface WorkflowTargetCreateInput {
+  targetType: TriggerTargetType;
+  targetId: string;
+  targetCommand?: string | null;
+  params?: Record<string, unknown>;
+  position: CanvasPosition;
+}
+
+/** `targetType`/`targetId` are fixed at creation — changing what an instance points at means placing a new one. */
+export type WorkflowTargetUpdateInput = Partial<Omit<WorkflowTargetCreateInput, "targetType" | "targetId" | "position">> & {
+  position?: CanvasPosition;
+};
+
+// ── trigger actions (which trigger fires which workflow target) ──
+
+/**
+ * Body accepted by `POST /trigger-actions` — one wire wiring a schedule or
+ * mapping to an already-placed `workflow_targets` instance. Exactly one of
+ * `scheduleId`/`mappingId` names the owner; `workflowTargetId` must already
+ * exist — drawing the connection on the canvas from an already-placed
+ * trigger to an already-placed target is what creates this row, so there's
+ * nothing else to configure on it (no update endpoint: rewiring means
+ * deleting this and drawing a new connection).
+ */
+export interface TriggerActionCreateInput {
+  scheduleId?: string | null;
+  mappingId?: string | null;
+  workflowTargetId: string;
 }
 
 // ── kiosks (wall-screen / tablet layouts) ────────────────────

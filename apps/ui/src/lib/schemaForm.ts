@@ -38,6 +38,16 @@ export interface SchemaField {
    * unresolvable — the field then falls back to a plain number input.
    */
   dynamicOptions?: { value: string; label: string }[]
+  /** For a `number` field: its schema's `minimum`, if declared. */
+  minimum?: number
+  /** For a `number` field: its schema's `maximum`, if declared. */
+  maximum?: number
+  /**
+   * Slider step, present only when both `minimum`/`maximum` are set — a bounded
+   * number field renders as a Slider instead of a plain input (e.g. a 0..1
+   * fader level). `1` for an `integer` field, else a hundredth of the range.
+   */
+  step?: number
 }
 
 const titleCase = (key: string): string =>
@@ -51,6 +61,14 @@ function kindOf(prop: JsonSchema): FieldKind {
   if (prop.type === 'boolean') return 'boolean'
   if (prop.type === 'integer' || prop.type === 'number') return 'number'
   return 'string'
+}
+
+/** A `number` field's Slider-driving bounds — `step` only once both `minimum`/`maximum` are declared (1 for an `integer`, else a hundredth of the range). */
+function numberBounds(prop: JsonSchema): Pick<SchemaField, 'minimum' | 'maximum' | 'step'> {
+  const minimum = typeof prop.minimum === 'number' ? prop.minimum : undefined
+  const maximum = typeof prop.maximum === 'number' ? prop.maximum : undefined
+  if (minimum === undefined || maximum === undefined) return { minimum, maximum }
+  return { minimum, maximum, step: prop.type === 'integer' ? 1 : (maximum - minimum) / 100 || 1 }
 }
 
 /**
@@ -83,6 +101,7 @@ export function schemaToFields(
       options: kind === 'enum' ? (prop.enum as unknown[]).map((v) => String(v)) : undefined,
       placeholder: prop.default !== undefined ? String(prop.default) : undefined,
       dynamicOptions: dynamic?.map((o) => ({ value: String(o.value), label: o.label })),
+      ...(kind === 'number' ? numberBounds(prop) : {}),
     }
   })
 }

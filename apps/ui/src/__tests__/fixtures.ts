@@ -17,7 +17,9 @@ import type {
   RoomDTO,
   SceneDTO,
   ScheduledJobDTO,
+  TriggerActionDTO,
   UserDTO,
+  WorkflowTargetDTO,
 } from '@gallery/types'
 
 const NOW = '2026-01-01T00:00:00.000Z'
@@ -65,7 +67,6 @@ export function makeSchedule(over: Partial<ScheduledJobDTO> = {}): ScheduledJobD
   return {
     id: 'j',
     name: 'Schedule',
-    sceneId: 's',
     cron: '0 9 * * *',
     timezone: 'Europe/Prague',
     enabled: true,
@@ -113,12 +114,36 @@ export function makeMapping(over: Partial<InputMappingDTO> = {}): InputMappingDT
     name: 'Mapping',
     protocol: 'osc',
     pattern: '/scene/go',
+    enabled: true,
+    position: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `TriggerActionDTO` (a pure link — schedule/mapping XOR, wired to a placed workflow target); pass `over` to override defaults. */
+export function makeTriggerAction(over: Partial<TriggerActionDTO> = {}): TriggerActionDTO {
+  return {
+    id: 'ta',
+    scheduleId: null,
+    mappingId: null,
+    workflowTargetId: 'wt',
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  }
+}
+
+/** A complete `WorkflowTargetDTO` (a placed, independently-configured scene/device instance); pass `over` to override defaults. */
+export function makeWorkflowTarget(over: Partial<WorkflowTargetDTO> = {}): WorkflowTargetDTO {
+  return {
+    id: 'wt',
     targetType: 'scene.execute',
     targetId: 's',
     targetCommand: null,
-    paramsTemplate: {},
-    enabled: true,
-    position: null,
+    params: {},
+    position: { x: 0, y: 0 },
     createdAt: NOW,
     updatedAt: NOW,
     ...over,

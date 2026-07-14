@@ -13,6 +13,8 @@ import {
   SEED_DEVICES,
   SEED_SCENE_ACTIONS,
   SEED_SCHEDULED_JOBS,
+  SEED_TRIGGER_ACTIONS,
+  SEED_WORKFLOW_TARGETS,
 } from "../../src/db/seed.ts";
 import {
   assertValidCommandParams,
@@ -23,7 +25,9 @@ import { computeNextRun, isValidCron } from "../../src/core/cron.ts";
 
 const connById = new Map(SEED_CONNECTIONS.map((c) => [c.id, c]));
 const devById = new Map(SEED_DEVICES.map((d) => [d.id, d]));
-// Scene IDs referenced by the seed (scene-action targets + schedule targets).
+const scheduleIds = new Set(SEED_SCHEDULED_JOBS.map((j) => j.id));
+const workflowTargetIds = new Set(SEED_WORKFLOW_TARGETS.map((t) => t.id));
+// Scene IDs referenced by the seed (scene-action targets + workflow-target targets).
 const seededSceneIds = new Set(SEED_SCENE_ACTIONS.map((a) => a.sceneId));
 
 /** Endpoint type a device is addressed as (subtype, falling back to type). */
@@ -84,9 +88,36 @@ describe("seed data conforms to driver manifests", () => {
     }
   });
 
-  test("every scheduled job targets a seeded scene", () => {
+  test("every trigger action's owner is a seeded schedule", () => {
+    for (const action of SEED_TRIGGER_ACTIONS) {
+      expect(scheduleIds.has(action.scheduleId), `trigger action ${action.id} references a seeded schedule`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("every trigger action's workflowTargetId is a seeded workflow target", () => {
+    for (const action of SEED_TRIGGER_ACTIONS) {
+      expect(
+        workflowTargetIds.has(action.workflowTargetId),
+        `trigger action ${action.id} references a seeded workflow target`,
+      ).toBe(true);
+    }
+  });
+
+  test("every scene.execute workflow target targets a seeded scene", () => {
+    for (const target of SEED_WORKFLOW_TARGETS) {
+      if (target.targetType !== "scene.execute") continue;
+      expect(seededSceneIds.has(target.targetId), `workflow target ${target.id} references a seeded scene`).toBe(
+        true,
+      );
+    }
+  });
+
+  test("every seeded schedule has at least one wired trigger action", () => {
+    const wiredScheduleIds = new Set(SEED_TRIGGER_ACTIONS.map((a) => a.scheduleId));
     for (const job of SEED_SCHEDULED_JOBS) {
-      expect(seededSceneIds.has(job.sceneId), `job ${job.name} references a seeded scene`).toBe(true);
+      expect(wiredScheduleIds.has(job.id), `job ${job.name} has a wired trigger action`).toBe(true);
     }
   });
 });

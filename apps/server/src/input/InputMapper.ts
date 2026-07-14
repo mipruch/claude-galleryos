@@ -1,34 +1,42 @@
 /**
  * InputMapper — shared ingress logic that turns an incoming signal (OSC, TCP, or
- * HTTP) into a system action, using the rules stored in `input_mappings`.
+ * HTTP) into a system action, using the rules stored in `input_mappings` and the
+ * `trigger_actions` wired to them.
  *
- * It is deliberately transport-agnostic: an ingress server (the upcoming
- * `TcpInputServer` / OSC server) only has to parse its wire format into a neutral
- * {@link InputSignal} (`{ protocol, address, args }`) and call `handle(signal)`.
- * All the matching, parameter templating, and dispatch live here once, so every
- * protocol behaves identically.
+ * It is deliberately transport-agnostic: an ingress server (the OSC/TCP servers)
+ * only has to parse its wire format into a neutral {@link InputSignal}
+ * (`{ protocol, address, args }`) and call `handle(signal)`. All the matching and
+ * dispatch live here once, so every protocol behaves identically.
  *
  * Responsibilities (PLAN.md §4.1):
  *   1. Pattern matching — exact (`/scene/execute`) and parameterised
  *      (`/dim/:level`, capturing the segment as a path param).
- *   2. Template evaluation — fill a mapping's `paramsTemplate` from the signal:
- *      `{arg[0]}` (positional arg), `{:level}` (captured path param), or a literal.
- *   3. An in-memory cache of the *enabled* mappings, grouped by protocol, with
- *      `reload()` called by the mappings CRUD so edits take effect immediately.
- *   4. Dispatch — route a matched rule to the SceneEngine / DeviceManager /
- *      EventBus.
+ *   2. An in-memory cache of the *enabled* mappings, grouped by protocol, each
+ *      joined with its `trigger_actions` (0..N — a mapping with none matched but
+ *      fires nothing, which is a normal, valid state before it's wired up on the
+ *      canvas). `reload()` is called by the mappings AND trigger-actions CRUD so
+ *      edits take effect immediately.
+ *   3. Dispatch — hand every matched mapping's actions to the shared
+ *      {@link TriggerActionDispatcher}, which resolves each action's `params`
+ *      template against the signal's args/path params and runs it.
  *
- * The cache is the only state; matching and templating are otherwise pure (and
- * exposed via {@link match} for the `/mappings/test` dry-run, which never
- * dispatches).
+ * The cache is the only state; matching is otherwise pure (and exposed via
+ * {@link match} for the `/mappings/test` dry-run, which never dispatches).
  */
 
-import type { CommandResult } from "@gallery/driver-core";
-import { errMsg } from "@gallery/driver-core";
-import type { InputMapping, InputTargetType } from "@gallery/types";
-import type { EventBus } from "../core/EventBus.ts";
+import type { InputMapping } from "@gallery/types";
+import type {
+  DispatchableTriggerAction,
+  TemplateContext,
+  TriggerDispatchOutcome,
+} from "../core/TriggerActionDispatcher.ts";
 import type { Logger } from "../logger.ts";
-import { compilePattern, evaluateTemplate, matchPattern, type CompiledPattern } from "./patterns.ts";
+import { compilePattern, matchPattern, type CompiledPattern } from "./patterns.ts";
+
+/** A dispatchable action joined with the `mappingId` it's wired to, for cache grouping. */
+export interface MappedTriggerAction extends DispatchableTriggerAction {
+  mappingId: string | null;
+}
 
 /** A normalized incoming signal, produced by each ingress transport. */
 export interface InputSignal {
@@ -40,21 +48,16 @@ export interface InputSignal {
   args?: unknown[];
 }
 
-/** A mapping that matched a signal, with its evaluated action parameters. */
+/** A mapping that matched a signal. */
 export interface MappingMatch {
   mapping: InputMapping;
   /** Segments captured by `:name` pattern params (always strings). */
   pathParams: Record<string, string>;
-  /** `paramsTemplate` after substitution — what the action runs with. */
-  params: Record<string, unknown>;
 }
 
-/** Outcome of dispatching a single matched mapping. */
-export interface DispatchOutcome {
-  mappingId: string;
-  targetType: InputTargetType;
-  ok: boolean;
-  detail?: string;
+/** A match plus the trigger actions cached for it — the shape {@link handle} dispatches. */
+interface CompiledMatch extends MappingMatch {
+  actions: DispatchableTriggerAction[];
 }
 
 // ── injected dependency contracts (narrow, for hermetic tests) ─
@@ -64,31 +67,33 @@ export interface InputMappingSource {
   listEnabled(): Promise<InputMapping[]>;
 }
 
-export interface MapperSceneEngine {
-  startScene(
-    sceneId: string,
-    source: string,
-    opts?: { sourceDetail?: string },
-  ): Promise<{ executionId: string; sceneId: string; status: string }>;
+/** Source of the trigger actions wired to a set of mappings. */
+export interface TriggerActionSource {
+  listDispatchableByMappingIds(mappingIds: string[]): Promise<MappedTriggerAction[]>;
 }
 
-export interface MapperDeviceManager {
-  execute(deviceId: string, command: string, params: Record<string, unknown>): Promise<CommandResult>;
+/** The shared dispatcher every trigger source (schedules, mappings, …) fires through. */
+export interface MapperDispatcher {
+  dispatchAll(
+    actions: readonly DispatchableTriggerAction[],
+    source: string,
+    sourceDetail: string,
+    template?: TemplateContext,
+  ): Promise<TriggerDispatchOutcome[]>;
 }
 
 export interface InputMapperOptions {
   repo: InputMappingSource;
+  triggerActions: TriggerActionSource;
+  dispatcher: MapperDispatcher;
   logger: Logger;
-  /** Dispatch sinks. Optional so the `/test` route can build a match-only mapper. */
-  sceneEngine?: MapperSceneEngine;
-  deviceManager?: MapperDeviceManager;
-  eventBus?: EventBus;
 }
 
-/** A cache entry: the row plus its pre-compiled pattern. */
+/** A cache entry: the row plus its pre-compiled pattern and wired trigger actions. */
 interface CompiledMapping {
   mapping: InputMapping;
   pattern: CompiledPattern;
+  actions: DispatchableTriggerAction[];
 }
 
 export class InputMapper {
@@ -100,13 +105,22 @@ export class InputMapper {
     this.log = opts.logger.child("input_mapper");
   }
 
-  /** Load the enabled mappings into the cache. Called on start and after CRUD. */
+  /**
+   * Load the enabled mappings (and their trigger actions) into the cache. Called
+   * on start, and after mappings OR trigger-actions CRUD.
+   */
   async reload(): Promise<void> {
     const rows = await this.opts.repo.listEnabled();
+    const actionsByMapping = await this.loadActionsByMapping(rows.map((r) => r.id));
+
     const next = new Map<string, CompiledMapping[]>();
     for (const mapping of rows) {
       const bucket = next.get(mapping.protocol) ?? [];
-      bucket.push({ mapping, pattern: compilePattern(mapping.pattern) });
+      bucket.push({
+        mapping,
+        pattern: compilePattern(mapping.pattern),
+        actions: actionsByMapping.get(mapping.id) ?? [],
+      });
       next.set(mapping.protocol, bucket);
     }
     this.cache = next;
@@ -129,96 +143,65 @@ export class InputMapper {
    * Match a signal against the cached rules for its protocol. Pure (no
    * dispatch) — used both by {@link handle} and the `/mappings/test` dry-run.
    *
-   * @returns Every matching mapping with its evaluated params, in cache order.
+   * @returns Every matching mapping with its captured path params, in cache order.
    */
   match(signal: InputSignal): MappingMatch[] {
-    const bucket = this.cache.get(signal.protocol) ?? [];
-    const args = signal.args ?? [];
-    const out: MappingMatch[] = [];
-    for (const { mapping, pattern } of bucket) {
-      const pathParams = matchPattern(pattern, signal.address);
-      if (pathParams === null) continue;
-      out.push({
-        mapping,
-        pathParams,
-        params: evaluateTemplate(mapping.paramsTemplate, args, pathParams),
-      });
-    }
-    return out;
+    return this.matchCompiled(signal).map(({ mapping, pathParams }) => ({ mapping, pathParams }));
   }
 
   /**
-   * Match a signal and dispatch every matching rule. The transport calls this
-   * after emitting its `input.{protocol}.received` event.
+   * Match a signal and dispatch every wired trigger action of every matching
+   * rule. The transport calls this after emitting its `input.{protocol}.received`
+   * event.
    *
-   * @returns One outcome per matched mapping (empty if nothing matched).
+   * @returns One outcome per dispatched trigger action (empty if nothing matched
+   * or every match is still unwired).
    */
-  async handle(signal: InputSignal): Promise<DispatchOutcome[]> {
-    const matches = this.match(signal);
+  async handle(signal: InputSignal): Promise<TriggerDispatchOutcome[]> {
+    const matches = this.matchCompiled(signal);
     if (matches.length === 0) {
       this.log.debug("no mapping matched", { protocol: signal.protocol, address: signal.address });
       return [];
     }
-    const outcomes: DispatchOutcome[] = [];
-    for (const m of matches) outcomes.push(await this.dispatch(m, signal));
+
+    const args = signal.args ?? [];
+    const sourceDetail = `${signal.protocol}:${signal.address}`;
+    const outcomes: TriggerDispatchOutcome[] = [];
+    for (const m of matches) {
+      if (m.actions.length === 0) {
+        this.log.debug("mapping matched but has no wired trigger actions", { mapping: m.mapping.name });
+        continue;
+      }
+      const template: TemplateContext = { args, pathParams: m.pathParams };
+      const results = await this.opts.dispatcher.dispatchAll(m.actions, signal.protocol, sourceDetail, template);
+      outcomes.push(...results);
+    }
     return outcomes;
   }
 
-  /** Execute a single matched mapping against its target sink. */
-  async dispatch(m: MappingMatch, signal: InputSignal): Promise<DispatchOutcome> {
-    const { mapping, params } = m;
-    const sourceDetail = `${signal.protocol}:${signal.address}`;
-    const base = { mappingId: mapping.id, targetType: mapping.targetType };
-    try {
-      switch (mapping.targetType) {
-        case "scene.execute": {
-          if (!mapping.targetId) throw new Error("scene.execute mapping has no targetId");
-          if (!this.opts.sceneEngine) throw new Error("no SceneEngine wired");
-          const r = await this.opts.sceneEngine.startScene(mapping.targetId, signal.protocol, {
-            sourceDetail,
-          });
-          this.log.info("mapping ran scene", { mapping: mapping.name, sceneId: mapping.targetId });
-          return { ...base, ok: true, detail: `execution ${r.executionId}` };
-        }
-        case "device.command": {
-          if (!mapping.targetId || !mapping.targetCommand) {
-            throw new Error("device.command mapping needs targetId and targetCommand");
-          }
-          if (!this.opts.deviceManager) throw new Error("no DeviceManager wired");
-          const res = await this.opts.deviceManager.execute(
-            mapping.targetId,
-            mapping.targetCommand,
-            params,
-          );
-          this.log[res.success ? "info" : "warn"]("mapping ran command", {
-            mapping: mapping.name,
-            deviceId: mapping.targetId,
-            command: mapping.targetCommand,
-            success: res.success,
-          });
-          return { ...base, ok: res.success, detail: res.error };
-        }
-        case "event.emit": {
-          // A closed, typed bus has no arbitrary events; surface a named hook
-          // others (or future automations) can listen for.
-          this.opts.eventBus?.emit({
-            type: "input.mapping.triggered",
-            mappingId: mapping.id,
-            name: mapping.name,
-            params,
-          });
-          this.log.info("mapping emitted event", { mapping: mapping.name });
-          return { ...base, ok: true };
-        }
-        default: {
-          // Exhaustive: a new target type is a compile error here.
-          const never: never = mapping.targetType;
-          throw new Error(`unknown target type: ${String(never)}`);
-        }
-      }
-    } catch (err) {
-      this.log.warn("mapping dispatch failed", { mapping: mapping.name, error: errMsg(err) });
-      return { ...base, ok: false, detail: errMsg(err) };
+  /** Match against the cache, keeping each mapping's wired trigger actions. */
+  private matchCompiled(signal: InputSignal): CompiledMatch[] {
+    const bucket = this.cache.get(signal.protocol) ?? [];
+    const out: CompiledMatch[] = [];
+    for (const { mapping, pattern, actions } of bucket) {
+      const pathParams = matchPattern(pattern, signal.address);
+      if (pathParams === null) continue;
+      out.push({ mapping, pathParams, actions });
     }
+    return out;
+  }
+
+  /** Group the trigger actions of a set of mappings by their `mappingId`. */
+  private async loadActionsByMapping(mappingIds: string[]): Promise<Map<string, DispatchableTriggerAction[]>> {
+    const byMapping = new Map<string, DispatchableTriggerAction[]>();
+    if (mappingIds.length === 0) return byMapping;
+    const actions = await this.opts.triggerActions.listDispatchableByMappingIds(mappingIds);
+    for (const action of actions) {
+      if (!action.mappingId) continue;
+      const bucket = byMapping.get(action.mappingId) ?? [];
+      bucket.push(action);
+      byMapping.set(action.mappingId, bucket);
+    }
+    return byMapping;
   }
 }
