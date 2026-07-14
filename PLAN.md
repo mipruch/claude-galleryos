@@ -1016,16 +1016,20 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           (`:selection-key-code="['Meta', 'Control']"`) instead of Vue Flow's
           default Shift — confirmed Shift+drag no longer selects anything and
           Ctrl+drag selects both nodes in a rectangle.
-        - **Return/Enter deletes the active node**, calling the exact same
+        - **Delete/Backspace deletes the active node** (both keys, since a
+          Mac keyboard's "delete" key itself sends `Backspace` — only a
+          Windows/Linux `Delete` key sends `Delete`), calling the exact same
           function its inspector's own trash button does
           (`TriggerInspector`/`WorkflowTargetInspector` now `defineExpose`
           their `remove()`, called via a template ref from `WorkflowsView`'s
           window-level `keydown` listener) rather than duplicating the
           deletion logic. Guarded against firing while focus is in an input/
-          textarea/select/button/contenteditable — confirmed pressing Enter
-          to submit the trigger name form saves instead of deleting, and
-          pressing it with the canvas focused deletes the selected node and
-          closes its inspector.
+          textarea/select/button/contenteditable, so deleting text in the
+          trigger name field doesn't also delete the node — confirmed
+          pressing Delete with the canvas focused removes the selected node
+          and closes its inspector, and pressing it mid-edit in the Name
+          field just edits the text. (First shipped bound to Enter instead by
+          a misreading of "delete key" — fixed.)
         - New search box in the library panel filters both the Scenes and
           Devices sections by name, reusing the device-grid/scene-list
           search primitives (`lib/text.ts`'s `searchTerms`/`normalize`/

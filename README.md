@@ -2219,12 +2219,13 @@ stránky výše slouží jen k monitorování, přepnutí enable/disable a smaz�
   **každého** uzlu z `event.nodes` (ne jen toho jednoho, co pointer skutečně
   chytil) — dřív se uložila jen pozice chyceného uzlu a ostatní se po dalším
   reaktivním překreslení vrátily na starou pozici, protože nic jejich vizuální
-  posun nepersistovalo. **Return/Enter** smaže aktivní (vybraný) uzel stejnou
-  cestou jako tlačítko koše v jeho inspectoru (`WorkflowsView`
-  volá `defineExpose`d `remove()` na aktuálně vykresleném inspectoru) — s
-  hlídáním, že focus není v inputu/textarey/selectu/tlačítku/contenteditable,
-  aby Enter při psaní jména nebo odesílání formuláře uzel nesmazal místo
-  uložení.
+  posun nepersistovalo. **Delete/Backspace** (obě klávesy — Mac klávesa
+  "delete" posílá `Backspace`, Windows/Linux vlastní `Delete`) smaže aktivní
+  (vybraný) uzel stejnou cestou jako tlačítko koše v jeho inspectoru
+  (`WorkflowsView` volá `defineExpose`d `remove()` na aktuálně vykresleném
+  inspectoru) — s hlídáním, že focus není v inputu/textarey/selectu/
+  tlačítku/contenteditable, aby smazání textu ve formuláři nesmazalo místo
+  toho celý uzel.
 - **Hledání v knihovně** — textové pole nad seznamy Scenes/Devices filtruje
   obě sekce podle jména, sdílené s vyhledáváním v gridu zařízení a v seznamu
   scén (`lib/text.ts` — `searchTerms`/`normalize`/`matchesAllTerms`, stejné

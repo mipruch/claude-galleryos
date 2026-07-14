@@ -148,18 +148,20 @@ function selectNodeIfCreated<T extends { id: string }>(
 }
 
 // Whichever inspector is currently mounted (mutually exclusive, see template)
-// exposes its own `remove()` — the Enter shortcut below calls the exact same
+// exposes its own `remove()` — the Delete shortcut below calls the exact same
 // function the inspector's own delete button does, so there's one definition
 // of "how to delete the active node," not two.
 const triggerInspectorRef = ref<InstanceType<typeof TriggerInspector> | null>(null)
 const targetInspectorRef = ref<InstanceType<typeof WorkflowTargetInspector> | null>(null)
 
-/** Elements Enter already has its own meaning on — never hijack it there (typing, submitting, picking a Select option). */
+/** Elements Delete/Backspace already has its own meaning on — never hijack it there (editing text, picking a Select option). */
 const KEY_HANDLING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'])
+/** Both keyboards' "delete" key — Mac's sends `Backspace`, Windows/Linux's own `Delete` key sends `Delete`. */
+const DELETE_KEYS = new Set(['Delete', 'Backspace'])
 
-/** Return/Enter deletes the currently active node — same effect as its inspector's own trash button. */
+/** Delete/Backspace removes the currently active node — same effect as its inspector's own trash button. */
 function onWindowKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || !selection.value) return
+  if (!DELETE_KEYS.has(event.key) || !selection.value) return
   const target = event.target as HTMLElement | null
   if (target && (KEY_HANDLING_TAGS.has(target.tagName) || target.isContentEditable)) return
   event.preventDefault()
