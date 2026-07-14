@@ -139,7 +139,10 @@ function clearSelection(): void {
 }
 
 /** Select a just-created node so its inspector opens — a no-op if creation failed. */
-function selectNodeIfCreated<T extends { id: string }>(created: T | null, toNodeId: (id: string) => string): void {
+function selectNodeIfCreated<T extends { id: string }>(
+  created: T | null,
+  toNodeId: (id: string) => string,
+): void {
   if (!created) return
   selectedNodeId.value = toNodeId(created.id)
 }
@@ -150,14 +153,24 @@ function selectNodeIfCreated<T extends { id: string }>(created: T | null, toNode
 async function createTrigger(kind: TriggerOwnerKind): Promise<void> {
   if (kind === 'mapping') {
     selectNodeIfCreated(
-      await mappingsStore.create({ name: 'New mapping', protocol: 'osc', pattern: '/', enabled: true }),
+      await mappingsStore.create({
+        name: 'New mapping',
+        protocol: 'osc',
+        pattern: '/',
+        enabled: true,
+      }),
       mappingNodeId,
     )
     return
   }
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   selectNodeIfCreated(
-    await schedulesStore.create({ name: 'New schedule', cron: '0 8 * * *', timezone: browserTz, enabled: true }),
+    await schedulesStore.create({
+      name: 'New schedule',
+      cron: '0 8 * * *',
+      timezone: browserTz,
+      enabled: true,
+    }),
     scheduleNodeId,
   )
 }
@@ -215,8 +228,14 @@ async function onConnect(connection: Connection): Promise<void> {
   const resolved = resolveConnectAction(connection)
   if (!resolved) return
 
-  const owner = resolved.ownerKind === 'mapping' ? { mappingId: resolved.ownerId } : { scheduleId: resolved.ownerId }
-  const created = await triggerActionsStore.create({ ...owner, workflowTargetId: resolved.workflowTargetId })
+  const owner =
+    resolved.ownerKind === 'mapping'
+      ? { mappingId: resolved.ownerId }
+      : { scheduleId: resolved.ownerId }
+  const created = await triggerActionsStore.create({
+    ...owner,
+    workflowTargetId: resolved.workflowTargetId,
+  })
   if (created) selectedNodeId.value = targetNodeId(resolved.workflowTargetId)
 }
 
@@ -304,7 +323,12 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
 
       <!-- Inspector: the canvas replacement for the old Mapping/Schedule/target dialogs. -->
       <aside v-if="selection" class="w-96 shrink-0 overflow-y-auto border-l p-3">
-        <TriggerInspector v-if="selection.kind === 'trigger'" :key="selectedNodeId ?? undefined" :data="selection.data" @remove="clearSelection" />
+        <TriggerInspector
+          v-if="selection.kind === 'trigger'"
+          :key="selectedNodeId ?? undefined"
+          :data="selection.data"
+          @remove="clearSelection"
+        />
         <WorkflowTargetInspector
           v-else
           :key="selectedNodeId ?? undefined"
@@ -317,3 +341,14 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
     </div>
   </div>
 </template>
+
+<style>
+.vue-flow__controls-button {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+
+  svg {
+    fill: var(--foreground);
+  }
+}
+</style>
