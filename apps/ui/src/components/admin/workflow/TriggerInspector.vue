@@ -4,7 +4,7 @@
  * schedule) — the canvas replacement for the old MappingFormDialog /
  * ScheduleFormDialog modals. Edits only the trigger's own identity (name,
  * enabled, and its protocol+pattern or cron+timezone); wiring what it fires is
- * the connected TriggerActionNode's own inspector, not this one.
+ * a canvas edge instead, opening `TriggerActionInspector` when selected.
  *
  * The parent view keys this component on the selected node's id
  * (`:key="…"` in WorkflowsView), so a fresh instance mounts per selection and

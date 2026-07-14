@@ -67,7 +67,6 @@ function triggerAction(partial: Partial<TriggerAction> = {}): TriggerAction {
     targetId: partial.targetId ?? "s1",
     targetCommand: partial.targetCommand ?? null,
     params: partial.params ?? {},
-    position: partial.position ?? null,
     createdAt: partial.createdAt ?? new Date(),
     updatedAt: partial.updatedAt ?? new Date(),
   };

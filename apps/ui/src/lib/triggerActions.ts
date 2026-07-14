@@ -1,15 +1,16 @@
 /**
  * Trigger-action helpers shared by the workflow canvas's node components and
  * inspector. A trigger action is what a schedule or mapping fires — a scene run
- * or a single device command, 0..N per trigger. `targetId`/`targetCommand` may
- * be unset (a normal, valid "not wired yet" state); these helpers describe that
- * state rather than assuming a fully-wired row.
+ * or a single device command, 0..N per trigger. On the edge-based canvas its
+ * `targetType`/`targetId` are fixed by the wire that created it (see
+ * `workflowGraph.ts`); these helpers describe that resolved target for the
+ * read-only summary shown in the inspector and the Schedules monitor list.
  */
 
-import type { TriggerActionUpdateInput, TriggerTargetType } from '@gallery/types'
+import type { TriggerTargetType } from '@gallery/types'
 
-/** Selectable target types, with display labels. */
-export const TARGET_TYPE_OPTIONS: ReadonlyArray<{ value: TriggerTargetType; label: string }> = [
+/** Display labels for target types — internal to `targetTypeLabel`'s unrecognized-value fallback. */
+const TARGET_TYPE_OPTIONS: ReadonlyArray<{ value: TriggerTargetType; label: string }> = [
   { value: 'scene.execute', label: 'Run scene' },
   { value: 'device.command', label: 'Device command' },
 ]
@@ -52,60 +53,5 @@ export function resolveTargetNames(
   }
 }
 
-/** Whether a target type's params come from the firing signal's captured tokens (mapping-owned) or are literal (schedule-owned). */
+/** Whether a target type takes params at all — only device.command does; a scene run takes none. */
 export const usesParams = (targetType: string | undefined): boolean => targetType === 'device.command'
-
-/** Pretty-print a params object for the textarea (empty → "{}"). */
-export function stringifyParams(params: Record<string, unknown> | undefined): string {
-  if (!params || Object.keys(params).length === 0) return '{}'
-  return JSON.stringify(params, null, 2)
-}
-
-/** Result of parsing the params textarea. */
-export type ParsedParams = { ok: true; value: Record<string, unknown> } | { ok: false; error: string }
-
-/**
- * Parse the params textarea: blank → `{}`, otherwise it must be a JSON object
- * (not an array or primitive).
- */
-export function parseParams(text: string): ParsedParams {
-  const trimmed = text.trim()
-  if (trimmed === '') return { ok: true, value: {} }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch {
-    return { ok: false, error: 'Not valid JSON' }
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: 'Must be a JSON object, e.g. {"level":"{:level}"}' }
-  }
-  return { ok: true, value: parsed as Record<string, unknown> }
-}
-
-/** True when the text is blank or a valid JSON object (for form validation). */
-export const isValidParams = (text: string): boolean => parseParams(text).ok
-
-/** The inspector form's raw field values (all strings — Select/Input/Textarea bindings). */
-export interface TriggerActionFormValues {
-  targetType: TriggerTargetType
-  targetId: string
-  targetCommand: string
-  params: string
-}
-
-/**
- * Build the update patch from the inspector form's submitted values. A blank
- * `targetId`/`targetCommand` persists as `null` (unwired, still valid); params
- * only apply to device.command and default to `{}` on an invalid/blank textarea.
- */
-export function buildTriggerActionPatch(v: TriggerActionFormValues): TriggerActionUpdateInput {
-  const isDeviceCommand = v.targetType === 'device.command'
-  const parsed = isDeviceCommand ? parseParams(v.params) : null
-  return {
-    targetType: v.targetType,
-    targetId: v.targetId || null,
-    targetCommand: isDeviceCommand ? v.targetCommand || null : null,
-    params: parsed?.ok ? parsed.value : {},
-  }
-}

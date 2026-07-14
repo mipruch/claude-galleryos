@@ -26,7 +26,6 @@ import type { NewTriggerAction, TriggerTargetType } from "@gallery/types";
 import type { ApiContext } from "../context.ts";
 import {
   HttpError,
-  asCanvasPosition,
   asObject,
   json,
   noContent,
@@ -132,7 +131,6 @@ export function triggerActionsRoutes(ctx: ApiContext): RouteMap {
           targetId,
           targetCommand,
           ...(body.params !== undefined ? { params: asObject(body.params, "params") } : {}),
-          ...(body.position !== undefined ? { position: asCanvasPosition(body.position, "position") } : {}),
         };
         const created = await ctx.triggerActions.create(values);
         if (!created) throw new HttpError(500, "INTERNAL_ERROR", "failed to create trigger action");
@@ -161,7 +159,6 @@ export function triggerActionsRoutes(ctx: ApiContext): RouteMap {
           patch.targetType = body.targetType;
         }
         if (body.params !== undefined) patch.params = asObject(body.params, "params");
-        if (body.position !== undefined) patch.position = asCanvasPosition(body.position, "position");
 
         // Validate the *effective* target (merge of patch over the current row).
         const effectiveTargetType = patch.targetType ?? current.targetType;

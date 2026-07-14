@@ -130,6 +130,8 @@ export const devices = pgTable(
     icon: varchar("icon", { length: 50 }),
     displayOrder: integer("display_order").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
+    /** Node position on the workflow routing-map canvas; NULL = not yet placed there. */
+    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     createdBy: varchar("created_by", { length: 100 }).default("admin"),
@@ -175,6 +177,8 @@ export const scenes = pgTable(
     variables: jsonb("variables").$type<Record<string, unknown>>().notNull().default({}),
     version: integer("version").notNull().default(1),
     enabled: boolean("enabled").notNull().default(true),
+    /** Node position on the workflow routing-map canvas; NULL = not yet placed there. */
+    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     createdBy: varchar("created_by", { length: 100 }).default("admin"),
@@ -341,8 +345,6 @@ export const triggerActions = pgTable(
     targetId: uuid("target_id"),
     targetCommand: varchar("target_command", { length: 100 }),
     params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
-    // Node position on the workflow routing-map canvas (see scene_actions.position).
-    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

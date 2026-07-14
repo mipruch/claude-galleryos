@@ -18,6 +18,7 @@
 import type { ApiContext } from "../context.ts";
 import {
   HttpError,
+  asCanvasPosition,
   asObject,
   json,
   noContent,
@@ -94,6 +95,7 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
           metadata: (body.metadata as Record<string, unknown> | undefined) ?? {},
           icon: body.icon as string | undefined,
           enabled: (body.enabled as boolean | undefined) ?? true,
+          position: body.position !== undefined ? asCanvasPosition(body.position, "position") : undefined,
         });
         await ctx.deviceManager.refreshConnectionDevices(created!.connectionId);
         return json(created, 201);
@@ -155,6 +157,7 @@ export function devicesRoutes(ctx: ApiContext): RouteMap {
           icon: body.icon as string | undefined,
           displayOrder: body.displayOrder as number | undefined,
           enabled: body.enabled as boolean | undefined,
+          position: body.position !== undefined ? asCanvasPosition(body.position, "position") : undefined,
         });
         if (!updated) throw new HttpError(404, "NOT_FOUND", "device not found");
         await ctx.deviceManager.refreshConnectionDevices(updated.connectionId);

@@ -63,6 +63,20 @@
       "when": 1783966736527,
       "tag": "0008_trigger_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783988831289,
+      "tag": "0009_scene_device_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783989807252,
+      "tag": "0010_drop_trigger_action_position",
+      "breakpoints": true
     }
   ]
 }

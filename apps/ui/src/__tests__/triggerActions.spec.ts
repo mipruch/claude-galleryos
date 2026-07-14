@@ -1,14 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  buildTriggerActionPatch,
-  isValidParams,
-  parseParams,
-  resolveTargetNames,
-  stringifyParams,
-  targetSummary,
-  targetTypeLabel,
-  usesParams,
-} from '@/lib/triggerActions'
+import { resolveTargetNames, targetSummary, targetTypeLabel, usesParams } from '@/lib/triggerActions'
 
 describe('labels', () => {
   it('maps target-type values to display labels, falling back gracefully', () => {
@@ -43,40 +34,6 @@ describe('usesParams', () => {
   })
 })
 
-describe('parseParams', () => {
-  it('treats blank as an empty object', () => {
-    expect(parseParams('   ')).toEqual({ ok: true, value: {} })
-  })
-  it('accepts a JSON object', () => {
-    expect(parseParams('{"level":"{:level}"}')).toEqual({
-      ok: true,
-      value: { level: '{:level}' },
-    })
-  })
-  it('rejects invalid JSON', () => {
-    const r = parseParams('{nope}')
-    expect(r.ok).toBe(false)
-  })
-  it('rejects non-objects (array / primitive)', () => {
-    expect(parseParams('[1,2]').ok).toBe(false)
-    expect(parseParams('42').ok).toBe(false)
-  })
-  it('isValidParams mirrors parse success', () => {
-    expect(isValidParams('{}')).toBe(true)
-    expect(isValidParams('[1]')).toBe(false)
-  })
-})
-
-describe('stringifyParams', () => {
-  it('renders an empty object as "{}"', () => {
-    expect(stringifyParams(undefined)).toBe('{}')
-    expect(stringifyParams({})).toBe('{}')
-  })
-  it('pretty-prints a non-empty object', () => {
-    expect(stringifyParams({ a: 1 })).toBe('{\n  "a": 1\n}')
-  })
-})
-
 describe('resolveTargetNames', () => {
   const scenes = [{ id: 's1', name: 'Welcome' }]
   const devices = [{ id: 'd1', name: 'Dimmer' }]
@@ -99,36 +56,5 @@ describe('resolveTargetNames', () => {
       deviceName: undefined,
       command: null,
     })
-  })
-})
-
-describe('buildTriggerActionPatch', () => {
-  it('nulls out an empty targetId (unwired stays valid)', () => {
-    expect(buildTriggerActionPatch({ targetType: 'scene.execute', targetId: '', targetCommand: '', params: '' })).toEqual({
-      targetType: 'scene.execute',
-      targetId: null,
-      targetCommand: null,
-      params: {},
-    })
-  })
-  it('carries targetId/targetCommand/params through for a device.command action', () => {
-    expect(
-      buildTriggerActionPatch({
-        targetType: 'device.command',
-        targetId: 'd1',
-        targetCommand: 'setLevel',
-        params: '{"level":0.5}',
-      }),
-    ).toEqual({ targetType: 'device.command', targetId: 'd1', targetCommand: 'setLevel', params: { level: 0.5 } })
-  })
-  it('drops targetCommand and params for a scene.execute action even if the form has stale values', () => {
-    expect(
-      buildTriggerActionPatch({ targetType: 'scene.execute', targetId: 's1', targetCommand: 'stale', params: '{"a":1}' }),
-    ).toEqual({ targetType: 'scene.execute', targetId: 's1', targetCommand: null, params: {} })
-  })
-  it('falls back to an empty object when the params text is invalid JSON', () => {
-    expect(
-      buildTriggerActionPatch({ targetType: 'device.command', targetId: 'd1', targetCommand: 'on', params: '{nope}' }),
-    ).toEqual({ targetType: 'device.command', targetId: 'd1', targetCommand: 'on', params: {} })
   })
 })

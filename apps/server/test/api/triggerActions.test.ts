@@ -25,7 +25,6 @@ const baseAction = {
   targetId: "s1",
   targetCommand: null,
   params: {},
-  position: null,
 };
 
 const fakeTriggerActions = {
@@ -42,7 +41,7 @@ const fakeTriggerActions = {
     return store[id];
   },
   async create(values: Record<string, unknown>) {
-    const row = { id: "ta-new", targetCommand: null, params: {}, position: null, ...values };
+    const row = { id: "ta-new", targetCommand: null, params: {}, ...values };
     store["ta-new"] = row;
     return row;
   },

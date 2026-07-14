@@ -369,6 +369,7 @@ export const scenesRepo = {
           color: input.color,
           tags: input.tags ?? [],
           isFavorite: input.isFavorite ?? false,
+          position: input.position ?? null,
         })
         .returning(),
     );
@@ -387,6 +388,7 @@ export const scenesRepo = {
     if (input.color !== undefined) patch.color = input.color;
     if (input.tags !== undefined) patch.tags = input.tags;
     if (input.isFavorite !== undefined) patch.isFavorite = input.isFavorite;
+    if (input.position !== undefined) patch.position = input.position;
 
     const updated = await first(db.update(scenes).set(patch).where(eq(scenes.id, id)).returning());
     if (!updated) return undefined;

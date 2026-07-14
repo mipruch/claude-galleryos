@@ -136,6 +136,8 @@ export interface SceneCreateInput {
   tags?: string[];
   isFavorite?: boolean;
   actions?: SceneActionInput[];
+  /** Node position on the workflow routing-map canvas. Omit to leave unchanged. */
+  position?: CanvasPosition | null;
 }
 
 export type SceneUpdateInput = Partial<SceneCreateInput>;
@@ -238,12 +240,15 @@ export interface InputMappingTestResult {
  * Body accepted by `POST /trigger-actions` — one action a schedule or mapping
  * fires. Exactly one of `scheduleId`/`mappingId` names the owner.
  *
- * `targetId`/`targetCommand` may be omitted entirely: an action dropped on
- * the canvas before a target is picked is a normal, valid row — the
- * dispatcher just skips one that's still unwired at fire time. `params`
- * (device.command only) is either literal values or `{arg[0]}`/`{:name}`
- * tokens the dispatcher fills in from the firing signal when the owner is a
- * mapping (a schedule has no signal, so its actions' params stay literal).
+ * `targetId`/`targetCommand` may be omitted entirely: the API itself still
+ * accepts an unwired row (the dispatcher just skips one that's still unwired
+ * at fire time), though the canvas can no longer create one that way — there
+ * an action is an edge straight from an already-placed trigger to an
+ * already-placed target, so drawing the connection is what sets both fields
+ * at once. `params` (device.command only) is either literal values or
+ * `{arg[0]}`/`{:name}` tokens the dispatcher fills in from the firing signal
+ * when the owner is a mapping (a schedule has no signal, so its actions'
+ * params stay literal).
  */
 export interface TriggerActionCreateInput {
   scheduleId?: string | null;
@@ -253,8 +258,6 @@ export interface TriggerActionCreateInput {
   /** Required once `targetType` is `device.command` and the action is meant to fire. */
   targetCommand?: string | null;
   params?: Record<string, unknown>;
-  /** Node position on the workflow canvas. Omit to leave unchanged. */
-  position?: CanvasPosition | null;
 }
 
 export type TriggerActionUpdateInput = Partial<Omit<TriggerActionCreateInput, "scheduleId" | "mappingId">>;

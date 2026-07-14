@@ -874,6 +874,65 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           inspector). The user-facing `/schedules` monitoring page now lists
           every wired trigger action's summary per schedule instead of a
           single scene name, since a schedule can fire more than one action.
+  - [x] **Canvas UX redesign — edges instead of action nodes, drag-and-drop
+        library, persisted target positions, widget-based params.** Follow-up
+        to the 3-tier canvas above, from direct admin feedback on it: the
+        action-node tier is gone, `position` moved from `trigger_actions` to
+        `scenes`/`devices` (migrations `0009`, `0010`), and raw-JSON param
+        editing became typed widgets.
+        - `lib/workflowGraph.ts`'s `buildRoutingGraph` is now a 2-tier graph:
+          one node per trigger and per placed-or-wired target, one **edge**
+          per `trigger_action` connecting a trigger straight to its target.
+          The action has no node of its own — its id and full row travel as
+          the edge's `data`, so selecting the edge (`@edge-click`) is how
+          `TriggerActionInspector` opens, the same way selecting a node
+          always has. Because an edge needs both endpoints to exist, a
+          `trigger_action` can no longer be created unwired — drawing a
+          connection from an already-visible trigger to an already-visible
+          target *is* what creates it, atomically wired. `TriggerActionNode.vue`,
+          `TriggerActionDeviceFields.vue`, and the routing map's "+" buttons
+          (`addActionNodeId`/`parseAddActionValue`) are deleted; the scene
+          stage canvas's own unrelated "+" buttons are untouched.
+        - New `position: jsonb` column on `scenes`/`devices` (migration
+          `0009`), threaded through their create/update routes/repos exactly
+          like every other positioned row; `trigger_actions.position` (no
+          longer meaningful — nothing renders it as a node) is dropped
+          (migration `0010`). A scene/device only renders as a canvas node
+          once it has a saved `position` *or* some `trigger_action` already
+          targets it (`unplacedLibraryItems` is the complementary set) — this
+          also fixes the pre-existing bug where an auto-shown, unpositioned
+          target's dragged position never persisted (there was no column to
+          save it to before this).
+        - New left-sidebar **library panel** (`LibraryPanel.vue` +
+          `LibraryList.vue`) lists every scene/device not yet on the
+          canvas as an HTML5-draggable card (`lib/libraryDrag.ts` — a tiny
+          `dataTransfer` wire-format shared by the drag source and the
+          canvas's drop handler). Dropping one onto the pane converts the
+          drop's screen position to flow coordinates
+          (`useVueFlow().project()`, adjusted for the pane's own bounding
+          rect) and saves it as that scene/device's `position` — which is
+          what makes `buildRoutingGraph` start rendering it, so a trigger can
+          then be wired to it. Placing a target is now strictly separate from
+          wiring one, per the explicit design ask.
+        - `TriggerActionInspector.vue` no longer has target-type/target
+          Selects (both are fixed by the edge that created the action, shown
+          as a read-only summary; changing them means deleting the action and
+          drawing a new connection) or a raw-JSON params textarea. A
+          `device.command` action's params render as typed widgets resolved
+          from the command's schema (`schemaToFields` — boolean → Switch,
+          enum → Select, number/string → Input), split into
+          `TriggerActionParamField.vue`/`TriggerActionEnumSelect.vue` to keep
+          the per-kind widget switch from ballooning the parent's branching
+          (`fallow audit`-driven: CRAP 306 critical → 20-42 range). A
+          mapping-owned action additionally gets a per-field "From
+          signal"/"Use a value" toggle to reference the firing signal
+          (`{arg[0]}`/`{:name}`) instead of a literal value — defaulted on if
+          the stored value already looks like a token — never shown for a
+          schedule-owned action (no signal to reference).
+        - Fan-out (one trigger, several targets) and fan-in (several triggers,
+          one target) both keep working exactly as before: each is just an
+          independent edge, nothing gates how many can share a source or
+          target.
 
 See README §10–11 for full spec; see §11 for the implemented slice.
 

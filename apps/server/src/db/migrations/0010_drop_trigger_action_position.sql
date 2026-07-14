@@ -1,0 +1,1 @@
+ALTER TABLE "trigger_actions" DROP COLUMN "position";
