@@ -2,8 +2,8 @@
  * Input-mapping helpers shared by the admin list, canvas node, and test panel.
  *
  * A mapping is purely "when" — a protocol + address pattern; what it fires is a
- * `trigger_actions` row wired to it on the workflow canvas (see
- * `@/lib/triggerActions`), not anything here.
+ * `workflow_targets` instance wired to it via a `trigger_actions` link on the
+ * workflow canvas (see `@/lib/workflowTargets`), not anything here.
  */
 
 import type { InputProtocol } from '@gallery/types'

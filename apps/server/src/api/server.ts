@@ -27,6 +27,7 @@ import { settingsRoutes } from "./routes/settings.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { triggerActionsRoutes } from "./routes/triggerActions.ts";
 import { usersRoutes } from "./routes/users.ts";
+import { workflowTargetsRoutes } from "./routes/workflowTargets.ts";
 import { makeWebSocketHandlers, setupBroadcast } from "./ws.ts";
 
 const log = logger.child("api");
@@ -47,6 +48,7 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...scenesRoutes(ctx),
       ...schedulesRoutes(ctx),
       ...mappingsRoutes(ctx),
+      ...workflowTargetsRoutes(ctx),
       ...triggerActionsRoutes(ctx),
       ...authRoutes(ctx),
       ...usersRoutes(ctx),

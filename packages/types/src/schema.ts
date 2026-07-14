@@ -130,8 +130,6 @@ export const devices = pgTable(
     icon: varchar("icon", { length: 50 }),
     displayOrder: integer("display_order").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
-    /** Node position on the workflow routing-map canvas; NULL = not yet placed there. */
-    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     createdBy: varchar("created_by", { length: 100 }).default("admin"),
@@ -177,8 +175,6 @@ export const scenes = pgTable(
     variables: jsonb("variables").$type<Record<string, unknown>>().notNull().default({}),
     version: integer("version").notNull().default(1),
     enabled: boolean("enabled").notNull().default(true),
-    /** Node position on the workflow routing-map canvas; NULL = not yet placed there. */
-    position: jsonb("position").$type<CanvasPosition | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     createdBy: varchar("created_by", { length: 100 }).default("admin"),
@@ -317,23 +313,48 @@ export const inputMappings = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────
-// trigger_actions — what a schedule or mapping fires: one row per action,
-// so a single trigger can fan out to several (mirrors scene_actions, which
-// is the same "one row per step, many rows per owner" shape for scenes).
+// workflow_targets — a scene or device *instance* placed on the workflow
+// canvas: what to run and (for a device) which command + params. A scene or
+// device may have any number of these — placing the same one twice gives two
+// independently-configured, independently-positioned nodes (e.g. one "Dimmer
+// · setLevel(1)" and another "Dimmer · setLevel(0)" for the same physical
+// device), not a shared singleton. `targetId` carries no hard FK (it means a
+// scene or a device depending on `targetType`, checked in the route layer,
+// same as scene_actions' device_id).
 //
-// `scheduleId` XOR `mappingId` names the owning trigger. `targetId`/
-// `targetCommand` carry no hard FK (they mean a scene or a device depending
-// on `targetType`, checked in the route layer, same as scene_actions'
-// device_id) and may be null: a freshly-added action starts unwired
-// (dropped on the canvas before a target is picked), and the dispatcher
-// just skips one that still is at fire time rather than treating it as
-// invalid — completing it is a normal edit, not a distinct state.
+// `targetCommand`/`params` apply only to `device.command` — a `scene.execute`
+// instance runs the scene as-is, no configuration of its own. `params` is
+// either literal values or `{arg[0]}`/`{:name}` tokens the dispatcher
+// substitutes from a firing mapping's signal (see core/templating.ts); which
+// tokens are available to reference depends on which mappings are wired to
+// this instance, not on the instance itself.
 //
-// `params` is used only for device.command: literal values, or `{arg[0]}`/
-// `{:name}` tokens the dispatcher substitutes from the firing signal (see
-// core/templating.ts) when the owner is a mapping. A schedule has no
-// signal to draw from, so its actions' params are always literal — CRON
-// firings just never contain a token, not a different code path.
+// `position` is NOT NULL: existence on this table *is* placement — there is
+// no "referenced but unplaced" state to represent (see trigger_actions below,
+// which can only wire to an instance that already exists here).
+// ─────────────────────────────────────────────────────────────
+export const workflowTargets = pgTable(
+  "workflow_targets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    targetType: varchar("target_type", { length: 50 }).$type<TriggerTargetType>().notNull(),
+    targetId: uuid("target_id").notNull(),
+    targetCommand: varchar("target_command", { length: 100 }),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    position: jsonb("position").$type<CanvasPosition>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("idx_workflow_targets_target").on(t.targetType, t.targetId)],
+);
+
+// ─────────────────────────────────────────────────────────────
+// trigger_actions — which trigger fires which placed workflow_targets
+// instance: a pure link, one row per wire, so a single trigger can fan out to
+// several instances and a single instance can be fed by several triggers.
+// `scheduleId` XOR `mappingId` names the owning trigger; `workflowTargetId`
+// must already exist (the canvas can only wire to an already-placed
+// instance — drawing the connection is what creates this row).
 // ─────────────────────────────────────────────────────────────
 export const triggerActions = pgTable(
   "trigger_actions",
@@ -341,16 +362,16 @@ export const triggerActions = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     scheduleId: uuid("schedule_id").references(() => scheduledJobs.id, { onDelete: "cascade" }),
     mappingId: uuid("mapping_id").references(() => inputMappings.id, { onDelete: "cascade" }),
-    targetType: varchar("target_type", { length: 50 }).$type<TriggerTargetType>().notNull(),
-    targetId: uuid("target_id"),
-    targetCommand: varchar("target_command", { length: 100 }),
-    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    workflowTargetId: uuid("workflow_target_id")
+      .notNull()
+      .references(() => workflowTargets.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("idx_trigger_actions_schedule").on(t.scheduleId),
     index("idx_trigger_actions_mapping").on(t.mappingId),
+    index("idx_trigger_actions_target").on(t.workflowTargetId),
     check(
       "trigger_actions_owner_chk",
       sql`(${t.scheduleId} IS NOT NULL AND ${t.mappingId} IS NULL)

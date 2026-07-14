@@ -933,8 +933,75 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           one target) both keep working exactly as before: each is just an
           independent edge, nothing gates how many can share a source or
           target.
+  - [x] **Unlimited-instances redesign — `workflow_targets`, click-node
+        wiring, signal-arg hover, Slider widget.** Follow-up to the edge-based
+        canvas above, from direct admin feedback on it: a scene/device is a DB
+        singleton, but the canvas needed independently-placed,
+        independently-configured *instances* of one — e.g. the same device
+        twice, once wired "on" and once "off" — which `position`-on-`scenes`/
+        `devices` couldn't represent (one row, one node, one config).
+        - New `workflow_targets` table (migrations `0011`–`0013`, staged
+          add/backfill/finalize since drizzle-kit's rename-heuristic prompt
+          can't run non-interactively when a diff both adds and drops
+          same-named columns in one pass) is the placed instance: `targetType`/
+          `targetId`/`targetCommand`/`params` moved here from
+          `trigger_actions`, and `position` moved here from `scenes`/`devices`
+          (dropped there entirely — a scene/device is no longer a canvas node
+          in its own right, only through however many `workflow_targets` rows
+          reference it). Unlike a trigger, `position` here is `NOT NULL`:
+          existence on this table *is* placement, so `buildRoutingGraph`
+          renders every row unconditionally, no "unplaced" filter to speak of.
+          `trigger_actions` is trimmed to a pure link (`id`, `scheduleId`
+          XOR `mappingId`, `workflowTargetId`) — no more per-row command/
+          params, so a schedule/mapping can now wire to two different
+          instances of the same device with two different commands, and the
+          old "unwired action" state (`targetId IS NULL`) is impossible by
+          construction (`workflowTargetId` is a `NOT NULL` FK).
+        - Dispatch reads a joined `DispatchableTriggerAction` shape (`id` +
+          the wired target's `targetType`/`targetId`/`targetCommand`/`params`)
+          assembled via SQL JOIN in `triggerActionsRepo`
+          (`listDispatchableByScheduleId`/`listDispatchableByMappingIds`),
+          not native columns — `TriggerActionDispatcher`'s old "not wired to a
+          target" branch is now dead code and was deleted along with it.
+        - **Clicking a target node — not the edge — opens its inspector**
+          (renamed `TriggerActionInspector` → `WorkflowTargetInspector`),
+          since command/params now live on the instance. The edge itself is a
+          custom Vue Flow component (`TriggerActionEdge.vue`) that opens
+          nothing on click; hovering (or selecting) it shows a floating
+          tooltip with the named path-params its owning mapping's pattern
+          captures (`patternParamNames`, a client-side mirror of
+          `input/patterns.ts`'s split algorithm) and an inline delete button.
+          The same params surface in the target's own inspector as "Available
+          from signal: …" — the deduped union across every incoming
+          mapping-owned wire (`hasSignalWire`/`availableArgs`, computed once
+          in `buildRoutingGraph` and carried on the target node's data).
+        - Left-sidebar **library panel now always lists every scene/device**,
+          full stop — `unplacedLibraryItems` is deleted; dropping a card
+          always creates a **new** `workflow_targets` row (never moves an
+          existing one), so the same scene/device can be placed any number of
+          times. `TargetNode.vue`'s subtitle shows the *instance's own*
+          configured command (or "Pick a command…"), not the device's generic
+          type, so two instances of one device read as visibly distinct.
+        - Bounded number params (`minimum`+`maximum` both declared, e.g. a
+          0..1 fader level) render as a `Slider` instead of a plain number
+          `Input` — `schemaToFields` gained `minimum`/`maximum`/`step` fields,
+          consumed by both the target inspector's param field
+          (`WorkflowTargetParamField.vue`, renamed from
+          `TriggerActionParamField.vue`) and the pre-existing scene-action
+          editor (`SceneActionRow.vue`), sharing the same schema-derived
+          bounds.
+        - Playwright verification against the live app caught a real bug the
+          type-checker and unit tests couldn't: the edge's delete button
+          called `store.remove(props.id)`, but `id` is the edge's namespaced
+          Vue Flow id (`trigger-action:<uuid>`), not the trigger-action row's
+          own id — every inline wire-delete 500'd. Fixed to use
+          `data.triggerAction.id`. Also hardened the hover overlay to stay
+          open while the pointer is over the floating button itself (a
+          separate DOM subtree from the edge's own hover target), not just
+          the edge path, so moving onto the button to click it can't hide it
+          first.
 
-See README §10–11 for full spec; see §11 for the implemented slice.
+See README §5, §10–11 for full spec; see §11 for the implemented slice.
 
 ---
 

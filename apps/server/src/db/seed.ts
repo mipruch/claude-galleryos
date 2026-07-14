@@ -14,7 +14,7 @@
  *   DALI: HTTP port 80, deviceId from the Lunatone IoT gateway's device scan.
  */
 
-import { cameras, connections, devices, iframes, kiosks, roles, rooms, sceneActions, scenes, scheduledJobs, triggerActions, users } from "@gallery/types/schema";
+import { cameras, connections, devices, iframes, kiosks, roles, rooms, sceneActions, scenes, scheduledJobs, triggerActions, users, workflowTargets } from "@gallery/types/schema";
 import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import { closeDb, db } from "./client.ts";
@@ -806,31 +806,29 @@ export const SEED_SCHEDULED_JOBS = [
   },
 ];
 
-// One scene.execute trigger action per schedule above — what a cron fire runs,
-// wired via `trigger_actions` (a schedule row itself carries no target).
+// One placed workflow-target instance per schedule below — what a cron fire
+// runs. Positioned in a simple vertical stack next to where their triggers
+// land; an admin can drag them apart on first visit.
+const TARGET_MORNING_LIGHTS  = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01";
+const TARGET_LECTURE_START   = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02";
+const TARGET_NIGHT_PROJECTOR = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03";
+
+export const SEED_WORKFLOW_TARGETS = [
+  { id: TARGET_MORNING_LIGHTS, targetType: "scene.execute" as const, targetId: SCENE_LIGHTS_ON, position: { x: 400, y: 0 } },
+  { id: TARGET_LECTURE_START, targetType: "scene.execute" as const, targetId: SCENE_LECTURE_START, position: { x: 400, y: 160 } },
+  { id: TARGET_NIGHT_PROJECTOR, targetType: "scene.execute" as const, targetId: SCENE_PROJECTOR_ON, position: { x: 400, y: 320 } },
+];
+
+// One wire per schedule above, to its workflow target — a schedule row itself
+// carries no target; what a cron fire runs lives in `trigger_actions`.
 const TRIGGER_MORNING_LIGHTS   = "dddddddd-dddd-dddd-dddd-dddddddddd01";
 const TRIGGER_LECTURE_START    = "dddddddd-dddd-dddd-dddd-dddddddddd02";
 const TRIGGER_NIGHT_PROJECTOR  = "dddddddd-dddd-dddd-dddd-dddddddddd03";
 
 export const SEED_TRIGGER_ACTIONS = [
-  {
-    id: TRIGGER_MORNING_LIGHTS,
-    scheduleId: JOB_MORNING_LIGHTS,
-    targetType: "scene.execute" as const,
-    targetId: SCENE_LIGHTS_ON,
-  },
-  {
-    id: TRIGGER_LECTURE_START,
-    scheduleId: JOB_LECTURE_START,
-    targetType: "scene.execute" as const,
-    targetId: SCENE_LECTURE_START,
-  },
-  {
-    id: TRIGGER_NIGHT_PROJECTOR,
-    scheduleId: JOB_NIGHT_OFF,
-    targetType: "scene.execute" as const,
-    targetId: SCENE_PROJECTOR_ON,
-  },
+  { id: TRIGGER_MORNING_LIGHTS, scheduleId: JOB_MORNING_LIGHTS, workflowTargetId: TARGET_MORNING_LIGHTS },
+  { id: TRIGGER_LECTURE_START, scheduleId: JOB_LECTURE_START, workflowTargetId: TARGET_LECTURE_START },
+  { id: TRIGGER_NIGHT_PROJECTOR, scheduleId: JOB_NIGHT_OFF, workflowTargetId: TARGET_NIGHT_PROJECTOR },
 ];
 
 const SEED_IFRAMES = [
@@ -909,6 +907,7 @@ async function main(): Promise<void> {
   await db.insert(scenes).values(SEED_SCENES).onConflictDoNothing();
   await db.insert(sceneActions).values(SEED_SCENE_ACTIONS).onConflictDoNothing();
   await db.insert(scheduledJobs).values(SEED_SCHEDULED_JOBS).onConflictDoNothing();
+  await db.insert(workflowTargets).values(SEED_WORKFLOW_TARGETS).onConflictDoNothing();
   await db.insert(triggerActions).values(SEED_TRIGGER_ACTIONS).onConflictDoNothing();
   await db.insert(iframes).values(SEED_IFRAMES).onConflictDoNothing();
   await db.insert(kiosks).values(SEED_KIOSKS).onConflictDoNothing();
@@ -934,6 +933,7 @@ async function main(): Promise<void> {
     scenes: SEED_SCENES.length,
     sceneActions: SEED_SCENE_ACTIONS.length,
     scheduledJobs: SEED_SCHEDULED_JOBS.length,
+    workflowTargets: SEED_WORKFLOW_TARGETS.length,
     triggerActions: SEED_TRIGGER_ACTIONS.length,
     iframes: SEED_IFRAMES.length,
     kiosks: SEED_KIOSKS.length,

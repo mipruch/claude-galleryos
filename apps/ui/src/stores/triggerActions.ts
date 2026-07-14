@@ -1,5 +1,9 @@
 /**
- * Trigger-actions store — what a schedule or mapping fires (0..N per trigger).
+ * Trigger-actions store — the wires connecting a schedule or mapping to an
+ * already-placed workflow-target instance (0..N per trigger, 0..N triggers per
+ * instance). A wire is a pure link: it has nothing to configure beyond its
+ * endpoints (see `workflowTargets` for command/params), so there is no update —
+ * rewiring means deleting a wire and drawing a new connection.
  *
  * Loads the full list (`GET /api/v1/trigger-actions`) once; the workflow canvas
  * filters client-side by `scheduleId`/`mappingId` when building the graph, same
@@ -11,7 +15,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
-import type { TriggerActionCreateInput, TriggerActionDTO, TriggerActionUpdateInput } from '@gallery/types'
+import type { TriggerActionCreateInput, TriggerActionDTO } from '@gallery/types'
 import { errMsg } from '@/lib/http'
 import { api } from '@/lib/api'
 
@@ -60,22 +64,6 @@ export const useTriggerActionsStore = defineStore('triggerActions', () => {
   }
 
   /**
-   * Updates a trigger action.
-   *
-   * @returns `true` on success, `false` on failure (an error toast is shown).
-   */
-  async function update(id: string, input: TriggerActionUpdateInput): Promise<boolean> {
-    try {
-      const updated = await api.triggerActions.update(id, input)
-      if (updated) replaceRecord(updated)
-      return true
-    } catch (err) {
-      toast.error('Could not update trigger action', { description: errMsg(err) })
-      return false
-    }
-  }
-
-  /**
    * Deletes a trigger action.
    *
    * @returns `true` on success, `false` on failure (an error toast is shown).
@@ -91,5 +79,14 @@ export const useTriggerActionsStore = defineStore('triggerActions', () => {
     }
   }
 
-  return { records, loading, loaded, error, fetchAll, create, update, remove }
+  /**
+   * Locally prunes wires pointing at a workflow target that was just deleted —
+   * the server already cascade-deleted them, so this is a no-API-call cache
+   * sync, not a mutation of its own.
+   */
+  function removeByWorkflowTargetId(workflowTargetId: string): void {
+    records.value = records.value.filter((a) => a.workflowTargetId !== workflowTargetId)
+  }
+
+  return { records, loading, loaded, error, fetchAll, create, remove, removeByWorkflowTargetId }
 })

@@ -130,7 +130,6 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
           tags: Array.isArray(body.tags) ? (body.tags as string[]) : undefined,
           isFavorite: body.isFavorite as boolean | undefined,
           actions: parseActions(body.actions),
-          position: body.position !== undefined ? asCanvasPosition(body.position, "position") : undefined,
         });
         return json(created, 201);
       }),
@@ -153,7 +152,6 @@ export function scenesRoutes(ctx: ApiContext): RouteMap {
           tags: Array.isArray(body.tags) ? (body.tags as string[]) : undefined,
           isFavorite: body.isFavorite as boolean | undefined,
           actions: parseActions(body.actions),
-          position: body.position !== undefined ? asCanvasPosition(body.position, "position") : undefined,
         });
         if (!updated) throw new HttpError(404, "NOT_FOUND", "scene not found");
         return json(updated);

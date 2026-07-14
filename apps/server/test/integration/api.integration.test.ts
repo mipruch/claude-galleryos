@@ -30,6 +30,7 @@ import {
   scheduledJobsRepo,
   triggerActionsRepo,
   usersRepo,
+  workflowTargetsRepo,
 } from "../../src/db/repositories.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "../../src/redis/state.ts";
 import { SceneEngine } from "../../src/core/SceneEngine.ts";
@@ -135,6 +136,7 @@ beforeAll(async () => {
       mappings: inputMappingsRepo,
       inputMapper,
       triggerActions: triggerActionsRepo,
+      workflowTargets: workflowTargetsRepo,
       dispatcher,
       startedAt: Date.now(),
     },

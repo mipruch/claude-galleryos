@@ -9,13 +9,18 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { InputMapping, TriggerAction } from "@gallery/types";
+import type { InputMapping } from "@gallery/types";
 import {
   InputMapper,
+  type MappedTriggerAction,
   type MapperDispatcher,
   type TriggerActionSource,
 } from "../../src/input/InputMapper.ts";
-import type { TemplateContext, TriggerDispatchOutcome } from "../../src/core/TriggerActionDispatcher.ts";
+import type {
+  DispatchableTriggerAction,
+  TemplateContext,
+  TriggerDispatchOutcome,
+} from "../../src/core/TriggerActionDispatcher.ts";
 import { logger } from "../../src/logger.ts";
 
 /** Build an InputMapping row with sensible defaults. */
@@ -32,18 +37,15 @@ function mapping(partial: Partial<InputMapping> = {}): InputMapping {
   };
 }
 
-/** Build a TriggerAction row wired to a mapping, with sensible defaults. */
-function triggerAction(partial: Partial<TriggerAction> = {}): TriggerAction {
+/** Build a trigger action (already joined with its workflow_target) wired to a mapping. */
+function triggerAction(partial: Partial<MappedTriggerAction> = {}): MappedTriggerAction {
   return {
     id: partial.id ?? crypto.randomUUID(),
-    scheduleId: partial.scheduleId ?? null,
     mappingId: partial.mappingId ?? null,
     targetType: partial.targetType ?? "scene.execute",
-    targetId: partial.targetId ?? null,
+    targetId: partial.targetId ?? "t1",
     targetCommand: partial.targetCommand ?? null,
     params: partial.params ?? {},
-    createdAt: partial.createdAt ?? new Date(),
-    updatedAt: partial.updatedAt ?? new Date(),
   };
 }
 
@@ -54,16 +56,16 @@ function fakeRepo(rows: InputMapping[]) {
   };
 }
 
-function fakeTriggerActions(rows: TriggerAction[]): TriggerActionSource {
+function fakeTriggerActions(rows: MappedTriggerAction[]): TriggerActionSource {
   return {
-    listByMappingIds: async (mappingIds: string[]) =>
+    listDispatchableByMappingIds: async (mappingIds: string[]) =>
       rows.filter((a) => a.mappingId && mappingIds.includes(a.mappingId)),
   };
 }
 
 function fakeDispatcher() {
   const calls: Array<{
-    actions: TriggerAction[];
+    actions: DispatchableTriggerAction[];
     source: string;
     sourceDetail: string;
     template?: TemplateContext;

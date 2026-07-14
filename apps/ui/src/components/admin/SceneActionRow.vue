@@ -15,6 +15,7 @@ import { useScenesStore } from '@/stores/scenes'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -40,6 +41,16 @@ const paramFields = computed(() =>
   schemaToFields(paramsSchemaFor(props.action.deviceId, props.action.command)),
 )
 const otherScenes = computed(() => scenes.records.filter((s) => s.id !== props.excludeSceneId))
+
+/** A number field renders as a Slider once its schema declares both bounds (e.g. a 0..1 fader level). */
+function isBoundedNumber(field: { kind: string; minimum?: number; maximum?: number }): boolean {
+  return field.kind === 'number' && field.minimum !== undefined && field.maximum !== undefined
+}
+
+function numericParamValue(value: unknown, fallback: number): number {
+  const raw = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(raw) ? raw : fallback
+}
 
 // Selecting a different device invalidates the chosen command + its params.
 watch(
@@ -142,6 +153,19 @@ watch(
               </SelectGroup>
             </SelectContent>
           </Select>
+          <div v-else-if="isBoundedNumber(f)" class="flex items-center gap-3 pt-1">
+            <Slider
+              class="flex-1"
+              :model-value="[numericParamValue(action.params[f.key], f.minimum ?? 0)]"
+              :min="f.minimum"
+              :max="f.maximum"
+              :step="f.step ?? 1"
+              @update:model-value="action.params[f.key] = $event?.[0] ?? f.minimum"
+            />
+            <span class="text-muted-foreground w-12 shrink-0 text-right text-xs tabular-nums">
+              {{ numericParamValue(action.params[f.key], f.minimum ?? 0) }}
+            </span>
+          </div>
           <Input
             v-else
             :type="f.kind === 'number' ? 'number' : 'text'"

@@ -1,25 +1,30 @@
 /**
  * Workflow canvas graph adapters — pure functions turning data the admin
- * already manages (mappings, schedules, trigger actions, scenes, devices, a
+ * already manages (mappings, schedules, trigger actions, workflow targets, a
  * scene's actions) into Vue Flow nodes/edges. Nothing here is a new execution
  * concept: the routing map is a spatial view over `input_mappings` /
- * `scheduled_jobs` and the `trigger_actions` wired to them, and a scene's
- * canvas is a spatial view over `scene_actions` (`parallelGroup` stages, same
- * shape `SceneEngine.planGroups` executes).
+ * `scheduled_jobs`, the `workflow_targets` a trigger can fire, and the
+ * `trigger_actions` wiring one to the other; a scene's canvas is a spatial
+ * view over `scene_actions` (`parallelGroup` stages, same shape
+ * `SceneEngine.planGroups` executes).
  *
  * Two graphs:
  *   - `buildRoutingGraph` — a 2-tier graph: one node per trigger
- *     (mapping/schedule) and per placed-or-wired target (scene/device), one
- *     edge per `trigger_action` connecting a trigger straight to its target.
- *     The action has no node of its own — its id and full row travel as the
- *     edge's `data`, so selecting the edge is how its inspector opens. An
- *     edge needs both endpoints to exist, so creating a trigger action *is*
- *     drawing a connection from an already-visible trigger to an
- *     already-visible target — there is no "floating, unwired action" state
- *     to render any more. `unplacedLibraryItems` is the complementary view:
- *     the scenes/devices not yet on the canvas, for the drag-and-drop library
- *     panel — dropping one gives it a position and `buildRoutingGraph` starts
- *     rendering it, so a trigger can then be wired to it.
+ *     (mapping/schedule) and one per `workflow_targets` row (a placed,
+ *     independently-configured scene run or device command — a scene/device
+ *     may have any number of these, e.g. separate "on" and "off" instances of
+ *     the same device), one edge per `trigger_action` connecting a trigger
+ *     straight to the instance it fires. A `workflow_targets` row always
+ *     carries a position (existence on that table *is* placement, see
+ *     `packages/types/src/records.ts`), so unlike a trigger there's no
+ *     "floating, not yet on the canvas" state to lay out — every instance
+ *     renders unconditionally. A wire is a pure link with nothing of its own
+ *     to configure — command/params live on the target node, opened by
+ *     selecting it — so `RoutingEdgeData` carries just enough to render a
+ *     hover tooltip: the named path-params (`patternParamNames`) the owning
+ *     mapping's pattern captures, if any, mirrored onto the target node as
+ *     `availableArgs` (the union across every incoming mapping-owned wire)
+ *     for its inspector to show "available from this wire."
  *   - `buildSceneStageGraph` — one scene's actions laid out as an ordered
  *     sequence of "stage" columns (one per distinct `parallelGroup`), each
  *     holding its parallel actions. There is deliberately no action-to-action
@@ -29,7 +34,7 @@
 
 import dagre from '@dagrejs/dagre'
 import type { Edge, Node } from '@vue-flow/core'
-import type { DeviceDTO, InputMappingDTO, ScheduledJobDTO, SceneDTO, TriggerActionDTO } from '@gallery/types'
+import type { DeviceDTO, InputMappingDTO, ScheduledJobDTO, SceneDTO, TriggerActionDTO, WorkflowTargetDTO } from '@gallery/types'
 import type { EditAction } from './sceneActions'
 
 // ── node id namespacing (shared prefix so click/connect handlers can tell
@@ -39,15 +44,14 @@ import type { EditAction } from './sceneActions'
 export type TriggerOwnerKind = 'mapping' | 'schedule'
 
 // Only the ids the view needs to build itself (for newly-created rows and
-// deep-link selection) are exported; scene/device node ids are only ever
-// built from inside this module's own graph-construction helpers — the view
-// only ever consumes them back out via `parseNodeId`.
+// deep-link selection) are exported; other node ids are only ever built from
+// inside this module's own graph-construction helpers — the view only ever
+// consumes them back out via `parseNodeId`.
 export const mappingNodeId = (id: string): string => `mapping:${id}`
 export const scheduleNodeId = (id: string): string => `schedule:${id}`
-/** A trigger action's edge id — carries no positional meaning, just identity. */
-export const triggerActionEdgeId = (id: string): string => `trigger-action:${id}`
-const sceneNodeId = (id: string): string => `scene:${id}`
-const deviceNodeId = (id: string): string => `device:${id}`
+export const targetNodeId = (id: string): string => `target:${id}`
+/** A trigger action's edge id — carries no positional meaning, just identity. Internal: no view code needs to build one (see module doc). */
+const triggerActionEdgeId = (id: string): string => `trigger-action:${id}`
 const actionStageNodeId = (key: string): string => `action:${key}`
 const stageNodeId = (groupIndex: number): string => `stage:${groupIndex}`
 const START_NODE_ID = 'start'
@@ -58,18 +62,42 @@ export function parseNodeId(id: string): { kind: string; value: string } {
   return i === -1 ? { kind: id, value: '' } : { kind: id.slice(0, i), value: id.slice(i + 1) }
 }
 
+/**
+ * Named `:param` segments of a mapping pattern, in order — the args a matched
+ * signal makes available to its wired trigger actions' param templates.
+ * Mirrors the split-based algorithm `input/patterns.ts` compiles server-side
+ * (no regex): a segment starting with `:` is a named wildcard, everything
+ * else is a literal to match as-is.
+ */
+export function patternParamNames(pattern: string): string[] {
+  return pattern
+    .split('/')
+    .filter((segment) => segment.startsWith(':'))
+    .map((segment) => segment.slice(1))
+}
+
 // ── routing-map graph ─────────────────────────────────────────────────────
 
 export type RoutingNodeData =
   | { kind: 'mapping'; mapping: InputMappingDTO }
   | { kind: 'schedule'; schedule: ScheduledJobDTO }
-  | { kind: 'scene'; scene: SceneDTO }
-  | { kind: 'device'; device: DeviceDTO }
+  | {
+      kind: 'target'
+      target: WorkflowTargetDTO
+      scene?: SceneDTO
+      device?: DeviceDTO
+      /** Named signal args available from every incoming mapping-owned wire, deduped. */
+      availableArgs: string[]
+      /** Whether at least one incoming wire is mapping-owned — a signal to template against even if its pattern captures no named args (positional `{arg[N]}`). */
+      hasSignalWire: boolean
+    }
 
 export type RoutingNode = Node<RoutingNodeData>
 
 export interface RoutingEdgeData {
   triggerAction: TriggerActionDTO
+  /** Named path-params the owning mapping's pattern captures — empty for a schedule-owned wire, or a mapping with none. */
+  signalArgs: string[]
 }
 
 export type RoutingEdge = Edge<RoutingEdgeData>
@@ -78,6 +106,7 @@ export interface RoutingGraphInput {
   mappings: InputMappingDTO[]
   schedules: ScheduledJobDTO[]
   triggerActions: TriggerActionDTO[]
+  workflowTargets: WorkflowTargetDTO[]
   scenes: SceneDTO[]
   devices: DeviceDTO[]
 }
@@ -87,8 +116,6 @@ interface RoutingBuilder {
   nodes: RoutingNode[]
   edges: RoutingEdge[]
   pinned: Set<string>
-  referencedSceneIds: Set<string>
-  referencedDeviceIds: Set<string>
 }
 
 function addRoutingNode(b: RoutingBuilder, node: RoutingNode, savedPosition?: { x: number; y: number } | null): void {
@@ -108,104 +135,72 @@ function addTriggerNode(
   addRoutingNode(b, { id, type: 'trigger', position: { x: 0, y: 0 }, data }, savedPosition)
 }
 
-/** Which scenes/devices have at least one trigger action wired to them. */
-function partitionReferencedTargets(actions: TriggerActionDTO[]): { sceneIds: Set<string>; deviceIds: Set<string> } {
-  const sceneIds = new Set<string>()
-  const deviceIds = new Set<string>()
-  for (const action of actions) {
-    if (!action.targetId) continue
-    if (action.targetType === 'scene.execute') sceneIds.add(action.targetId)
-    else if (action.targetType === 'device.command') deviceIds.add(action.targetId)
-  }
-  return { sceneIds, deviceIds }
-}
-
 /**
- * One edge per wired trigger action, straight from its owning trigger to its
- * target. A row with no owner (schema-invalid) or no target (unwired) has
- * nothing sane to draw and is skipped — the latter can now only happen to a
- * legacy row, since the canvas itself can no longer create an unwired one
- * (see module doc).
+ * One edge per wired trigger action, straight from its owning trigger to the
+ * workflow-target instance it fires. A row with no owner (schema-invalid) has
+ * nothing sane to draw and is skipped; every other row is guaranteed a real
+ * target (`workflowTargetId` is a NOT NULL FK), so there is no "unwired"
+ * state to check for any more.
  */
-function addTriggerActionEdges(b: RoutingBuilder, actions: TriggerActionDTO[]): void {
+function addTriggerActionEdges(b: RoutingBuilder, actions: TriggerActionDTO[], mappings: InputMappingDTO[]): void {
   for (const action of actions) {
     const ownerId = action.mappingId ?? action.scheduleId
-    if (!ownerId || !action.targetId) continue
+    if (!ownerId) continue
     const ownerNodeId = action.mappingId ? mappingNodeId(action.mappingId) : scheduleNodeId(action.scheduleId!)
-    const targetNodeId =
-      action.targetType === 'scene.execute' ? sceneNodeId(action.targetId) : deviceNodeId(action.targetId)
+    const mapping = action.mappingId ? mappings.find((m) => m.id === action.mappingId) : undefined
     b.edges.push({
       id: triggerActionEdgeId(action.id),
+      type: 'trigger-action',
       source: ownerNodeId,
-      target: targetNodeId,
-      data: { triggerAction: action },
+      target: targetNodeId(action.workflowTargetId),
+      data: { triggerAction: action, signalArgs: mapping ? patternParamNames(mapping.pattern) : [] },
     })
   }
 }
 
-// A scene/device only becomes a canvas node once it's either been placed
-// there (a saved `position`, set by dropping it from the library panel) or
-// some trigger action is already wired to it (so existing wiring is never
-// hidden by a target nobody has explicitly placed) — everything else lives
-// in the library instead (see `unplacedLibraryItems`).
-function addTargetNodes(b: RoutingBuilder, scenes: SceneDTO[], devices: DeviceDTO[]): void {
-  for (const scene of scenes) {
-    if (scene.position == null && !b.referencedSceneIds.has(scene.id)) continue
+/**
+ * One node per `workflow_targets` row, unconditionally — existence on that
+ * table *is* placement, so (unlike a trigger) there is no unplaced state to
+ * filter by. Each carries the union of its incoming mapping-owned wires'
+ * signal args, for the inspector to show what's available to template against.
+ */
+function addTargetNodes(b: RoutingBuilder, targets: WorkflowTargetDTO[], scenes: SceneDTO[], devices: DeviceDTO[]): void {
+  for (const target of targets) {
+    const scene = target.targetType === 'scene.execute' ? scenes.find((s) => s.id === target.targetId) : undefined
+    const device = target.targetType === 'device.command' ? devices.find((d) => d.id === target.targetId) : undefined
+    const incomingEdges = b.edges.filter((edge) => edge.target === targetNodeId(target.id))
+    const incomingArgs = incomingEdges.flatMap((edge) => edge.data?.signalArgs ?? [])
+    const hasSignalWire = incomingEdges.some((edge) => !!edge.data?.triggerAction.mappingId)
     addRoutingNode(
       b,
-      { id: sceneNodeId(scene.id), type: 'target', position: { x: 0, y: 0 }, data: { kind: 'scene', scene } },
-      scene.position,
-    )
-  }
-  for (const device of devices) {
-    if (device.position == null && !b.referencedDeviceIds.has(device.id)) continue
-    addRoutingNode(
-      b,
-      { id: deviceNodeId(device.id), type: 'target', position: { x: 0, y: 0 }, data: { kind: 'device', device } },
-      device.position,
+      {
+        id: targetNodeId(target.id),
+        type: 'target',
+        position: { x: 0, y: 0 },
+        data: { kind: 'target', target, scene, device, availableArgs: [...new Set(incomingArgs)], hasSignalWire },
+      },
+      target.position,
     )
   }
 }
 
 /**
  * Build the trigger-routing map: one node per mapping/schedule (trigger), one
- * per placed-or-wired scene/device (target), and one edge per trigger action
- * connecting a trigger straight to its target.
+ * per placed `workflow_targets` instance, and one edge per trigger action
+ * connecting a trigger straight to the instance it fires.
  */
 export function buildRoutingGraph(input: RoutingGraphInput): { nodes: RoutingNode[]; edges: RoutingEdge[] } {
-  const { sceneIds: referencedSceneIds, deviceIds: referencedDeviceIds } = partitionReferencedTargets(
-    input.triggerActions,
-  )
-  const b: RoutingBuilder = { nodes: [], edges: [], pinned: new Set(), referencedSceneIds, referencedDeviceIds }
+  const b: RoutingBuilder = { nodes: [], edges: [], pinned: new Set() }
   for (const mapping of input.mappings) {
     addTriggerNode(b, 'mapping', mapping.id, { kind: 'mapping', mapping }, mapping.position)
   }
   for (const schedule of input.schedules) {
     addTriggerNode(b, 'schedule', schedule.id, { kind: 'schedule', schedule }, schedule.position)
   }
-  addTriggerActionEdges(b, input.triggerActions)
-  addTargetNodes(b, input.scenes, input.devices)
+  // Edges before target nodes: a target's `availableArgs` is derived from its incoming edges.
+  addTriggerActionEdges(b, input.triggerActions, input.mappings)
+  addTargetNodes(b, input.workflowTargets, input.scenes, input.devices)
   return { nodes: layoutUnpinned(b.nodes, b.edges, b.pinned), edges: b.edges }
-}
-
-export interface LibraryItems {
-  scenes: SceneDTO[]
-  devices: DeviceDTO[]
-}
-
-/**
- * Scenes/devices not currently on the routing map — no saved position and no
- * trigger action wired to them yet — for the drag-and-drop library panel.
- * The complement of what `addTargetNodes` renders.
- */
-export function unplacedLibraryItems(input: RoutingGraphInput): LibraryItems {
-  const { sceneIds: referencedSceneIds, deviceIds: referencedDeviceIds } = partitionReferencedTargets(
-    input.triggerActions,
-  )
-  return {
-    scenes: input.scenes.filter((s) => s.position == null && !referencedSceneIds.has(s.id)),
-    devices: input.devices.filter((d) => d.position == null && !referencedDeviceIds.has(d.id)),
-  }
 }
 
 const DAGRE_NODE_SIZE = { width: 240, height: 72 }

@@ -24,10 +24,19 @@
  * {@link match} for the `/mappings/test` dry-run, which never dispatches).
  */
 
-import type { InputMapping, TriggerAction } from "@gallery/types";
-import type { TemplateContext, TriggerDispatchOutcome } from "../core/TriggerActionDispatcher.ts";
+import type { InputMapping } from "@gallery/types";
+import type {
+  DispatchableTriggerAction,
+  TemplateContext,
+  TriggerDispatchOutcome,
+} from "../core/TriggerActionDispatcher.ts";
 import type { Logger } from "../logger.ts";
 import { compilePattern, matchPattern, type CompiledPattern } from "./patterns.ts";
+
+/** A dispatchable action joined with the `mappingId` it's wired to, for cache grouping. */
+export interface MappedTriggerAction extends DispatchableTriggerAction {
+  mappingId: string | null;
+}
 
 /** A normalized incoming signal, produced by each ingress transport. */
 export interface InputSignal {
@@ -48,7 +57,7 @@ export interface MappingMatch {
 
 /** A match plus the trigger actions cached for it — the shape {@link handle} dispatches. */
 interface CompiledMatch extends MappingMatch {
-  actions: TriggerAction[];
+  actions: DispatchableTriggerAction[];
 }
 
 // ── injected dependency contracts (narrow, for hermetic tests) ─
@@ -60,13 +69,13 @@ export interface InputMappingSource {
 
 /** Source of the trigger actions wired to a set of mappings. */
 export interface TriggerActionSource {
-  listByMappingIds(mappingIds: string[]): Promise<TriggerAction[]>;
+  listDispatchableByMappingIds(mappingIds: string[]): Promise<MappedTriggerAction[]>;
 }
 
 /** The shared dispatcher every trigger source (schedules, mappings, …) fires through. */
 export interface MapperDispatcher {
   dispatchAll(
-    actions: readonly TriggerAction[],
+    actions: readonly DispatchableTriggerAction[],
     source: string,
     sourceDetail: string,
     template?: TemplateContext,
@@ -84,7 +93,7 @@ export interface InputMapperOptions {
 interface CompiledMapping {
   mapping: InputMapping;
   pattern: CompiledPattern;
-  actions: TriggerAction[];
+  actions: DispatchableTriggerAction[];
 }
 
 export class InputMapper {
@@ -183,10 +192,10 @@ export class InputMapper {
   }
 
   /** Group the trigger actions of a set of mappings by their `mappingId`. */
-  private async loadActionsByMapping(mappingIds: string[]): Promise<Map<string, TriggerAction[]>> {
-    const byMapping = new Map<string, TriggerAction[]>();
+  private async loadActionsByMapping(mappingIds: string[]): Promise<Map<string, DispatchableTriggerAction[]>> {
+    const byMapping = new Map<string, DispatchableTriggerAction[]>();
     if (mappingIds.length === 0) return byMapping;
-    const actions = await this.opts.triggerActions.listByMappingIds(mappingIds);
+    const actions = await this.opts.triggerActions.listDispatchableByMappingIds(mappingIds);
     for (const action of actions) {
       if (!action.mappingId) continue;
       const bucket = byMapping.get(action.mappingId) ?? [];

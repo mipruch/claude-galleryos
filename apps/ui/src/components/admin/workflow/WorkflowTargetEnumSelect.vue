@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * The enum-kind widget for one trigger-action param field: a `<Select>`
+ * The enum-kind widget for one workflow-target param field: a `<Select>`
  * populated from the schema field's options. Split out of
- * `TriggerActionParamField.vue` purely to keep its options `v-for` from
+ * `WorkflowTargetParamField.vue` purely to keep its options `v-for` from
  * adding to that template's already-branching widget-kind switch.
  */
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'

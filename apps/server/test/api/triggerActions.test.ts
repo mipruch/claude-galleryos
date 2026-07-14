@@ -2,11 +2,12 @@
  * Trigger-action routes tests — hermetic (no DB).
  *
  * Mounts the real route map on an ephemeral Bun.serve with a fake repo, fake
- * schedules/mappings/scenes/devices lookups, and a fake InputMapper injected via
- * ApiContext, then drives it over HTTP. Verifies the owner XOR rule, that a
- * given `targetId` must resolve but an omitted one (unwired) is valid, and that
- * only a mapping-owned mutation reloads the live InputMapper cache (a
+ * schedule/mapping/workflow-target lookups, and a fake InputMapper injected
+ * via ApiContext, then drives it over HTTP. Verifies the owner XOR rule, that
+ * `workflowTargetId` is required and must resolve to a known instance, and
+ * that only a mapping-owned mutation reloads the live InputMapper cache (a
  * schedule-owned one needs no cache — the Scheduler fetches fresh per fire).
+ * There is no PUT route — a pure link row has nothing else to configure.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -21,10 +22,7 @@ const baseAction = {
   id: "ta1",
   scheduleId: "j1",
   mappingId: null,
-  targetType: "scene.execute",
-  targetId: "s1",
-  targetCommand: null,
-  params: {},
+  workflowTargetId: "wt1",
 };
 
 const fakeTriggerActions = {
@@ -41,14 +39,9 @@ const fakeTriggerActions = {
     return store[id];
   },
   async create(values: Record<string, unknown>) {
-    const row = { id: "ta-new", targetCommand: null, params: {}, ...values };
+    const row = { id: "ta-new", ...values };
     store["ta-new"] = row;
     return row;
-  },
-  async update(id: string, values: Record<string, unknown>) {
-    if (!store[id]) return undefined;
-    store[id] = { ...store[id], ...values };
-    return store[id];
   },
   async remove(id: string) {
     const existing = store[id];
@@ -59,16 +52,20 @@ const fakeTriggerActions = {
 
 const fakeSchedules = { async get(id: string) { return id === "j1" ? { id: "j1" } : undefined; } };
 const fakeMappings = { async get(id: string) { return id === "m1" ? { id: "m1" } : undefined; } };
-const fakeScenes = { async get(id: string) { return id === "s1" ? { id: "s1" } : undefined; } };
-const fakeDevices = { async get(id: string) { return id === "d1" ? { id: "d1" } : undefined; } };
+const fakeWorkflowTargets = {
+  async get(id: string) {
+    if (id === "wt1") return { id: "wt1", targetType: "scene.execute", targetId: "s1" };
+    if (id === "wt2") return { id: "wt2", targetType: "device.command", targetId: "d1", targetCommand: "on" };
+    return undefined;
+  },
+};
 const fakeInputMapper = { reload: async () => void reloadCount++ };
 
 const ctx = {
   triggerActions: fakeTriggerActions,
   schedules: fakeSchedules,
   mappings: fakeMappings,
-  scenes: fakeScenes,
-  devices: fakeDevices,
+  workflowTargets: fakeWorkflowTargets,
   inputMapper: fakeInputMapper,
 } as unknown as ApiContext;
 
@@ -117,14 +114,14 @@ describe("trigger-actions listing", () => {
 
 describe("POST /trigger-actions — owner rule", () => {
   test("requires exactly one of scheduleId/mappingId — rejects neither", async () => {
-    const { status, body } = await req("POST", "/api/v1/trigger-actions", { targetType: "scene.execute" });
+    const { status, body } = await req("POST", "/api/v1/trigger-actions", { workflowTargetId: "wt1" });
     expect(status).toBe(400);
     expect(body.code).toBe("BAD_REQUEST");
   });
 
   test("rejects both scheduleId and mappingId set", async () => {
     const { status } = await req("POST", "/api/v1/trigger-actions", {
-      targetType: "scene.execute",
+      workflowTargetId: "wt1",
       scheduleId: "j1",
       mappingId: "m1",
     });
@@ -133,7 +130,7 @@ describe("POST /trigger-actions — owner rule", () => {
 
   test("rejects an unknown scheduleId", async () => {
     const { status, body } = await req("POST", "/api/v1/trigger-actions", {
-      targetType: "scene.execute",
+      workflowTargetId: "wt1",
       scheduleId: "nope",
     });
     expect(status).toBe(400);
@@ -142,68 +139,44 @@ describe("POST /trigger-actions — owner rule", () => {
 
   test("rejects an unknown mappingId", async () => {
     const { status, body } = await req("POST", "/api/v1/trigger-actions", {
-      targetType: "scene.execute",
+      workflowTargetId: "wt1",
       mappingId: "nope",
     });
     expect(status).toBe(400);
     expect(body.error).toContain("mapping not found");
   });
-
-  test("requires targetType and rejects an unknown one", async () => {
-    expect((await req("POST", "/api/v1/trigger-actions", { scheduleId: "j1" })).status).toBe(400);
-    expect(
-      (await req("POST", "/api/v1/trigger-actions", { scheduleId: "j1", targetType: "self.destruct" })).status,
-    ).toBe(400);
-  });
 });
 
-describe("POST /trigger-actions — target wiring", () => {
-  test("an omitted targetId is valid (unwired) and skips target-existence checks", async () => {
-    const { status, body } = await req("POST", "/api/v1/trigger-actions", {
-      scheduleId: "j1",
-      targetType: "scene.execute",
-    });
-    expect(status).toBe(201);
-    expect(body.targetId).toBeNull();
+describe("POST /trigger-actions — workflow target wiring", () => {
+  test("requires workflowTargetId", async () => {
+    const { status, body } = await req("POST", "/api/v1/trigger-actions", { scheduleId: "j1" });
+    expect(status).toBe(400);
+    expect(body.error).toContain("workflowTargetId is required");
   });
 
-  test("a given targetId must resolve to a seeded scene", async () => {
+  test("a workflowTargetId that does not resolve is rejected", async () => {
     const { status, body } = await req("POST", "/api/v1/trigger-actions", {
       scheduleId: "j1",
-      targetType: "scene.execute",
-      targetId: "nope",
+      workflowTargetId: "nope",
     });
     expect(status).toBe(400);
-    expect(body.error).toContain("scene not found");
+    expect(body.error).toContain("workflow target not found");
   });
 
-  test("a given targetId must resolve to a seeded device", async () => {
+  test("a schedule-owned wire creates without reloading the InputMapper", async () => {
     const { status, body } = await req("POST", "/api/v1/trigger-actions", {
       scheduleId: "j1",
-      targetType: "device.command",
-      targetId: "nope",
-      targetCommand: "on",
-    });
-    expect(status).toBe(400);
-    expect(body.error).toContain("device not found");
-  });
-
-  test("a schedule-owned action creates without reloading the InputMapper", async () => {
-    const { status } = await req("POST", "/api/v1/trigger-actions", {
-      scheduleId: "j1",
-      targetType: "scene.execute",
-      targetId: "s1",
+      workflowTargetId: "wt2",
     });
     expect(status).toBe(201);
+    expect(body.workflowTargetId).toBe("wt2");
     expect(reloadCount).toBe(0);
   });
 
-  test("a mapping-owned action creates and reloads the InputMapper", async () => {
+  test("a mapping-owned wire creates and reloads the InputMapper", async () => {
     const { status } = await req("POST", "/api/v1/trigger-actions", {
       mappingId: "m1",
-      targetType: "device.command",
-      targetId: "d1",
-      targetCommand: "on",
+      workflowTargetId: "wt2",
     });
     expect(status).toBe(201);
     expect(reloadCount).toBe(1);
@@ -214,33 +187,6 @@ describe("trigger-actions single-resource routes", () => {
   test("GET /:id → 404 for unknown, 200 for known", async () => {
     expect((await req("GET", "/api/v1/trigger-actions/nope")).status).toBe(404);
     expect((await req("GET", "/api/v1/trigger-actions/ta1")).status).toBe(200);
-  });
-
-  test("PUT updates the target and reloads only when mapping-owned", async () => {
-    store["ta2"] = { ...baseAction, id: "ta2", scheduleId: null, mappingId: "m1", targetId: null, targetCommand: null };
-
-    const scheduleOwned = await req("PUT", "/api/v1/trigger-actions/ta1", { targetId: "s1" });
-    expect(scheduleOwned.status).toBe(200);
-    expect(reloadCount).toBe(0);
-
-    const mappingOwned = await req("PUT", "/api/v1/trigger-actions/ta2", {
-      targetType: "device.command",
-      targetId: "d1",
-      targetCommand: "on",
-    });
-    expect(mappingOwned.status).toBe(200);
-    expect(reloadCount).toBe(1);
-  });
-
-  test("PUT re-validates the effective target (merge of patch over current row)", async () => {
-    // ta1 already has targetId "s1"; switching targetType to device.command
-    // without a valid device id must fail even though targetId is untouched.
-    const { status } = await req("PUT", "/api/v1/trigger-actions/ta1", { targetType: "device.command" });
-    expect(status).toBe(400);
-  });
-
-  test("PUT on unknown id → 404", async () => {
-    expect((await req("PUT", "/api/v1/trigger-actions/nope", { targetId: "s1" })).status).toBe(404);
   });
 
   test("DELETE removes and reloads only when mapping-owned; unknown → 404", async () => {

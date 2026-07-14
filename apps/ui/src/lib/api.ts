@@ -50,10 +50,12 @@ import type {
   SceneWithActionsDTO,
   TriggerActionCreateInput,
   TriggerActionDTO,
-  TriggerActionUpdateInput,
   UserCreateInput,
   UserDTO,
   UserUpdateInput,
+  WorkflowTargetCreateInput,
+  WorkflowTargetDTO,
+  WorkflowTargetUpdateInput,
 } from '@gallery/types'
 import { fetchJson } from './http'
 
@@ -283,9 +285,17 @@ export const api = {
       ),
     get: (id: string) => get<TriggerActionDTO>(`/trigger-actions/${id}`),
     create: (input: TriggerActionCreateInput) => post<TriggerActionDTO>('/trigger-actions', input),
-    update: (id: string, input: TriggerActionUpdateInput) =>
-      put<TriggerActionDTO>(`/trigger-actions/${id}`, input),
     remove: (id: string) => del(`/trigger-actions/${id}`),
+  },
+
+  workflowTargets: {
+    /** Every placed instance (a scene/device may have any number of these). */
+    list: () => get<WorkflowTargetDTO[]>('/workflow-targets'),
+    get: (id: string) => get<WorkflowTargetDTO>(`/workflow-targets/${id}`),
+    create: (input: WorkflowTargetCreateInput) => post<WorkflowTargetDTO>('/workflow-targets', input),
+    update: (id: string, input: WorkflowTargetUpdateInput) =>
+      put<WorkflowTargetDTO>(`/workflow-targets/${id}`, input),
+    remove: (id: string) => del(`/workflow-targets/${id}`),
   },
 
   drivers: {

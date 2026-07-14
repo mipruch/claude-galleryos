@@ -341,7 +341,6 @@ CREATE TABLE devices (
   icon            VARCHAR(50),
   display_order   INTEGER NOT NULL DEFAULT 0,
   enabled         BOOLEAN NOT NULL DEFAULT TRUE,
-  position        JSONB,                    -- { x, y } na workflow routing mapě (§10); NULL = zatím neumístěno
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by      VARCHAR(100) DEFAULT 'admin'
@@ -369,7 +368,6 @@ CREATE TABLE scenes (
   variables     JSONB NOT NULL DEFAULT '{}',  -- pro parametrizované scény
   version       INTEGER NOT NULL DEFAULT 1,   -- inkrementuje se při každé editaci
   enabled       BOOLEAN NOT NULL DEFAULT TRUE,
-  position      JSONB,                        -- { x, y } na workflow routing mapě (§10); NULL = zatím neumístěno
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by    VARCHAR(100) DEFAULT 'admin'
@@ -508,38 +506,77 @@ CREATE TABLE input_mappings (
 CREATE INDEX idx_input_mappings_protocol ON input_mappings(protocol, enabled);
 ```
 
+### workflow_targets
+
+> **Zavedeno v unlimited-instances redesignu** (viz `/admin/workflows` §10
+> níže). Dřív neslo `target_type`/`target_id`/`target_command`/`params` přímo
+> `trigger_actions` (jeden zapojený drát = jeden nakonfigurovaný cíl) a
+> `position` mělo přímo `scenes`/`devices` (jeden uzel na canvasu na scénu/
+> zařízení). Obojí se ukázalo příliš svazující: scéna/zařízení je v DB
+> singleton, ale na canvasu chceš víc jeho nezávisle umístěných a
+> nakonfigurovaných instancí — typicky totéž zařízení jednou pro "zapnout",
+> podruhé pro "vypnout". Tahle tabulka teď nese to, co dřív neslo ani jedno:
+> jednu **umístěnou instanci**.
+
+Co se má spustit — běh scény, nebo příkaz zařízení i s parametry. Scéna/
+zařízení může mít libovolně mnoho těchto řádků (0, 1, N): každý je nezávisle
+umístěný na canvasu a nezávisle nakonfigurovaný, takže "totéž zařízení, jednou
+on, jednou off" jsou prostě dvě samostatné instance, ne dvě konfigurace
+jednoho uzlu. `position` je `NOT NULL` — existence řádku tady **je** umístění,
+žádný "zatím nikde neumístěný" stav pro instanci neexistuje (na rozdíl od
+triggeru, viz `input_mappings`/`scheduled_jobs` výše). `target_type`/
+`target_id` se po založení nemění — přecílení znamená smazat instanci a
+přetáhnout novou z knihovny.
+
+```sql
+CREATE TABLE workflow_targets (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_type     VARCHAR(50) NOT NULL,       -- 'scene.execute' | 'device.command'
+  target_id       UUID NOT NULL,              -- FK na scene nebo device podle target_type
+  target_command  VARCHAR(100),               -- příkaz pro device.command (NULL, dokud není vybraný)
+  params          JSONB NOT NULL DEFAULT '{}',
+  -- Doslovné hodnoty, nebo šablona s tokeny { "level": "{arg[0]}" } —
+  -- token dosadí InputMapper jen pro instanci zapojenou aspoň na jeden
+  -- mapping-vlastněný drát (viz trigger_actions níže).
+  position        JSONB NOT NULL,             -- { x, y } na workflow canvasu (§10) — vždy umístěno
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_workflow_targets_target ON workflow_targets(target_type, target_id);
+```
+
 ### trigger_actions
 
-Co harmonogram nebo mapování ve skutečnosti spustí — 0..N řádků na jeden
-trigger, analogicky k `scene_actions` u scén. Právě jeden z `schedule_id` /
-`mapping_id` musí být nastaven (CHECK constraint), a tabulka je sdílená mezi
-oběma typy triggerů — `Scheduler` (§7.4) i `InputMapper` (§7.7) dispatchují
-přes stejný `TriggerActionDispatcher`.
+Co harmonogram nebo mapování ve skutečnosti spustí — čistý **drát** (link) mezi
+triggerem a `workflow_targets` instancí, 0..N na jeden trigger a 0..N na jednu
+instanci (fan-out i fan-in), analogicky k `scene_actions` u scén. Právě jeden
+z `schedule_id` / `mapping_id` musí být nastaven (CHECK constraint), a tabulka
+je sdílená mezi oběma typy triggerů — `Scheduler` (§7.4) i `InputMapper`
+(§7.7) dispatchují přes stejný `TriggerActionDispatcher`, který si příkaz/
+parametry k odpálení dotáhne JOINem na `workflow_targets` (viz
+`listDispatchableByScheduleId`/`listDispatchableByMappingIds` v
+`db/repositories.ts`).
 
-`target_id`/`target_command` smí na úrovni API zůstat prázdné — dispatcher
-takový nezapojený řádek při odpálení triggeru jen přeskočí — ale routing mapa
-(§10) už žádnou cestu k jejich vytvoření nenabízí: řádek tam vzniká výhradně
-tažením hrany z už umístěného triggeru na už umístěný cíl, takže je vždy
-rovnou plně zapojený. `position` řádek nemá — na canvasu ho nezastupuje uzel,
-ale samotná hrana mezi triggerem a cílem (§10). `params` jsou u
-`scheduleId`-vlastněné akce doslovné hodnoty (cron fire nemá žádný signál, na
-který by šlo šablonovat); u `mappingId`-vlastněné akce mohou obsahovat tokeny
-`{arg[0]}` / `{:name}`, které `InputMapper` v okamžiku odpálení dosadí ze
-zachyceného signálu.
+Řádek tu nenese nic ke konfiguraci — příkaz a parametry patří cíli
+(`workflow_targets` výše), ne drátu. `workflow_target_id` je `NOT NULL` FK
+(`ON DELETE CASCADE`): routing mapa (§10) žádnou cestu k založení
+"nezapojeného" drátu nenabízí ani nikdy nenabízela — vzniká výhradně tažením
+hrany z už umístěného triggeru na už umístěnou instanci — ale dřív mohl
+existovat legacy nezapojený řádek (`target_id IS NULL`); teď to garantuje sama
+FK, takže dispatcher už žádnou takovou větev řešit nemusí. `position` řádek
+nemá — na canvasu ho nezastupuje uzel, ale samotná hrana mezi triggerem a
+cílem (§10); needituje se ani v inspectoru — přecílení znamená smazat drát a
+natáhnout nový.
 
 ```sql
 CREATE TABLE trigger_actions (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  schedule_id     UUID REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
-  mapping_id      UUID REFERENCES input_mappings(id) ON DELETE CASCADE,
-  target_type     VARCHAR(50) NOT NULL,       -- 'scene.execute' | 'device.command'
-  target_id       UUID,                       -- FK na scene nebo device podle target_type; NULL = zatím nezapojeno
-  target_command  VARCHAR(100),               -- příkaz pro device.command
-  params          JSONB NOT NULL DEFAULT '{}',
-  -- Doslovné hodnoty (schedule_id) nebo šablona s tokeny (mapping_id):
-  -- { "level": "{arg[0]}", "muted": false }
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  schedule_id         UUID REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+  mapping_id          UUID REFERENCES input_mappings(id) ON DELETE CASCADE,
+  workflow_target_id  UUID NOT NULL REFERENCES workflow_targets(id) ON DELETE CASCADE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT trigger_actions_owner_chk CHECK (
     (schedule_id IS NOT NULL AND mapping_id IS NULL)
     OR (mapping_id IS NOT NULL AND schedule_id IS NULL)
@@ -548,6 +585,7 @@ CREATE TABLE trigger_actions (
 
 CREATE INDEX idx_trigger_actions_schedule ON trigger_actions(schedule_id);
 CREATE INDEX idx_trigger_actions_mapping ON trigger_actions(mapping_id);
+CREATE INDEX idx_trigger_actions_target ON trigger_actions(workflow_target_id);
 ```
 
 ### ui_layouts
@@ -2099,58 +2137,80 @@ adresu + args, uvidíš, která pravidla by matchla a jaké path params by zachy
 
 2D canvas (Vue Flow) nad daty, která už spravují stránky Mappings/Schedules/Scenes
 — nejde o nový automatizační engine, jen o jejich prostorové zobrazení a propojení.
-Od zavedení `trigger_actions` je to i **jediné místo**, kde se trigger/akce
-vytváří, zapojuje a maže — nahrazuje bývalé `MappingFormDialog` /
-`ScheduleFormDialog` modály; list stránky výše slouží jen k monitorování,
-přepnutí enable/disable a smazání.
+Je to **jediné místo**, kde se trigger/instance/drát vytváří, zapojuje a maže
+— nahrazuje bývalé `MappingFormDialog` / `ScheduleFormDialog` modály; list
+stránky výše slouží jen k monitorování, přepnutí enable/disable a smazání.
 
 - **Routing mapa** (`/admin/workflows`) je graf o dvou typech uzlů — trigger
-  (`input_mappings` / `scheduled_jobs`) a cíl (scene / device) — bez
-  samostatného uzlu pro akci. Jedna `trigger_action` = jedna **hrana** vedená
-  přímo z triggeru na cíl; id a celý řádek akce cestuje jako `data` té hrany,
-  takže klik na hranu otevře její inspector stejně, jako dřív klik na uzel
-  akce. Protože hrana potřebuje oba konce hotové, `trigger_action` už nejde
-  založit "naprázdno" — vytažení spojnice z už umístěného triggeru na už
-  umístěný cíl je tedy jediný a zároveň atomický způsob, jak ji založit
-  (rovnou s `targetType`/`targetId`).
+  (`input_mappings` / `scheduled_jobs`) a **umístěná instance**
+  (`workflow_targets`, viz §5) — bez samostatného uzlu pro drát. Jedna
+  `trigger_action` = jedna **hrana** vedená přímo z triggeru na instanci, ale
+  hrana je čistý link bez vlastní konfigurace — klik na ni neotevírá žádný
+  inspector (na rozdíl od dřívějšího edge-based návrhu). Co se spustí (příkaz
+  + parametry) patří instanci, ne drátu, takže **klik otevírá inspector na
+  uzlu cíle**, ne na hraně.
+  - **Neomezený počet instancí:** scéna/zařízení je v DB singleton, ale na
+    mapě může mít libovolně mnoho nezávisle umístěných a nakonfigurovaných
+    instancí — typicky totéž zařízení jednou pro "zapnout" (`on`), podruhé
+    pro "vypnout" (`off`), každá jako samostatný uzel se svým vlastním
+    příkazem/parametry (`TargetNode` zobrazuje přímo tenhle konfigurovaný
+    příkaz, ne obecný typ zařízení, aby šly dvě instance stejného zařízení na
+    první pohled rozeznat). Trigger (mapping/schedule) naproti tomu zůstává
+    v DB i na mapě jednou — reprezentuje "kdy", ne "co", a to smysl mít
+    vícekrát nedává.
+  - **Levý panel "Library"** vypisuje **úplně všechny** scény/zařízení,
+    bez ohledu na to, kolik instancí už mají na mapě — přetažení karty vždy
+    založí **novou** `workflow_targets` instanci na drop pozici
+    (`useVueFlow().project` přepočte drop na souřadnice plátna), nikdy
+    "nepřesune" existující. Instance se rovnou vybere, takže se otevře její
+    inspector k nastavení příkazu.
   - Tlačítka **"New schedule"/"New mapping"** v toolbaru založí holý trigger
     a rovnou ho vyberou, takže se otevře inspector k pojmenování.
-  - **Levý panel "Library"** vypisuje scény/zařízení, které na mapě ještě
-    nejsou — nemají uloženou `position` a zatím na ně necílí žádná
-    `trigger_action`. Přetažením karty z knihovny na plochu (`useVueFlow().project`
-    přepočte drop na souřadnice plátna) se scéně/zařízení nastaví `position`,
-    tím se stane uzlem na mapě a jde na něj vést hranu. Umístěný nebo
-    zapojený cíl z knihovny zmizí (`unplacedLibraryItems` ve
-    `lib/workflowGraph.ts` je doplněk toho, co vykresluje samotná mapa).
-  - Tažení hrany **z triggeru na cíl** rovnou založí plně zapojenou akci — tak
-    jde vytáhnout z jednoho triggeru najednou víc drátů k různým
-    scénám/zařízením (fan-out) a do jednoho cíle zapojit víc triggerů
-    (fan-in); obojí jsou nezávislé hrany, žádné omezení počtu na žádné
-    straně. Změna cíle existující akce = smazat hranu a natáhnout novou —
-    inspector cíl needituje, jen o tom napíše.
-  - Klik na trigger otevře pravý sidebar s jeho formulářem (`TriggerInspector`
-    — beze změny), klik na hranu otevře `TriggerActionInspector` — příkaz
-    (u `device.command`) a parametry, čitelný, needitovatelný souhrn cíle.
-    Prázdné místo na plátně výběr zruší. Oba inspectory nesou tlačítko smazat.
+  - Tažení hrany **z triggeru na instanci** rovnou založí zapojený drát — tak
+    jde vytáhnout z jednoho triggeru najednou víc drátů k různým instancím
+    (fan-out) a do jedné instance zapojit víc triggerů (fan-in); obojí jsou
+    nezávislé hrany, žádné omezení počtu na žádné straně. Přecílení
+    existujícího drátu = smazat ho a natáhnout nový.
+  - **Klik na trigger** otevře pravý sidebar s jeho formulářem
+    (`TriggerInspector` — beze změny). **Klik na instanci** otevře
+    `WorkflowTargetInspector` — u `device.command` výběr příkazu a jeho
+    parametry, u `scene.execute` tlačítko do vlastního canvasu scény (viz
+    níže — dřív to dělal přímo klik na uzel scény, teď je to explicitní
+    akce v inspectoru, konzistentně s tím, že klik na libovolnou instanci
+    vždy otevře inspector). Prázdné místo na plátně výběr zruší. Trigger i
+    instance nesou tlačítko smazat; smazání instance kaskádově smaže i její
+    dráty.
+  - **Hover na drátu** ukáže tooltip s pojmenovanými path-parametry, které
+    zachytí vzor vlastnícího mappingu (`:level` z `/dim/:level` →
+    `level`), a tlačítko smazat přímo na drátu (`TriggerActionEdge`,
+    vlastní Vue Flow edge komponenta) — bez nutnosti nejdřív otevírat
+    inspector. Stejné parametry jsou vidět i v inspectoru zapojené instance
+    ("Available from signal: …") jako sjednocení přes všechny příchozí
+    mapping-vlastněné dráty, aby bylo jasné, co je k dispozici k šablonování
+    (`patternParamNames` v `lib/workflowGraph.ts`, čistá zrcadlová obdoba
+    split algoritmu z `input/patterns.ts` na serveru).
   - Parametry se needitují jako syrový JSON, ale jako typované widgety
     odvozené ze schématu příkazu (`schemaToFields` — stejné jako
-    `SceneActionRow` u scén): boolean → Switch, enum → Select, číslo/text →
-    Input. U `mappingId`-vlastněné akce má každé pole navíc přepínač
-    "From signal" / "Use a value" — přepne widget na prostý textový vstup
-    pro token `{arg[0]}` / `{:name}`; u `scheduleId`-vlastněné akce přepínač
-    vůbec není (cron fire nemá signál, na který by šlo šablonovat).
-- Klik na scénu otevře její vlastní canvas (`/admin/workflows/scenes/:id`) s
-  akcemi seřazenými do "stage" sloupců podle `parallel_group`. Záměrně bez
-  hran mezi jednotlivými akcemi — `SceneEngine` nezná závislost mezi akcemi,
-  jen bariéry mezi skupinami (`planGroups`), takže spojnice mezi kroky by
-  tvrdila závislost, která neexistuje. Tažení uzlu mezi sloupci akci přeřadí
-  do jiné `parallel_group`.
+    `SceneActionRow` u scén): boolean → Switch, enum → Select, ohraničené
+    číslo (`minimum`+`maximum` v schématu, např. 0..1 fader level) →
+    **Slider**, jinak prostý Input. Instance zapojená aspoň na jeden
+    mapping-vlastněný drát má u každého pole navíc přepínač "From signal" /
+    "Use a value" — přepne widget na prostý textový vstup pro token
+    `{arg[0]}` / `{:name}`; instance zapojená jen na schedule dráty přepínač
+    vůbec nemá (cron fire nemá signál, na který by šlo šablonovat).
+- Klik na "Edit scene steps" v inspectoru scénové instance otevře její vlastní
+  canvas (`/admin/workflows/scenes/:id`) s akcemi seřazenými do "stage"
+  sloupců podle `parallel_group`. Záměrně bez hran mezi jednotlivými akcemi —
+  `SceneEngine` nezná závislost mezi akcemi, jen bariéry mezi skupinami
+  (`planGroups`), takže spojnice mezi kroky by tvrdila závislost, která
+  neexistuje. Tažení uzlu mezi sloupci akci přeřadí do jiné `parallel_group`.
 - Perzistovaný `position` (jsonb) nese `scene_actions` (krok uvnitř scény),
-  `input_mappings` / `scheduled_jobs` (trigger) a nově i `scenes` / `devices`
-  (cíl) — čistě rozvržení, nic exekučního. `trigger_actions` vlastní
+  `input_mappings` / `scheduled_jobs` (trigger) a `workflow_targets`
+  (instance) — čistě rozvržení, nic exekučního. `trigger_actions` vlastní
   `position` nemá (viz výše — na mapě ji zastupuje hrana, ne uzel).
-  Neumístěné triggery se automaticky rozloží knihovnou `dagre`; scéna/zařízení
-  bez `position` se prostě nevykreslí, dokud ji admin nepřetáhne z knihovny.
+  Neumístěné triggery se automaticky rozloží knihovnou `dagre`; instance
+  naproti tomu má `position` vždy (`NOT NULL` — existence řádku *je*
+  umístění, viz §5), takže dagre řeší jen trigger uzly bez uložené pozice.
 
 #### `/layouts` — Builder User UI
 
@@ -2454,7 +2514,10 @@ User UI má **read-only** stránku pro sledování naplánovaných spuštění
   `GET /api/v1/schedules/:id/next`. Selhání jednoho náhledu degraduje na prázdný
   seznam, nezhodí stránku.
 - **Řazení a zobrazení:** karty jsou řazené dle nejbližšího příštího běhu;
-  každá ukazuje cílovou scénu (jméno + Lucide ikona dle scény), nejbližší běh
+  každá ukazuje souhrn zapojených `workflow_targets` instancí (jméno + příkaz
+  u zařízení, "Run '…'" u scény — `targetSummary`/`resolveTargetNames` z
+  `lib/workflowTargets.ts`, sdílené s Admin UI inspectorem), ikonu podle první
+  zapojené scénové instance, jinak obecnou ikonu hodin, nejbližší běh
   (relativně „in 5 minutes" / „tomorrow" + absolutní lokální čas), další
   plánované běhy, cron výraz (+timezone v tooltipu) a poslední běh.
 - **Čas:** server vrací vše v **UTC**; převod do lokálního času prohlížeče je
@@ -2722,12 +2785,15 @@ User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `u
 ### UC-05: Automatické spuštění scény harmonogramem
 
 1. Admin na `/admin/workflows` založí Scheduled Job (CRON `0 9 * * 2-6`, timezone
-   Europe/Prague) — zatím bez zapojené akce, to je validní, uložitelný stav
-1. Admin přetáhne scénu “Otevření galerie” z levé knihovny na plochu (pokud
-   tam ještě není) a natáhne hranu z jobu na ni — tím vznikne rovnou plně
-   zapojená `trigger_action` typu `scene.execute`
+   Europe/Prague) — zatím bez zapojeného drátu, to je validní, uložitelný stav
+1. Admin přetáhne scénu “Otevření galerie” z levé knihovny na plochu — tím
+   vznikne nová `workflow_targets` instance typu `scene.execute` (umístěná,
+   bez dalšího nastavení k vyplnění — scéna nemá parametry)
+1. Admin natáhne hranu z jobu na tuhle instanci — tím vznikne zapojený drát
+   (`trigger_actions` řádek, `schedule_id` + `workflow_target_id`)
 1. Každý pracovní den v 9:00 Scheduler natáhne joby `trigger_actions` čerstvě z
-   DB a předá je `TriggerActionDispatcher` se `source: 'scheduler'`
+   DB, JOINuté s jejich `workflow_targets` instancí, a předá je
+   `TriggerActionDispatcher` se `source: 'scheduler'`
 1. Dispatcher spustí scénu přes `SceneEngine.startScene(sceneId, 'scheduler', …)`
 1. Log zaznamená: `{ source: 'scheduler', job_id: 'uuid', scene_id: 'uuid' }`
 1. Všechny připojené UI dostanou WebSocket broadcast `scene:started`
@@ -2735,18 +2801,22 @@ User UI nemá vlastní konfiguraci. Celý layout je řízen Admin UI (tabulka `u
 ### UC-06: Spuštění scény přes OSC z vMix
 
 1. Admin na `/admin/workflows` založí Input Mapping (protocol `osc`, pattern
-   `/gallery/scene/execute`) a natáhne z něj hranu na scénu “Otevření
-   galerie” — tím vznikne rovnou plně zapojená `trigger_action`
+   `/gallery/scene/execute`), přetáhne scénu “Otevření galerie” z knihovny
+   (nebo použije instanci už umístěnou z UC-05) a natáhne z mappingu hranu na
+   ni — tím vznikne zapojený drát
 1. vMix odešle OSC zprávu na UDP port 8765: adresa `/gallery/scene/execute`
 1. OscServer přijme zprávu, matchne pattern (přesná shoda, žádný `:param`) a
    předá ji `InputMapper.handle()`
-1. `InputMapper` najde zapojenou `trigger_action` a předá ji
-   `TriggerActionDispatcher`, který spustí `SceneEngine.startScene(sceneId, "osc", …)`
+1. `InputMapper` najde zapojený drát (JOINutý s jeho `workflow_targets`
+   instancí) a předá ho `TriggerActionDispatcher`, který spustí
+   `SceneEngine.startScene(sceneId, "osc", …)`
 1. Scéna se spustí, loguje source `osc:/gallery/scene/execute`
 
-> Path params (`/dim/:level`) jsou pro `device.command` akce — `scene.execute`
-> cílí vždy na jednu pevně zapojenou scénu, žádné parametry nepoužívá (viz
-> `trigger_actions` v §5).
+> Path params (`/dim/:level`) jsou pro `device.command` instance — jejich
+> hodnotu do `workflow_targets.params` šablony (`{:level}`) v okamžiku
+> odpálení dosadí `InputMapper` ze zachyceného signálu. `scene.execute`
+> instance žádné parametry nepoužívá — spuštění scény žádný vstup nebere
+> (viz `workflow_targets`/`trigger_actions` v §5).
 
 ### UC-07: Spuštění příkazu přes HTTP API
 

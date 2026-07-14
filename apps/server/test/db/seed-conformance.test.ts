@@ -14,6 +14,7 @@ import {
   SEED_SCENE_ACTIONS,
   SEED_SCHEDULED_JOBS,
   SEED_TRIGGER_ACTIONS,
+  SEED_WORKFLOW_TARGETS,
 } from "../../src/db/seed.ts";
 import {
   assertValidCommandParams,
@@ -25,7 +26,8 @@ import { computeNextRun, isValidCron } from "../../src/core/cron.ts";
 const connById = new Map(SEED_CONNECTIONS.map((c) => [c.id, c]));
 const devById = new Map(SEED_DEVICES.map((d) => [d.id, d]));
 const scheduleIds = new Set(SEED_SCHEDULED_JOBS.map((j) => j.id));
-// Scene IDs referenced by the seed (scene-action targets + trigger-action targets).
+const workflowTargetIds = new Set(SEED_WORKFLOW_TARGETS.map((t) => t.id));
+// Scene IDs referenced by the seed (scene-action targets + workflow-target targets).
 const seededSceneIds = new Set(SEED_SCENE_ACTIONS.map((a) => a.sceneId));
 
 /** Endpoint type a device is addressed as (subtype, falling back to type). */
@@ -94,10 +96,19 @@ describe("seed data conforms to driver manifests", () => {
     }
   });
 
-  test("every scene.execute trigger action targets a seeded scene", () => {
+  test("every trigger action's workflowTargetId is a seeded workflow target", () => {
     for (const action of SEED_TRIGGER_ACTIONS) {
-      if (action.targetType !== "scene.execute") continue;
-      expect(seededSceneIds.has(action.targetId), `trigger action ${action.id} references a seeded scene`).toBe(
+      expect(
+        workflowTargetIds.has(action.workflowTargetId),
+        `trigger action ${action.id} references a seeded workflow target`,
+      ).toBe(true);
+    }
+  });
+
+  test("every scene.execute workflow target targets a seeded scene", () => {
+    for (const target of SEED_WORKFLOW_TARGETS) {
+      if (target.targetType !== "scene.execute") continue;
+      expect(seededSceneIds.has(target.targetId), `workflow target ${target.id} references a seeded scene`).toBe(
         true,
       );
     }

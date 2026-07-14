@@ -1,10 +1,10 @@
 /**
- * Trigger-action helpers shared by the workflow canvas's node components and
- * inspector. A trigger action is what a schedule or mapping fires — a scene run
- * or a single device command, 0..N per trigger. On the edge-based canvas its
- * `targetType`/`targetId` are fixed by the wire that created it (see
- * `workflowGraph.ts`); these helpers describe that resolved target for the
- * read-only summary shown in the inspector and the Schedules monitor list.
+ * Workflow-target helpers shared by the workflow canvas's node components and
+ * inspector. A workflow target is a placed, independently-configured instance
+ * a trigger can fire — a scene run or a single device command with its params
+ * (0..N instances per scene/device, e.g. separate "on"/"off" instances of the
+ * same device). These helpers describe a target for the read-only summary
+ * shown on its node, its inspector, and the Schedules monitor list.
  */
 
 import type { TriggerTargetType } from '@gallery/types'
@@ -19,37 +19,37 @@ export const targetTypeLabel = (t: string): string =>
   TARGET_TYPE_OPTIONS.find((o) => o.value === t)?.label ?? t
 
 /**
- * A one-line, human description of what a trigger action does — the resolved
- * scene/device names are passed in (the store knows them), keeping this pure.
+ * A one-line, human description of what a workflow target does — the resolved
+ * scene/device name is passed in (the store knows it), keeping this pure.
  */
 export function targetSummary(
   targetType: string,
   names: { sceneName?: string; deviceName?: string; command?: string | null },
 ): string {
   if (targetType === 'scene.execute') {
-    return names.sceneName ? `Run “${names.sceneName}”` : 'Not wired yet'
+    return names.sceneName ? `Run “${names.sceneName}”` : 'Unknown scene'
   }
   if (targetType === 'device.command') {
-    if (!names.deviceName) return 'Not wired yet'
+    if (!names.deviceName) return 'Unknown device'
     return names.command ? `${names.deviceName} · ${names.command}` : `${names.deviceName} · pick a command`
   }
   return targetTypeLabel(targetType)
 }
 
 /**
- * Resolve a trigger action's target names from the scenes/devices stores
- * already know — the shared shape `targetSummary` and the node/list-view
- * summaries all build from, so a scene/device rename only needs updating here.
+ * Resolve a workflow target's names from the scenes/devices stores already
+ * know — the shared shape `targetSummary` and the node/list-view summaries
+ * all build from, so a scene/device rename only needs updating here.
  */
 export function resolveTargetNames(
-  action: { targetType: string; targetId: string | null; targetCommand: string | null },
+  target: { targetType: string; targetId: string; targetCommand: string | null },
   scenes: ReadonlyArray<{ id: string; name: string }>,
   devices: ReadonlyArray<{ id: string; name: string }>,
 ): { sceneName?: string; deviceName?: string; command: string | null } {
   return {
-    sceneName: action.targetId ? scenes.find((s) => s.id === action.targetId)?.name : undefined,
-    deviceName: action.targetId ? devices.find((d) => d.id === action.targetId)?.name : undefined,
-    command: action.targetCommand,
+    sceneName: target.targetType === 'scene.execute' ? scenes.find((s) => s.id === target.targetId)?.name : undefined,
+    deviceName: target.targetType === 'device.command' ? devices.find((d) => d.id === target.targetId)?.name : undefined,
+    command: target.targetCommand,
   }
 }
 

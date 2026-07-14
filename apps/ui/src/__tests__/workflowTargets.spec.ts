@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveTargetNames, targetSummary, targetTypeLabel, usesParams } from '@/lib/triggerActions'
+import { resolveTargetNames, targetSummary, targetTypeLabel, usesParams } from '@/lib/workflowTargets'
 
 describe('labels', () => {
   it('maps target-type values to display labels, falling back gracefully', () => {
@@ -18,9 +18,9 @@ describe('targetSummary', () => {
       'Dimmer · setLevel',
     )
   })
-  it('falls back to "Not wired yet" when nothing is resolved', () => {
-    expect(targetSummary('scene.execute', {})).toBe('Not wired yet')
-    expect(targetSummary('device.command', {})).toBe('Not wired yet')
+  it('falls back to an "unknown" label when nothing resolves', () => {
+    expect(targetSummary('scene.execute', {})).toBe('Unknown scene')
+    expect(targetSummary('device.command', {})).toBe('Unknown device')
   })
   it('nudges for a command once a device is picked', () => {
     expect(targetSummary('device.command', { deviceName: 'Dimmer' })).toBe('Dimmer · pick a command')
@@ -50,8 +50,8 @@ describe('resolveTargetNames', () => {
       resolveTargetNames({ targetType: 'device.command', targetId: 'd1', targetCommand: 'on' }, scenes, devices),
     ).toEqual({ sceneName: undefined, deviceName: 'Dimmer', command: 'on' })
   })
-  it('leaves both names undefined when there is no targetId', () => {
-    expect(resolveTargetNames({ targetType: 'scene.execute', targetId: null, targetCommand: null }, scenes, devices)).toEqual({
+  it('leaves the name undefined when targetId matches nothing', () => {
+    expect(resolveTargetNames({ targetType: 'scene.execute', targetId: 'nope', targetCommand: null }, scenes, devices)).toEqual({
       sceneName: undefined,
       deviceName: undefined,
       command: null,

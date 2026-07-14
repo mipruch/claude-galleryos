@@ -27,9 +27,8 @@
  */
 
 import { errMsg } from "@gallery/driver-core";
-import type { TriggerAction } from "@gallery/types";
 import { computeNextRun, CronParseError } from "./cron.ts";
-import type { TemplateContext, TriggerDispatchOutcome } from "./TriggerActionDispatcher.ts";
+import type { DispatchableTriggerAction, TemplateContext, TriggerDispatchOutcome } from "./TriggerActionDispatcher.ts";
 import type { Logger } from "../logger.ts";
 
 /** The slice of a scheduled-job row the Scheduler needs. */
@@ -53,13 +52,13 @@ export interface SchedulerJobsRepo {
 
 /** Source of the trigger actions wired to a schedule (a narrow view of `triggerActionsRepo`). */
 export interface SchedulerTriggerActions {
-  listByScheduleId(scheduleId: string): Promise<TriggerAction[]>;
+  listDispatchableByScheduleId(scheduleId: string): Promise<DispatchableTriggerAction[]>;
 }
 
 /** The shared dispatcher every trigger source (schedules, mappings, …) fires through. */
 export interface SchedulerDispatcher {
   dispatchAll(
-    actions: readonly TriggerAction[],
+    actions: readonly DispatchableTriggerAction[],
     source: string,
     sourceDetail: string,
     template?: TemplateContext,
@@ -221,7 +220,7 @@ export class Scheduler {
   /** Fetch and dispatch a fired job's wired trigger actions. Never throws. */
   private async dispatchActions(job: ScheduledJobRecord): Promise<void> {
     try {
-      const actions = await this.opts.triggerActions.listByScheduleId(job.id);
+      const actions = await this.opts.triggerActions.listDispatchableByScheduleId(job.id);
       if (actions.length === 0) {
         this.log.debug("scheduled job fired but has no wired trigger actions", { id: job.id, name: job.name });
         return;

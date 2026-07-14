@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { TriggerAction } from "@gallery/types";
+import type { DispatchableTriggerAction } from "../../src/core/TriggerActionDispatcher.ts";
 import { Scheduler, type ScheduledJobRecord } from "../../src/core/Scheduler.ts";
 import { logger } from "../../src/logger.ts";
 
@@ -57,26 +57,22 @@ function makeClock(start = T0) {
   };
 }
 
-/** Build a TriggerAction row wired to a schedule, with sensible defaults. */
-function triggerAction(partial: Partial<TriggerAction> = {}): TriggerAction {
+/** Build a trigger action (already joined with its workflow_target) with sensible defaults. */
+function triggerAction(partial: Partial<DispatchableTriggerAction> = {}): DispatchableTriggerAction {
   return {
     id: partial.id ?? crypto.randomUUID(),
-    scheduleId: partial.scheduleId ?? null,
-    mappingId: partial.mappingId ?? null,
     targetType: partial.targetType ?? "scene.execute",
     targetId: partial.targetId ?? "s1",
     targetCommand: partial.targetCommand ?? null,
     params: partial.params ?? {},
-    createdAt: partial.createdAt ?? new Date(),
-    updatedAt: partial.updatedAt ?? new Date(),
   };
 }
 
 /** Fake trigger-actions source keyed by scheduleId (mutable so tests can rewire). */
-function makeTriggerActionsSource(byJob: Record<string, TriggerAction[]> = {}) {
+function makeTriggerActionsSource(byJob: Record<string, DispatchableTriggerAction[]> = {}) {
   return {
     byJob,
-    async listByScheduleId(scheduleId: string) {
+    async listDispatchableByScheduleId(scheduleId: string) {
       return byJob[scheduleId] ?? [];
     },
   };
@@ -87,7 +83,7 @@ function makeDispatcher() {
   const calls: Array<{ actionIds: string[]; source: string; sourceDetail: string }> = [];
   return {
     calls,
-    async dispatchAll(actions: readonly TriggerAction[], source: string, sourceDetail: string) {
+    async dispatchAll(actions: readonly DispatchableTriggerAction[], source: string, sourceDetail: string) {
       calls.push({ actionIds: actions.map((a) => a.id), source, sourceDetail });
       return actions.map((a) => ({ triggerActionId: a.id, targetType: a.targetType, ok: true }));
     },
@@ -129,7 +125,7 @@ function job(p: Partial<ScheduledJobRecord> = {}): ScheduledJobRecord {
   };
 }
 
-function makeScheduler(jobs: ScheduledJobRecord[], actionsByJob: Record<string, TriggerAction[]> = {}) {
+function makeScheduler(jobs: ScheduledJobRecord[], actionsByJob: Record<string, DispatchableTriggerAction[]> = {}) {
   const clock = makeClock();
   const triggerActions = makeTriggerActionsSource(actionsByJob);
   const dispatcher = makeDispatcher();
@@ -163,7 +159,7 @@ describe("Scheduler — startup", () => {
 
   test("warns but does not auto-run a missed job (no dispatch on startup)", async () => {
     const missed = job({ id: "j1", nextRunAt: new Date(T0 - 3_600_000) }); // 1h overdue
-    const { scheduler, dispatcher } = makeScheduler([missed], { j1: [triggerAction({ scheduleId: "j1" })] });
+    const { scheduler, dispatcher } = makeScheduler([missed], { j1: [triggerAction()] });
     await scheduler.start();
 
     expect(dispatcher.calls).toHaveLength(0); // missed run is NOT auto-executed
@@ -180,7 +176,7 @@ describe("Scheduler — startup", () => {
 
 describe("Scheduler — firing", () => {
   test("dispatches the job's wired trigger actions with source 'scheduler' and re-arms the next run", async () => {
-    const wired = triggerAction({ id: "ta1", scheduleId: "j1", targetId: "s1" });
+    const wired = triggerAction({ id: "ta1", targetId: "s1" });
     const { scheduler, clock, dispatcher, repo } = makeScheduler([job({ id: "j1" })], { j1: [wired] });
     await scheduler.start();
 
@@ -207,7 +203,7 @@ describe("Scheduler — firing", () => {
   });
 
   test("dispatches repeatedly as time advances across multiple occurrences", async () => {
-    const { scheduler, clock, dispatcher } = makeScheduler([job()], { j1: [triggerAction({ scheduleId: "j1" })] });
+    const { scheduler, clock, dispatcher } = makeScheduler([job()], { j1: [triggerAction()] });
     await scheduler.start();
 
     await clock.advanceTo(Date.parse("2026-06-21T11:00:00Z")); // 10:15,10:30,10:45,11:00
@@ -228,7 +224,7 @@ describe("Scheduler — dynamic API", () => {
 
   test("removeJob cancels a job's timer", async () => {
     const { scheduler, clock, dispatcher } = makeScheduler([job({ id: "j1" })], {
-      j1: [triggerAction({ scheduleId: "j1" })],
+      j1: [triggerAction()],
     });
     await scheduler.start();
     scheduler.removeJob("j1");
@@ -266,8 +262,8 @@ describe("Scheduler — dynamic API", () => {
 describe("Scheduler — stop", () => {
   test("stop cancels all timers; nothing fires afterwards", async () => {
     const { scheduler, clock, dispatcher } = makeScheduler([job({ id: "j1" }), job({ id: "j2" })], {
-      j1: [triggerAction({ scheduleId: "j1" })],
-      j2: [triggerAction({ scheduleId: "j2" })],
+      j1: [triggerAction()],
+      j2: [triggerAction()],
     });
     await scheduler.start();
     expect(scheduler.scheduledCount).toBe(2);

@@ -1,49 +1,29 @@
 /**
- * Trigger-action routes — CRUD for the `trigger_actions` a schedule or mapping
- * fires (0..N per trigger; an unwired action, dropped on the canvas before a
- * target is picked, is a normal, valid row).
+ * Trigger-action routes — CRUD for the `trigger_actions` wiring a schedule or
+ * mapping to an already-placed `workflow_targets` instance (0..N per
+ * trigger, 0..N triggers per instance).
  *
  *   GET    /api/v1/trigger-actions                 list all (?scheduleId= or ?mappingId= to scope)
- *   POST   /api/v1/trigger-actions                  create { scheduleId|mappingId, targetType, … }
- *   GET    /api/v1/trigger-actions/:id              one action
- *   PUT    /api/v1/trigger-actions/:id              update
+ *   POST   /api/v1/trigger-actions                  create { scheduleId|mappingId, workflowTargetId }
+ *   GET    /api/v1/trigger-actions/:id              one wire
  *   DELETE /api/v1/trigger-actions/:id              delete
  *
- * Exactly one of `scheduleId`/`mappingId` must name the owner, and it can't be
- * changed after create (mirrors the DB CHECK constraint — an action doesn't
- * switch triggers, it gets deleted and re-created). `targetId`/`targetCommand`
- * are optional (unwired is valid); when a `targetId` IS given it must resolve to
- * a real scene/device, so a stale reference is a clean 400 rather than a dispatch
- * -time surprise.
+ * Exactly one of `scheduleId`/`mappingId` must name the owner, and it can't
+ * be changed after create (mirrors the DB CHECK constraint — a wire doesn't
+ * switch triggers, it gets deleted and re-created). `workflowTargetId` must
+ * resolve to an existing instance, so a stale reference is a clean 400
+ * rather than a dispatch-time surprise. There is no PUT: a pure link row has
+ * nothing else to configure — see `workflow-targets` for command/params.
  *
- * A mutation that touches a mapping-owned action reloads the live
+ * A mutation that touches a mapping-owned wire reloads the live
  * {@link InputMapper} cache so wiring changes take effect immediately. A
- * schedule-owned action needs no such reload — the {@link Scheduler} fetches its
- * job's actions fresh from the repo on every fire.
+ * schedule-owned wire needs no such reload — the {@link Scheduler} fetches
+ * its job's actions fresh from the repo on every fire.
  */
 
-import type { NewTriggerAction, TriggerTargetType } from "@gallery/types";
+import type { NewTriggerAction } from "@gallery/types";
 import type { ApiContext } from "../context.ts";
-import {
-  HttpError,
-  asObject,
-  json,
-  noContent,
-  paramId,
-  query,
-  readJson,
-  requireFields,
-  route,
-  type RouteMap,
-} from "../http.ts";
-
-const TARGET_TYPES: readonly TriggerTargetType[] = ["scene.execute", "device.command"];
-
-function assertTargetType(value: unknown): asserts value is TriggerTargetType {
-  if (!TARGET_TYPES.includes(value as TriggerTargetType)) {
-    throw new HttpError(400, "BAD_REQUEST", `targetType must be one of: ${TARGET_TYPES.join(", ")}`);
-  }
-}
+import { HttpError, json, noContent, paramId, query, readJson, route, type RouteMap } from "../http.ts";
 
 /** Exactly one of scheduleId/mappingId must name the owner. */
 function assertOwner(
@@ -61,22 +41,6 @@ function assertOwner(
   };
 }
 
-/** If a `targetId` is given, it must resolve to a real scene/device. Unset is valid (unwired). */
-async function assertTargetExists(
-  ctx: ApiContext,
-  targetType: TriggerTargetType,
-  targetId: string | null | undefined,
-): Promise<void> {
-  if (!targetId) return;
-  if (targetType === "scene.execute") {
-    const scene = await ctx.scenes.get(targetId);
-    if (!scene) throw new HttpError(400, "BAD_REQUEST", `scene not found: ${targetId}`);
-  } else {
-    const device = await ctx.devices.get(targetId);
-    if (!device) throw new HttpError(400, "BAD_REQUEST", `device not found: ${targetId}`);
-  }
-}
-
 /** The owner named by a create body must already exist (a clean 400, not an FK-violation 500). */
 async function assertOwnerExists(
   ctx: ApiContext,
@@ -88,19 +52,6 @@ async function assertOwnerExists(
   if (owner.mappingId && !(await ctx.mappings.get(owner.mappingId))) {
     throw new HttpError(400, "BAD_REQUEST", `mapping not found: ${owner.mappingId}`);
   }
-}
-
-/** Normalize `targetId`/`targetCommand` from a request body — both may be explicit `null`. */
-function readTargetFields(body: Record<string, unknown>): {
-  targetId?: string | null;
-  targetCommand?: string | null;
-} {
-  const out: { targetId?: string | null; targetCommand?: string | null } = {};
-  if (body.targetId !== undefined) out.targetId = body.targetId === null ? null : String(body.targetId);
-  if (body.targetCommand !== undefined) {
-    out.targetCommand = body.targetCommand === null ? null : String(body.targetCommand);
-  }
-  return out;
 }
 
 export function triggerActionsRoutes(ctx: ApiContext): RouteMap {
@@ -116,21 +67,19 @@ export function triggerActionsRoutes(ctx: ApiContext): RouteMap {
 
       POST: route(async (req) => {
         const body = await readJson(req);
-        requireFields(body, ["targetType"]);
-        assertTargetType(body.targetType);
+        if (typeof body.workflowTargetId !== "string" || !body.workflowTargetId) {
+          throw new HttpError(400, "BAD_REQUEST", "workflowTargetId is required");
+        }
         const owner = assertOwner(body.scheduleId, body.mappingId);
         await assertOwnerExists(ctx, owner);
 
-        const { targetId = null, targetCommand = null } = readTargetFields(body);
-        await assertTargetExists(ctx, body.targetType, targetId);
+        const target = await ctx.workflowTargets.get(body.workflowTargetId);
+        if (!target) throw new HttpError(400, "BAD_REQUEST", `workflow target not found: ${body.workflowTargetId}`);
 
         const values: NewTriggerAction = {
           scheduleId: owner.scheduleId,
           mappingId: owner.mappingId,
-          targetType: body.targetType,
-          targetId,
-          targetCommand,
-          ...(body.params !== undefined ? { params: asObject(body.params, "params") } : {}),
+          workflowTargetId: body.workflowTargetId,
         };
         const created = await ctx.triggerActions.create(values);
         if (!created) throw new HttpError(500, "INTERNAL_ERROR", "failed to create trigger action");
@@ -145,31 +94,6 @@ export function triggerActionsRoutes(ctx: ApiContext): RouteMap {
         const action = await ctx.triggerActions.get(paramId(req));
         if (!action) throw new HttpError(404, "NOT_FOUND", "trigger action not found");
         return json(action);
-      }),
-
-      PUT: route(async (req) => {
-        const id = paramId(req);
-        const body = await readJson(req);
-        const current = await ctx.triggerActions.get(id);
-        if (!current) throw new HttpError(404, "NOT_FOUND", "trigger action not found");
-
-        const patch: Partial<NewTriggerAction> = { ...readTargetFields(body) };
-        if (body.targetType !== undefined) {
-          assertTargetType(body.targetType);
-          patch.targetType = body.targetType;
-        }
-        if (body.params !== undefined) patch.params = asObject(body.params, "params");
-
-        // Validate the *effective* target (merge of patch over the current row).
-        const effectiveTargetType = patch.targetType ?? current.targetType;
-        const effectiveTargetId = patch.targetId !== undefined ? patch.targetId : current.targetId;
-        await assertTargetExists(ctx, effectiveTargetType, effectiveTargetId);
-
-        const updated = await ctx.triggerActions.update(id, patch);
-        if (!updated) throw new HttpError(404, "NOT_FOUND", "trigger action not found");
-
-        if (current.mappingId) await ctx.inputMapper.reload();
-        return json(updated);
       }),
 
       DELETE: route(async (req) => {

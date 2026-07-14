@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * Left sidebar of the workflow routing map: scenes/devices not yet placed on
- * the canvas (see `unplacedLibraryItems`), as draggable cards. Dropping one
- * onto the canvas gives it a `position`, which is what makes it appear there
- * as a wireable target — see `WorkflowsView`'s drop handler.
+ * Left sidebar of the workflow routing map: every scene/device, as draggable
+ * cards — the library never empties, since dropping one onto the canvas
+ * always places a brand new `workflow_targets` instance (never "moves" an
+ * existing one), so the same scene/device can be dropped again for a second,
+ * independently-configured node. See `WorkflowsView`'s drop handler.
  */
 import { MonitorSpeakerIcon, SparklesIcon } from '@lucide/vue'
 import type { DeviceDTO, SceneDTO } from '@gallery/types'

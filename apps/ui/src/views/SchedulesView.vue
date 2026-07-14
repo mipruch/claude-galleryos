@@ -7,26 +7,30 @@
  * (display-side conversion). There are no controls to create/edit/toggle a
  * schedule here — this page is purely for monitoring; that lives in the admin UI.
  *
- * A schedule fires 0..N `trigger_actions` (scene runs and/or device commands),
- * not a single scene like before — the summary line lists whatever's wired.
+ * A schedule fires 0..N `trigger_actions`, each wired to a `workflow_targets`
+ * instance (scene run or device command), not a single scene like before —
+ * the summary line lists whatever's wired, resolved through those instances.
  *
  * Schedules have no live socket event, so we re-fetch on an interval and tick a
  * `now` clock so the relative labels ("in 5 min", "tomorrow") stay fresh.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CalendarClockIcon, ClockIcon, HistoryIcon, RefreshCwIcon } from '@lucide/vue'
+import type { WorkflowTargetDTO } from '@gallery/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSchedulesStore } from '@/stores/schedules'
 import { useTriggerActionsStore } from '@/stores/triggerActions'
+import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
 import { formatDateTime, formatRelative, nextRunOf } from '@/lib/schedules'
-import { resolveTargetNames, targetSummary } from '@/lib/triggerActions'
+import { resolveTargetNames, targetSummary } from '@/lib/workflowTargets'
 import { sceneIcon } from '@/lib/scenes'
 
 const store = useSchedulesStore()
 const triggerActionsStore = useTriggerActionsStore()
+const workflowTargetsStore = useWorkflowTargetsStore()
 const scenes = useScenesStore()
 const devices = useDevicesStore()
 
@@ -44,11 +48,13 @@ let tick: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void store.fetchAll()
   void triggerActionsStore.fetchAll()
+  void workflowTargetsStore.fetchAll()
   void scenes.fetchAll()
   void devices.fetchAll()
   refetch = setInterval(() => {
     void store.fetchAll()
     void triggerActionsStore.fetchAll()
+    void workflowTargetsStore.fetchAll()
   }, REFETCH_MS)
   tick = setInterval(() => (now.value = Date.now()), TICK_MS)
 })
@@ -57,18 +63,24 @@ onBeforeUnmount(() => {
   if (tick) clearInterval(tick)
 })
 
-/** One summary line per trigger action wired to a schedule. */
-function actionSummaries(scheduleId: string): string[] {
-  return triggerActionsStore.records
-    .filter((a) => a.scheduleId === scheduleId)
-    .map((a) => targetSummary(a.targetType, resolveTargetNames(a, scenes.records, devices.records)))
+/** The workflow-target instances a schedule's trigger actions are wired to. */
+function wiredTargets(scheduleId: string): WorkflowTargetDTO[] {
+  const workflowTargetIds = new Set(
+    triggerActionsStore.records.filter((a) => a.scheduleId === scheduleId).map((a) => a.workflowTargetId),
+  )
+  return workflowTargetsStore.records.filter((t) => workflowTargetIds.has(t.id))
 }
 
-/** The icon of a schedule's first scene action, else a generic clock. */
-function scheduleIcon(scheduleId: string) {
-  const firstScene = triggerActionsStore.records.find(
-    (a) => a.scheduleId === scheduleId && a.targetType === 'scene.execute' && a.targetId,
+/** One summary line per instance wired to a schedule. */
+function actionSummaries(scheduleId: string): string[] {
+  return wiredTargets(scheduleId).map((target) =>
+    targetSummary(target.targetType, resolveTargetNames(target, scenes.records, devices.records)),
   )
+}
+
+/** The icon of a schedule's first scene-type instance, else a generic clock. */
+function scheduleIcon(scheduleId: string) {
+  const firstScene = wiredTargets(scheduleId).find((t) => t.targetType === 'scene.execute')
   return firstScene ? sceneIcon(scenes.records.find((s) => s.id === firstScene.targetId)?.icon) : CalendarClockIcon
 }
 

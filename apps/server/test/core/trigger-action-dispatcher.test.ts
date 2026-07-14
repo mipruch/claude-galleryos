@@ -1,32 +1,28 @@
 /**
  * TriggerActionDispatcher tests — hermetic, with fake SceneEngine/DeviceManager.
  * Covers both dispatch targets, literal vs. templated params, graceful handling
- * of an unwired action (no targetId) or a targetCommand-less device.command, and
- * that a downstream rejection never throws (surfaces as ok:false instead).
+ * of a targetCommand-less device.command instance, and that a downstream
+ * rejection never throws (surfaces as ok:false instead).
  */
 
 import { describe, expect, test } from "bun:test";
 import type { CommandResult } from "@gallery/driver-core";
-import type { TriggerAction } from "@gallery/types";
 import {
   TriggerActionDispatcher,
+  type DispatchableTriggerAction,
   type DispatcherDeviceManager,
   type DispatcherSceneEngine,
 } from "../../src/core/TriggerActionDispatcher.ts";
 import { logger } from "../../src/logger.ts";
 
-/** Build a TriggerAction row with sensible defaults. */
-function action(partial: Partial<TriggerAction> = {}): TriggerAction {
+/** Build a DispatchableTriggerAction (a trigger_action joined with its workflow_target) with sensible defaults. */
+function action(partial: Partial<DispatchableTriggerAction> = {}): DispatchableTriggerAction {
   return {
     id: partial.id ?? crypto.randomUUID(),
-    scheduleId: partial.scheduleId ?? null,
-    mappingId: partial.mappingId ?? null,
     targetType: partial.targetType ?? "scene.execute",
-    targetId: partial.targetId ?? null,
+    targetId: partial.targetId ?? "t1",
     targetCommand: partial.targetCommand ?? null,
     params: partial.params ?? {},
-    createdAt: partial.createdAt ?? new Date(),
-    updatedAt: partial.updatedAt ?? new Date(),
   };
 }
 
@@ -138,20 +134,6 @@ describe("TriggerActionDispatcher — device.command", () => {
   });
 });
 
-describe("TriggerActionDispatcher — unwired actions", () => {
-  test("an action with no targetId is skipped without dispatching", async () => {
-    const { engine, calls: sceneCalls } = fakeSceneEngine();
-    const { dm, calls: deviceCalls } = fakeDeviceManager();
-    const dispatcher = makeDispatcher({ sceneEngine: engine, deviceManager: dm });
-    const outcome = await dispatcher.dispatch(action({ targetType: "scene.execute", targetId: null }), "scheduler", "scheduler:j1");
-
-    expect(outcome.ok).toBe(false);
-    expect(outcome.detail).toBe("not wired to a target");
-    expect(sceneCalls).toHaveLength(0);
-    expect(deviceCalls).toHaveLength(0);
-  });
-});
-
 describe("TriggerActionDispatcher — dispatchAll", () => {
   test("dispatches every action in order and returns one outcome each", async () => {
     const { engine } = fakeSceneEngine();
@@ -160,7 +142,7 @@ describe("TriggerActionDispatcher — dispatchAll", () => {
     const actions = [
       action({ id: "a1", targetType: "scene.execute", targetId: "s1" }),
       action({ id: "a2", targetType: "device.command", targetId: "d1", targetCommand: "on" }),
-      action({ id: "a3", targetType: "scene.execute", targetId: null }), // unwired
+      action({ id: "a3", targetType: "device.command", targetId: "d1", targetCommand: null }), // incomplete: no command chosen yet
     ];
 
     const outcomes = await dispatcher.dispatchAll(actions, "scheduler", "scheduler:j1");

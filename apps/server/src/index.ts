@@ -30,6 +30,7 @@ import {
   scheduledJobsRepo,
   triggerActionsRepo,
   usersRepo,
+  workflowTargetsRepo,
 } from "./db/repositories.ts";
 import { closeRedis, connectRedis } from "./redis/client.ts";
 import { redisDriverStore, redisSceneStore, redisStateStore } from "./redis/state.ts";
@@ -244,6 +245,7 @@ async function main(): Promise<void> {
     mappings: inputMappingsRepo,
     inputMapper,
     triggerActions: triggerActionsRepo,
+    workflowTargets: workflowTargetsRepo,
     dispatcher,
     startedAt: Date.now(),
   });

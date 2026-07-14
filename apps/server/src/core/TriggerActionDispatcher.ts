@@ -1,23 +1,38 @@
 /**
- * TriggerActionDispatcher — the single place a `trigger_actions` row turns into
- * a real effect (run a scene, or call one device command). Shared by the
+ * TriggerActionDispatcher — the single place a `trigger_actions` wire turns
+ * into a real effect (run a scene, or call one device command). Shared by the
  * {@link Scheduler} (cron-fired, literal params) and the {@link InputMapper}
  * (ingress-fired, template-evaluated params via {@link evaluateTemplate}), so a
  * future trigger source (e.g. a device state-change event) only has to produce
- * `TriggerAction` rows plus an optional template context and gets dispatch,
- * logging, and error handling for free.
+ * {@link DispatchableTriggerAction} rows plus an optional template context and
+ * gets dispatch, logging, and error handling for free.
  *
- * An action with no `targetId` (or, for `device.command`, no `targetCommand`)
- * is unwired — a normal, valid state for a trigger the admin hasn't finished
- * connecting on the canvas yet. Dispatch skips it and reports `ok: false` with
- * an explanatory detail rather than throwing.
+ * A `trigger_actions` row can only exist wired to an already-placed
+ * `workflow_targets` instance (the canvas creates them atomically together),
+ * so `targetType`/`targetId` are always resolved by the time a row reaches
+ * here. Only a `device.command` instance with no `targetCommand` chosen yet
+ * is still incomplete; dispatch skips it and reports `ok: false` with an
+ * explanatory detail rather than throwing.
  */
 
 import type { CommandResult } from "@gallery/driver-core";
 import { errMsg } from "@gallery/driver-core";
-import type { TriggerAction, TriggerTargetType } from "@gallery/types";
+import type { TriggerTargetType } from "@gallery/types";
 import type { Logger } from "../logger.ts";
 import { evaluateTemplate } from "./templating.ts";
+
+/**
+ * What the dispatcher needs from a fired `trigger_actions` row: its own id
+ * (for outcome/logging) plus its `workflow_targets` instance's dispatchable
+ * fields, joined by the repo layer (`triggerActionsRepo.listDispatchableBy*`).
+ */
+export interface DispatchableTriggerAction {
+  id: string;
+  targetType: TriggerTargetType;
+  targetId: string;
+  targetCommand: string | null;
+  params: Record<string, unknown>;
+}
 
 /** Just the entry point the dispatcher invokes on the SceneEngine. */
 export interface DispatcherSceneEngine {
@@ -66,7 +81,7 @@ export class TriggerActionDispatcher {
 
   /** Dispatch every action, continuing past individual failures. */
   async dispatchAll(
-    actions: readonly TriggerAction[],
+    actions: readonly DispatchableTriggerAction[],
     source: string,
     sourceDetail: string,
     template?: TemplateContext,
@@ -78,17 +93,12 @@ export class TriggerActionDispatcher {
 
   /** Resolve and execute a single trigger action. Never throws. */
   async dispatch(
-    action: TriggerAction,
+    action: DispatchableTriggerAction,
     source: string,
     sourceDetail: string,
     template?: TemplateContext,
   ): Promise<TriggerDispatchOutcome> {
     const base = { triggerActionId: action.id, targetType: action.targetType };
-    if (!action.targetId) {
-      this.log.debug("trigger action not wired to a target; skipping", { triggerActionId: action.id });
-      return { ...base, ok: false, detail: "not wired to a target" };
-    }
-
     const params = template
       ? evaluateTemplate(action.params, template.args, template.pathParams)
       : action.params;

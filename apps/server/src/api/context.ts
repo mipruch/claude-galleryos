@@ -28,6 +28,7 @@ import type {
   scheduledJobsRepo,
   triggerActionsRepo,
   usersRepo,
+  workflowTargetsRepo,
 } from "../db/repositories.ts";
 
 export interface ApiContext {
@@ -56,6 +57,7 @@ export interface ApiContext {
   mappings: typeof inputMappingsRepo;
   inputMapper: InputMapper;
   triggerActions: typeof triggerActionsRepo;
+  workflowTargets: typeof workflowTargetsRepo;
   dispatcher: TriggerActionDispatcher;
   /** Server start time (epoch ms) for uptime reporting. */
   startedAt: number;

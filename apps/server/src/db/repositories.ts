@@ -25,6 +25,7 @@ import {
   scheduledJobs,
   triggerActions,
   users,
+  workflowTargets,
 } from "@gallery/types/schema";
 import type {
   Connection,
@@ -40,6 +41,7 @@ import type {
   NewScheduledJob,
   NewTriggerAction,
   NewUser,
+  NewWorkflowTarget,
   RoleWithDevices,
   SceneActionInput,
   SceneCreateInput,
@@ -369,7 +371,6 @@ export const scenesRepo = {
           color: input.color,
           tags: input.tags ?? [],
           isFavorite: input.isFavorite ?? false,
-          position: input.position ?? null,
         })
         .returning(),
     );
@@ -388,7 +389,6 @@ export const scenesRepo = {
     if (input.color !== undefined) patch.color = input.color;
     if (input.tags !== undefined) patch.tags = input.tags;
     if (input.isFavorite !== undefined) patch.isFavorite = input.isFavorite;
-    if (input.position !== undefined) patch.position = input.position;
 
     const updated = await first(db.update(scenes).set(patch).where(eq(scenes.id, id)).returning());
     if (!updated) return undefined;
@@ -579,24 +579,70 @@ export const inputMappingsRepo = {
     ),
 };
 
-// ── trigger actions (what a schedule/mapping fires — 0..N per trigger) ──
+// ── workflow targets (a scene/device instance placed on the canvas) ──
+
+export const workflowTargetsRepo = {
+  /** Every placed instance. */
+  list: () => db.select().from(workflowTargets).orderBy(desc(workflowTargets.createdAt)),
+
+  get: (id: string) =>
+    first(db.select().from(workflowTargets).where(eq(workflowTargets.id, id)).limit(1)),
+
+  create: (values: NewWorkflowTarget) =>
+    first(db.insert(workflowTargets).values(values).returning()),
+
+  update: (id: string, values: Partial<NewWorkflowTarget>) =>
+    first(
+      db
+        .update(workflowTargets)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(workflowTargets.id, id))
+        .returning(),
+    ),
+
+  remove: (id: string) =>
+    first(db.delete(workflowTargets).where(eq(workflowTargets.id, id)).returning()),
+};
+
+// ── trigger actions (which trigger fires which workflow target) ──
+
+/** The joined shape {@link TriggerActionDispatcher} needs — trigger_actions' own id, plus its target's dispatchable fields. */
+const dispatchableColumns = {
+  id: triggerActions.id,
+  targetType: workflowTargets.targetType,
+  targetId: workflowTargets.targetId,
+  targetCommand: workflowTargets.targetCommand,
+  params: workflowTargets.params,
+};
 
 export const triggerActionsRepo = {
-  /** All actions, newest first. */
+  /** All wires, newest first. */
   list: () => db.select().from(triggerActions).orderBy(desc(triggerActions.createdAt)),
 
-  /** Actions wired to one schedule — what the Scheduler dispatches on fire. */
+  /** Wires from one schedule (admin/list use — not dispatch, see listDispatchableByScheduleId). */
   listByScheduleId: (scheduleId: string) =>
     db.select().from(triggerActions).where(eq(triggerActions.scheduleId, scheduleId)),
 
-  /** Actions wired to one mapping. */
+  /** Wires from one mapping (admin/list use — not dispatch). */
   listByMappingId: (mappingId: string) =>
     db.select().from(triggerActions).where(eq(triggerActions.mappingId, mappingId)),
 
-  /** Actions wired to any of several mappings — what the InputMapper cache joins in. */
-  listByMappingIds: (mappingIds: string[]) =>
+  /** Wires from one schedule, joined with their target's dispatchable fields — what the Scheduler fires on fire. */
+  listDispatchableByScheduleId: (scheduleId: string) =>
+    db
+      .select(dispatchableColumns)
+      .from(triggerActions)
+      .innerJoin(workflowTargets, eq(triggerActions.workflowTargetId, workflowTargets.id))
+      .where(eq(triggerActions.scheduleId, scheduleId)),
+
+  /** Wires from any of several mappings, joined with their targets — what the InputMapper cache holds. */
+  listDispatchableByMappingIds: (mappingIds: string[]) =>
     mappingIds.length
-      ? db.select().from(triggerActions).where(inArray(triggerActions.mappingId, mappingIds))
+      ? db
+          .select({ ...dispatchableColumns, mappingId: triggerActions.mappingId })
+          .from(triggerActions)
+          .innerJoin(workflowTargets, eq(triggerActions.workflowTargetId, workflowTargets.id))
+          .where(inArray(triggerActions.mappingId, mappingIds))
       : Promise.resolve([]),
 
   get: (id: string) =>
@@ -604,15 +650,6 @@ export const triggerActionsRepo = {
 
   create: (values: NewTriggerAction) =>
     first(db.insert(triggerActions).values(values).returning()),
-
-  update: (id: string, values: Partial<NewTriggerAction>) =>
-    first(
-      db
-        .update(triggerActions)
-        .set({ ...values, updatedAt: new Date() })
-        .where(eq(triggerActions.id, id))
-        .returning(),
-    ),
 
   remove: (id: string) =>
     first(db.delete(triggerActions).where(eq(triggerActions.id, id)).returning()),
