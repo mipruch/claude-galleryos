@@ -33,10 +33,11 @@
  * half-applied. The single-record dialog on the List tab is untouched and
  * remains the right tool for editing one device.
  *
- * The select/checkbox cells are native controls rather than the shadcn
- * components used elsewhere: inside a grid, keyboard behaviour and paste
- * targeting matter more than styling, and a popover-based select would fight
- * both.
+ * The grid is built from the vendored shadcn-vue `Table` primitives, so it
+ * inherits the same borders, hover and spacing as every other admin table.
+ * What stays native is *inside* a cell: the select and checkbox are plain
+ * elements because a popover-based select would fight keyboard navigation and
+ * paste targeting, which matter more than styling in a grid.
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -81,6 +82,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -90,6 +99,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+
+/**
+ * Header cells stick to the top of the scrolling grid. It goes on the cells
+ * rather than the header row because Tailwind's preflight collapses table
+ * borders, and a collapsed-border table only honours `position: sticky` on
+ * `<th>`/`<td>`.
+ */
+const STICKY_HEAD = 'bg-muted/60 sticky top-0 z-10'
 
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
@@ -674,16 +691,16 @@ onMounted(() => {
     <div
       v-if="ready"
       ref="gridRef"
-      class="sheet max-h-[65vh] overflow-auto rounded-md border outline-none"
+      class="sheet max-h-[65vh] overflow-auto rounded-md border outline-none [&_[data-slot=table-container]]:overflow-visible"
       tabindex="0"
       @keydown="onKeydown"
       @copy="onCopy"
       @paste="onPaste"
     >
-      <table class="w-full border-collapse text-sm">
-        <thead class="bg-muted/60 sticky top-0 z-10">
-          <tr>
-            <th class="w-10 border-b p-2">
+      <Table>
+        <TableHeader>
+          <TableRow class="hover:bg-transparent">
+            <TableHead :class="[STICKY_HEAD, 'w-10 text-center']">
               <input
                 type="checkbox"
                 class="size-4"
@@ -691,28 +708,32 @@ onMounted(() => {
                 :checked="!!rows.length && selectedRowKeys.size === rows.length"
                 @change="toggleAllRows(($event.target as HTMLInputElement).checked)"
               />
-            </th>
-            <th class="text-muted-foreground w-10 border-b p-2 text-right text-xs font-normal">
-              #
-            </th>
-            <th
+            </TableHead>
+            <TableHead :class="[STICKY_HEAD, 'w-10 text-right text-xs font-normal']">#</TableHead>
+            <TableHead
               v-for="column in columns"
               :key="column.key"
-              class="border-b border-l p-2 text-left font-medium"
+              :class="[STICKY_HEAD, 'text-foreground border-l']"
               :title="column.description"
             >
               {{ column.label }}
-              <span v-if="column.required && !column.requiredUnless" class="text-destructive">*</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
+              <span v-if="column.required && !column.requiredUnless" class="text-destructive"
+                >*</span
+              >
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow
             v-for="(row, rowIndex) in rows"
             :key="row.key"
-            :class="{ 'bg-amber-50/60 dark:bg-amber-950/20': isRowDirty(row) }"
+            :class="
+              isRowDirty(row)
+                ? 'bg-amber-50/60 hover:bg-amber-100/60 dark:bg-amber-950/20 dark:hover:bg-amber-950/40'
+                : undefined
+            "
           >
-            <td class="border-b p-2 text-center">
+            <TableCell class="text-center">
               <input
                 type="checkbox"
                 class="size-4"
@@ -720,14 +741,14 @@ onMounted(() => {
                 :checked="selectedRowKeys.has(row.key)"
                 @change="toggleRowSelection(row.key, ($event.target as HTMLInputElement).checked)"
               />
-            </td>
-            <td class="text-muted-foreground border-b p-2 text-right text-xs tabular-nums">
+            </TableCell>
+            <TableCell class="text-muted-foreground text-right text-xs tabular-nums">
               {{ rowIndex + 1 }}
-            </td>
-            <td
+            </TableCell>
+            <TableCell
               v-for="(column, colIndex) in columns"
               :key="column.key"
-              class="cell border-b border-l p-0"
+              class="cell border-l p-0"
               :class="{
                 selected: selection && isInRange(selection, rowIndex, colIndex),
                 cursor: cursor?.row === rowIndex && cursor?.col === colIndex,
@@ -773,16 +794,16 @@ onMounted(() => {
                 />
               </div>
               <div v-else class="h-8 truncate px-2 leading-8">{{ cellText(rowIndex, column) }}</div>
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
 
-          <tr v-if="!rows.length">
-            <td :colspan="columns.length + 2" class="text-muted-foreground p-10 text-center">
+          <TableRow v-if="!rows.length" class="hover:bg-transparent">
+            <TableCell :colspan="columns.length + 2" class="text-muted-foreground p-10 text-center">
               Nothing here yet — “Add rows” to start, or paste a block from your spreadsheet.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
     </div>
 
     <p v-else class="text-muted-foreground rounded-md border p-10 text-center text-sm">
