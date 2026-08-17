@@ -1204,6 +1204,52 @@ no admin "active sessions" view, no `AUTH_ENABLED` flag.
 
 ---
 
+## Priority 7 — Bulk device management ✓
+
+Adding a rack of identical hardware one dialog at a time is the sharpest edge
+left in the admin UI: 64 Samsung MDC displays are 128 records, because each
+display is its own `connections` row *and* its own `devices` row, each named
+and filled in by hand. Shipped as a second view over the same data — the
+single-record dialog is untouched and stays the right tool for editing one
+device.
+
+- [x] **`soloEndpointType` manifest hint** (`packages/driver-core/src/types.ts`)
+      — names the endpoint type a connection carries exactly one of, for
+      drivers wired one-box-per-connection. Purely an authoring hint: the data
+      model is unchanged, but the UI can collapse the pair into one row.
+      Declared by `pjlink`, `samsung-mdc` and `tcp-generic`; Samsung's
+      `displayId` gained the `default: 1` that a set on its own IP is left at,
+      so the sheet can fill the address without asking. Gateway drivers (DALI,
+      Extron, BSS, NETIO) deliberately omit it — their split is real.
+- [x] **Bulk contracts** (`packages/types/src/bulk.ts`) — `BulkApplyInput` /
+      `BulkApplyResult` / `BulkDeleteInput` and friends, shared by server and
+      UI like every other contract. A row nests its connection, mirroring what
+      the operator sees.
+- [x] **Transactional bulk API** (`apps/server/src/api/routes/bulk.ts`,
+      `bulkRepo` in `db/repositories.ts`) — `POST /bulk/devices` and
+      `POST /bulk/devices/delete`. Validates every row against the driver
+      manifests *before* writing any of them, writes the batch in one
+      `db.transaction`, then reconciles the affected DriverHosts with bounded
+      concurrency. Errors come back addressed by row + field (matching the
+      grid's column keys) with HTTP 200 + `ok: false`, so a rejection is
+      renderable rather than opaque; `dryRun` runs the same validation without
+      writing. Covered by `test/api/bulk.test.ts` (19 tests, real manifests).
+- [x] **Spreadsheet editor** (`apps/ui/src/components/admin/bulk/DeviceSheet.vue`,
+      logic in `lib/bulkSheet.ts`) — a *Sheet* tab on `/admin/devices` with
+      keyboard navigation, rectangular selection, TSV copy/paste against Google
+      Sheets, series-aware fill-down (names, IPv4, zero padding), row
+      multi-select with bulk room assignment, and an all-or-nothing save.
+      Logic unit-tested in `__tests__/bulkSheet.spec.ts` (28 tests).
+
+**Not done / deliberately left:** no CSV file import (the clipboard covers the
+same ground without a file picker), no undo history beyond *Discard*, no column
+reordering, and no bulk editing of scenes/rooms — the same grid could serve them
+later, but nothing today needs it. `DeviceSheet.vue` is a large single component;
+fallow flags its template complexity, and splitting it was judged worse than
+leaving one coherent grid.
+
+---
+
 ## Implementation order (critical path)
 
 ```

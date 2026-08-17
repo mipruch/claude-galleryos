@@ -748,6 +748,14 @@ export interface DriverManifest {
     subscriptions: boolean;  // umí zařízení pushovat změny stavu?
     bidirectional: boolean;  // lze číst stav ze zařízení?
   };
+
+  // Volitelné: typ endpointu, kterého má connection právě jeden — pro drivery
+  // zapojené 1:1 (PJLink projektor, Samsung displej na vlastní IP). Čistě
+  // *autorská* nápověda pro UI; datový model se nemění (pořád vzniká řádek
+  // v `connections` i v `devices`). Admin UI podle ní sloučí dvojici do jednoho
+  // řádku/formuláře — viz §10, Bulk device management. Gateway drivery
+  // (DALI sběrnice, Extron matice, BSS DSP) ji vynechávají.
+  soloEndpointType?: string;
 }
 
 export interface EndpointTypeDefinition {
@@ -1708,6 +1716,44 @@ POST   /devices/:id/command      - přímý příkaz { command: string, params: 
                                    (mimo scény, pro testování nebo přímé ovládání)
 ```
 
+### Bulk devices (hromadné úpravy)
+
+Zápisová strana tabulkového editoru z Admin UI (§10). Jeden request nese celý
+list: rack 64 displejů je 128 záznamů (každý displej je vlastní `connections`
+*i* `devices` řádek) a 128 sekvenčních requestů není ani atomických, ani
+zkontrolovatelných — selhání na 57. řádku by nechalo systém rozpracovaný.
+
+```
+POST   /bulk/devices             - { rows: BulkDeviceRowInput[], dryRun?: boolean }
+                                   → BulkApplyResult
+POST   /bulk/devices/delete      - { deviceIds: string[], deleteOrphanedConnections?: boolean }
+                                   → BulkDeleteResult
+```
+
+- **Nejdřív validace, pak zápis.** Každý řádek se ověří proti manifestům
+  (config connection, adresa endpointu) a proti referencovaným
+  room/connection/device id — stejná pravidla jako u jednozáznamových rout.
+  Jediný vadný řádek odmítne celou dávku a **nezapíše se nic**; zápis pak běží
+  v jedné transakci (`bulkRepo`, `db.transaction`).
+- **Chyby jsou adresné, ne souhrnné.** Vrací se jako `{ row, field, message }`,
+  kde `field` odpovídá klíčům sloupců v gridu (`connection.host`,
+  `address.displayId`, `roomId`), takže UI obarví konkrétní buňku. Odmítnutá
+  dávka je proto **200 s `ok: false`** — očekávaný, vykreslitelný stav. 4xx
+  dostane jen vadný request (rozbité JSON, `rows` není pole, > 500 řádků).
+- **`dryRun`** projede identickou validaci a ohlásí, co by se stalo, bez zápisu
+  (tlačítko *Check* v editoru).
+- **Řádek nese connection v sobě** (`row.connection`) u driverů se
+  `soloEndpointType` — jeden fyzický box = jeden řádek = oba záznamy. U gateway
+  driverů řádky místo toho odkazují `connectionId`.
+- Po úspěšném zápisu se dotčené DriverHosty srovnají stejně jako u
+  jednozáznamových rout (restart connection, které se změnil config; refresh
+  device cache u té, která jen získala endpointy), s omezenou paralelitou, aby
+  import 64 displejů nespustil 64 subprocesů naráz.
+- `deleteOrphanedConnections` u mazání vezme s posledním endpointem i jeho
+  connection — protějšek 1:1 řádků, aby po smazání displeje nezůstala viset
+  osiřelá connection. Device, na kterém visí akce scény, dávku odmítne (FK
+  `restrict`) — nahlásí se předem, místo aby transakci shodil.
+
 ### Scenes
 
 ```
@@ -1988,6 +2034,54 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
   z bundlu); `api.drivers.*` vrací plný `DriverManifest` (se schématy).
 - **Další vendorované primitivy**: `form` (vee-validate), `select`, `dialog`,
   `alert-dialog`, `separator`, `skeleton`, `textarea`, `alert`.
+
+#### Implementováno (Bulk device management — záložka *Sheet*)
+
+Přidávat 64 Samsung MDC displejů po jednom dialogu (a ke každému zvlášť
+connection) je 128 průchodů formulářem. `/admin/devices` proto má dvě záložky
+nad stejnými daty — protože **upravit jedno zařízení a postavit šedesát čtyři
+jsou jiné úlohy**:
+
+- **List** (výchozí) — původní tabulka s `DeviceFormDialog`. Beze změny; pro
+  jednorázovou editaci zůstává správným nástrojem.
+- **Sheet** (`components/admin/bulk/DeviceSheet.vue`) — tabulkový editor
+  v duchu Notionu/DataGripu.
+
+**Řádek = jeden fyzický box, ne jeden DB záznam.** U driveru, který v manifestu
+deklaruje `soloEndpointType` (§6 — Samsung displej na vlastní IP, PJLink
+projektor), nese řádek sloupce connection (host, port, …) i device a uloží obojí
+naráz; connection se **pojmenuje po zařízení**, takže nikdo nevyplňuje 64 jmen
+spojení. Gateway drivery (DALI, Extron, BSS) se chovají beze změny: connection
+se vybere jednou nad gridem a řádky jsou endpointy na ní. Datový model se
+nemění — sjednocení je čistě ve vrstvě UI + `POST /bulk/devices`.
+
+Ovládání gridu (`lib/bulkSheet.ts`, unit-testované v `__tests__/bulkSheet.spec.ts`):
+
+- **Klávesnice** — šipky a Tab posouvají kurzor, Shift roztahuje obdélníkový
+  výběr, Enter/F2 nebo psaní začne editaci, Delete maže obsah buněk.
+- **Schránka** — ⌘/Ctrl+C a ⌘/Ctrl+V vyměňují TSV s Google Sheets nebo Excelem
+  včetně uvozovaných buněk (tab/newline uvnitř hodnoty). Vložení si dorovná
+  chybějící řádky. Sloupce s výběrem se párují **podle popisku**, takže sloupec
+  s názvy místností se vloží rovnou a přeloží se na room id — operátor nikdy
+  nevidí UUID.
+- **Řada místo kopie** — ⌘/Ctrl+D (a tlačítko *Add rows*) pokračuje v řadě:
+  „Displej 01“ → „Displej 02“ (zachová vedoucí nuly), `10.0.1.1` → `10.0.1.2`
+  (jako 32bitové číslo, takže `10.0.1.255` následuje `10.0.2.0`). Dvě vyplněné
+  buňky určí krok. Holé číslo (port, timeout, Display ID) se naopak **drží**,
+  dokud druhý seed neřekne jinak — je to nastavení, ne čítač. Vyplněné volby
+  (typ, místnost, enabled) se kopírují dolů.
+- **Výběr řádků** zaškrtávátky → hromadné *Assign room* / *Enable* / *Disable* /
+  *Delete* (přesně ten „vyber 6 řádků a přiřaď jim místnost“ případ).
+- **Sloupce** driveru, které mají v manifestu default (timeouty, delimitery,
+  jméno connection), jsou schované pod přepínačem *Columns*, aby grid nebyl
+  zbytečně široký.
+- **Nic se nezapíše do *Save*.** Uložení pošle jen změněné řádky v jednom
+  all-or-nothing requestu; odmítnutá dávka obarví konkrétní buňky (server vrací
+  `field` shodné s klíči sloupců) a nezapíše nic. *Check* je stejná validace
+  nasucho (`dryRun`).
+
+`DEVICE_TYPES` je nově sdílený export z `lib/devices.ts` (dřív lokální konstanta
+v `DeviceFormDialog`), aby se nabídka typů v dialogu a v gridu nerozešla.
 
 #### Implementováno (třetí řez — Scenes & Schedules CRUD)
 

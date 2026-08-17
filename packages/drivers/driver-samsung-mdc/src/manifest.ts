@@ -58,6 +58,11 @@ export const manifest: DriverManifest = {
     endpointHealth: true,
   },
 
+  // A set on its own LAN port is the common wiring: one connection, one
+  // display. The admin UI collapses that pair into a single row (the
+  // daisy-chain case still works — add more endpoints to the connection).
+  soloEndpointType: "samsung-mdc.display",
+
   endpointTypes: [
     {
       type: "samsung-mdc.display",
@@ -72,6 +77,8 @@ export const manifest: DriverManifest = {
             type: "integer",
             title: "Display ID",
             description: "MDC display ID configured on the set (menu: Multi Display Control → ID).",
+            // What a set on its own IP is left at; only daisy-chains renumber.
+            default: 1,
             minimum: 1,
             maximum: 255,
           },

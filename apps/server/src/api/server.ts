@@ -11,6 +11,7 @@ import { appConfig } from "../config.ts";
 import { logger } from "../logger.ts";
 import type { ApiContext } from "./context.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { bulkRoutes } from "./routes/bulk.ts";
 import { camerasRoutes } from "./routes/cameras.ts";
 import { connectionsRoutes } from "./routes/connections.ts";
 import { devicesRoutes } from "./routes/devices.ts";
@@ -40,6 +41,7 @@ export function startApiServer(ctx: ApiContext, port = appConfig.server.port): S
       ...roomsRoutes(ctx),
       ...connectionsRoutes(ctx),
       ...devicesRoutes(ctx),
+      ...bulkRoutes(ctx),
       ...iframesRoutes(ctx),
       ...kiosksRoutes(ctx),
       ...camerasRoutes(ctx),

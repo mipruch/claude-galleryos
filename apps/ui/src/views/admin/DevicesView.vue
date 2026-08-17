@@ -1,11 +1,27 @@
 <script setup lang="ts">
 /**
- * Admin devices list — every endpoint with its connection, room, live online
- * dot, plus create/edit/delete. Reuses `useDevicesStore` (hydrated + live via
- * the shared socket app-wide), filtered by room/type client-side.
+ * Admin devices — two views over the same records, because editing one device
+ * and standing up sixty-four are different jobs:
+ *
+ *  - **List** (default) — every endpoint with its connection, room and live
+ *    online dot, edited one at a time through `DeviceFormDialog`. Unchanged.
+ *  - **Sheet** — a spreadsheet for bulk work: paste from Google Sheets, fill a
+ *    series down 64 rows, assign a room to a selection, save it all in one
+ *    transactional request. See `components/admin/bulk/DeviceSheet.vue`.
+ *
+ * Both read `useDevicesStore` (hydrated + live via the shared socket app-wide),
+ * so a bulk save shows up in the list immediately and vice versa.
  */
 import { computed, onMounted, ref } from 'vue'
-import { MonitorSpeakerIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from '@lucide/vue'
+import {
+  ListIcon,
+  MonitorSpeakerIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  SheetIcon,
+  Trash2Icon,
+} from '@lucide/vue'
 import type { DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
 import { useConnectionsStore } from '@/stores/connections'
@@ -26,7 +42,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import DeviceFormDialog from '@/components/admin/DeviceFormDialog.vue'
+import DeviceSheet from '@/components/admin/bulk/DeviceSheet.vue'
+
+/** Which editor is on screen; the list is the default, one-off editing stays a dialog. */
+const view = ref<'list' | 'sheet'>('list')
 
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
@@ -97,92 +118,126 @@ async function confirmDelete(): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-4 p-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap items-center gap-2">
-        <div class="relative">
-          <SearchIcon class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
-          <Input v-model="search" placeholder="Search devices…" class="w-48 pl-8" />
+    <Tabs v-model="view">
+      <TabsList class="self-start">
+        <TabsTrigger value="list">
+          <ListIcon class="size-4" />
+          List
+        </TabsTrigger>
+        <TabsTrigger value="sheet">
+          <SheetIcon class="size-4" />
+          Sheet
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="list" class="flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="relative">
+              <SearchIcon
+                class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2"
+              />
+              <Input v-model="search" placeholder="Search devices…" class="w-48 pl-8" />
+            </div>
+            <Select v-model="roomFilter">
+              <SelectTrigger class="w-44"><SelectValue placeholder="All rooms" /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem :value="ALL">All rooms</SelectItem>
+                  <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{
+                    r.name
+                  }}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select v-model="typeFilter">
+              <SelectTrigger class="w-44"><SelectValue placeholder="All types" /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem :value="ALL">All types</SelectItem>
+                  <SelectItem v-for="t in types" :key="t" :value="t">{{ t }}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button @click="openCreate">
+            <PlusIcon class="size-4" />
+            New device
+          </Button>
         </div>
-        <Select v-model="roomFilter">
-          <SelectTrigger class="w-44"><SelectValue placeholder="All rooms" /></SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem :value="ALL">All rooms</SelectItem>
-              <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{ r.name }}</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Select v-model="typeFilter">
-          <SelectTrigger class="w-44"><SelectValue placeholder="All types" /></SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem :value="ALL">All types</SelectItem>
-              <SelectItem v-for="t in types" :key="t" :value="t">{{ t }}</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-      <Button @click="openCreate">
-        <PlusIcon class="size-4" />
-        New device
-      </Button>
-    </div>
 
-    <div class="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Room</TableHead>
-            <TableHead>Connection</TableHead>
-            <TableHead>Online</TableHead>
-            <TableHead class="w-24">Enabled</TableHead>
-            <TableHead class="w-24 text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="d in rows" :key="d.id">
-            <TableCell class="font-medium">
-              {{ d.name }}
-              <span v-if="d.subtype" class="text-muted-foreground block text-xs">{{ d.subtype }}</span>
-            </TableCell>
-            <TableCell><Badge variant="secondary">{{ d.type }}</Badge></TableCell>
-            <TableCell class="text-muted-foreground">{{ roomName(d.roomId) }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ connName(d.connectionId) }}</TableCell>
-            <TableCell>
-              <span
-                class="size-2 rounded-full inline-block"
-                :class="devices.statusOf(d.id)?.online ? 'bg-emerald-500' : 'bg-muted-foreground'"
-              />
-            </TableCell>
-            <TableCell>
-              <Switch
-                :model-value="d.enabled"
-                @update:model-value="devices.updateDevice(d.id, { enabled: $event })"
-              />
-            </TableCell>
-            <TableCell class="text-right">
-              <div class="flex justify-end gap-1">
-                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(d)">
-                  <PencilIcon class="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(d)">
-                  <Trash2Icon class="size-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
+        <div class="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Room</TableHead>
+                <TableHead>Connection</TableHead>
+                <TableHead>Online</TableHead>
+                <TableHead class="w-24">Enabled</TableHead>
+                <TableHead class="w-24 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="d in rows" :key="d.id">
+                <TableCell class="font-medium">
+                  {{ d.name }}
+                  <span v-if="d.subtype" class="text-muted-foreground block text-xs">{{
+                    d.subtype
+                  }}</span>
+                </TableCell>
+                <TableCell
+                  ><Badge variant="secondary">{{ d.type }}</Badge></TableCell
+                >
+                <TableCell class="text-muted-foreground">{{ roomName(d.roomId) }}</TableCell>
+                <TableCell class="text-muted-foreground">{{ connName(d.connectionId) }}</TableCell>
+                <TableCell>
+                  <span
+                    class="size-2 rounded-full inline-block"
+                    :class="
+                      devices.statusOf(d.id)?.online ? 'bg-emerald-500' : 'bg-muted-foreground'
+                    "
+                  />
+                </TableCell>
+                <TableCell>
+                  <Switch
+                    :model-value="d.enabled"
+                    @update:model-value="devices.updateDevice(d.id, { enabled: $event })"
+                  />
+                </TableCell>
+                <TableCell class="text-right">
+                  <div class="flex justify-end gap-1">
+                    <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(d)">
+                      <PencilIcon class="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete"
+                      @click="askDelete(d)"
+                    >
+                      <Trash2Icon class="size-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
 
-          <TableRow v-if="!rows.length">
-            <TableCell colspan="7" class="text-muted-foreground py-10 text-center">
-              <MonitorSpeakerIcon class="mx-auto mb-2 size-6 opacity-50" />
-              No devices match. Add one, or create a connection first.
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+              <TableRow v-if="!rows.length">
+                <TableCell colspan="7" class="text-muted-foreground py-10 text-center">
+                  <MonitorSpeakerIcon class="mx-auto mb-2 size-6 opacity-50" />
+                  No devices match. Add one, or create a connection first.
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="sheet">
+        <DeviceSheet />
+      </TabsContent>
+    </Tabs>
 
     <DeviceFormDialog v-model:open="formOpen" :device="editing" />
 
@@ -190,7 +245,9 @@ async function confirmDelete(): Promise<void> {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{{ toDelete?.name }}”?</AlertDialogTitle>
-          <AlertDialogDescription>This permanently removes the device endpoint.</AlertDialogDescription>
+          <AlertDialogDescription
+            >This permanently removes the device endpoint.</AlertDialogDescription
+          >
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>

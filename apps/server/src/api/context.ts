@@ -13,6 +13,7 @@ import type { StreamManager } from "../core/StreamManager.ts";
 import type { TriggerActionDispatcher } from "../core/TriggerActionDispatcher.ts";
 import type { InputMapper } from "../input/InputMapper.ts";
 import type {
+  bulkRepo,
   camerasRepo,
   configRepo,
   connectionsRepo,
@@ -39,6 +40,8 @@ export interface ApiContext {
   rooms: typeof roomsRepo;
   connections: typeof connectionsRepo;
   devices: typeof devicesRepo;
+  /** Transactional multi-row writes for the admin spreadsheet editor. */
+  bulk: typeof bulkRepo;
   iframes: typeof iframesRepo;
   kiosks: typeof kiosksRepo;
   cameras: typeof camerasRepo;

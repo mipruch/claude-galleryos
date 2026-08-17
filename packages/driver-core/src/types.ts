@@ -258,6 +258,23 @@ export interface DriverManifest {
   connectionSchema: JsonSchema;
   endpointTypes: EndpointTypeDefinition[];
   capabilities: DriverCapabilities;
+  /**
+   * Names the endpoint type a connection carries exactly one of, for drivers
+   * wired one-box-per-connection: a PJLink projector, a Samsung display on its
+   * own LAN port. Purely an *authoring* hint — the data model is unchanged
+   * (there is still a `connections` row and a `devices` row, and nothing stops
+   * an operator adding a second endpoint), but the admin UI can collapse the
+   * pair into a single form/sheet row, so adding 64 displays means filling 64
+   * rows instead of 128 records. Omit it for gateway drivers (a DALI bus, an
+   * Extron matrix, a BSS DSP), where the split is real and one connection
+   * genuinely fans out to many endpoints.
+   *
+   * The named endpoint type's `addressSchema` should give every property a
+   * `default` (or require none at all), so the collapsed form can fill the
+   * address without asking — e.g. Samsung MDC's `displayId` defaults to 1,
+   * which is what a set on its own IP is left at.
+   */
+  soloEndpointType?: string;
 }
 
 // ─────────────────────────────────────────────────────────────

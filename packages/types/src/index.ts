@@ -15,6 +15,7 @@ export * from "./events.ts";
 export * from "./canvas.ts";
 export * from "./kiosk.ts";
 export * from "./records.ts";
+export * from "./bulk.ts";
 export * from "./live.ts";
 export * from "./messages.ts";
 export type { Jsonify } from "./json.ts";

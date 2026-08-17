@@ -14,6 +14,7 @@ import { logger, winstonRoot } from "./logger.ts";
 import { closeDb } from "./db/client.ts";
 import { dbLogTransport } from "./db/log-transport.ts";
 import {
+  bulkRepo,
   camerasRepo,
   configRepo,
   connectionsRepo,
@@ -228,6 +229,7 @@ async function main(): Promise<void> {
     rooms: roomsRepo,
     connections: connectionsRepo,
     devices: devicesRepo,
+    bulk: bulkRepo,
     iframes: iframesRepo,
     kiosks: kiosksRepo,
     cameras: camerasRepo,

@@ -78,6 +78,10 @@ export const manifest: DriverManifest = {
     endpointHealth: false,
   },
 
+  // One connection == one projector (the address schema is empty), so the
+  // admin UI offers it as a single row instead of a connection + endpoint pair.
+  soloEndpointType: "pjlink.projector",
+
   endpointTypes: [
     {
       type: "pjlink.projector",

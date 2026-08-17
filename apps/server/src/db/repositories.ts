@@ -28,6 +28,7 @@ import {
   workflowTargets,
 } from "@gallery/types/schema";
 import type {
+  BulkRecordAction,
   Connection,
   Device,
   LevelCount,
@@ -250,6 +251,161 @@ export const devicesRepo = {
   update: (id: string, values: Partial<NewDevice>) =>
     first(db.update(devices).set({ ...values, updatedAt: new Date() }).where(eq(devices.id, id)).returning()),
   remove: (id: string) => first(db.delete(devices).where(eq(devices.id, id)).returning()),
+};
+
+// ── bulk writes (spreadsheet editor) ─────────────────────────
+
+/**
+ * The connection half of one planned bulk row: `id` set updates that row,
+ * absent inserts a new one. `values` is already validated by the route.
+ */
+export interface BulkConnectionWrite {
+  id?: string;
+  values: Partial<NewConnection>;
+}
+
+/**
+ * The device half of one planned bulk row. `connectionId` is filled in by the
+ * repo from the row's own connection when that connection is created in the
+ * same batch (a 1:1 row: the id doesn't exist until the insert runs).
+ */
+export interface BulkDeviceWrite {
+  id?: string;
+  connectionId?: string;
+  values: Partial<NewDevice>;
+}
+
+/** One planned row: an optional connection to write, plus the device on it. */
+export interface BulkWriteRow {
+  connection?: BulkConnectionWrite;
+  device: BulkDeviceWrite;
+}
+
+/** What one written row ended up as — ids resolved, actions recorded. */
+interface BulkWriteOutcome {
+  connectionId: string;
+  deviceId: string;
+  connectionAction: BulkRecordAction;
+  deviceAction: BulkRecordAction;
+}
+
+interface BulkDeleteOutcome {
+  deletedDevices: number;
+  /** Connections deleted because the batch left them with no devices. */
+  deletedConnections: string[];
+  /** Connections that lost devices but still have some (need a cache refresh). */
+  touchedConnections: string[];
+}
+
+/**
+ * Bulk writes for the admin spreadsheet editor.
+ *
+ * Everything here runs inside one transaction on purpose: a 64-row import that
+ * fails halfway would leave the operator reconciling half a rack by hand, so
+ * either the whole sheet lands or none of it does. Validation (driver
+ * manifests, referenced ids) happens in the route *before* these run — by this
+ * point the only expected failures are database-level ones (a foreign key, a
+ * lost connection), which roll the batch back.
+ */
+export const bulkRepo = {
+  /** Insert/update every row atomically, resolving each row's connection first. */
+  apply(rows: BulkWriteRow[]): Promise<BulkWriteOutcome[]> {
+    return db.transaction(async (tx) => {
+      const outcomes: BulkWriteOutcome[] = [];
+      for (const row of rows) {
+        let connectionId = row.device.connectionId;
+        let connectionAction: BulkRecordAction = "unchanged";
+
+        if (row.connection) {
+          const { id, values } = row.connection;
+          if (id) {
+            const updated = await first(
+              tx
+                .update(connections)
+                .set({ ...values, updatedAt: new Date() })
+                .where(eq(connections.id, id))
+                .returning(),
+            );
+            if (!updated) throw new Error(`connection ${id} disappeared mid-batch`);
+            connectionId = updated.id;
+            connectionAction = "updated";
+          } else {
+            // The route guarantees the required columns are present for an insert.
+            const created = await first(tx.insert(connections).values(values as NewConnection).returning());
+            if (!created) throw new Error("failed to create connection");
+            connectionId = created.id;
+            connectionAction = "created";
+          }
+        }
+
+        const { id, values } = row.device;
+        const written = id
+          ? await first(
+              tx
+                .update(devices)
+                .set({ ...values, ...(connectionId ? { connectionId } : {}), updatedAt: new Date() })
+                .where(eq(devices.id, id))
+                .returning(),
+            )
+          : connectionId
+            ? await first(tx.insert(devices).values({ ...values, connectionId } as NewDevice).returning())
+            : undefined;
+        if (!written) {
+          throw new Error(id ? `device ${id} disappeared mid-batch` : "device row has no connection");
+        }
+
+        outcomes.push({
+          // On update the stored row is authoritative: a row that only patches
+          // (say) a room never names a connection, so read it back off the device.
+          connectionId: written.connectionId,
+          deviceId: written.id,
+          connectionAction,
+          deviceAction: id ? "updated" : "created",
+        });
+      }
+      return outcomes;
+    });
+  },
+
+  /** Device ids among `deviceIds` that scenes still reference (delete would violate the FK). */
+  async sceneReferenced(deviceIds: string[]): Promise<string[]> {
+    if (!deviceIds.length) return [];
+    const rows = await db
+      .selectDistinct({ deviceId: sceneActions.deviceId })
+      .from(sceneActions)
+      .where(inArray(sceneActions.deviceId, deviceIds));
+    return rows.map((r) => r.deviceId).filter((id): id is string => id !== null);
+  },
+
+  /**
+   * Delete devices atomically, optionally taking connections the batch empties
+   * with them (the counterpart of 1:1 rows — deleting the display should not
+   * strand its connection).
+   */
+  deleteDevices(deviceIds: string[], deleteOrphanedConnections: boolean): Promise<BulkDeleteOutcome> {
+    return db.transaction(async (tx) => {
+      if (!deviceIds.length) {
+        return { deletedDevices: 0, deletedConnections: [], touchedConnections: [] };
+      }
+      const removed = await tx.delete(devices).where(inArray(devices.id, deviceIds)).returning();
+      const affected = [...new Set(removed.map((d) => d.connectionId))];
+      const deletedConnections: string[] = [];
+      const touchedConnections: string[] = [];
+      for (const connectionId of affected) {
+        const remaining = await tx
+          .select({ n: count() })
+          .from(devices)
+          .where(eq(devices.connectionId, connectionId));
+        if (deleteOrphanedConnections && (remaining[0]?.n ?? 0) === 0) {
+          await tx.delete(connections).where(eq(connections.id, connectionId));
+          deletedConnections.push(connectionId);
+        } else {
+          touchedConnections.push(connectionId);
+        }
+      }
+      return { deletedDevices: removed.length, deletedConnections, touchedConnections };
+    });
+  },
 };
 
 // ── logs (read-only; written by DbLogTransport) ──────────────

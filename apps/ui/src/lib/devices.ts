@@ -62,6 +62,22 @@ export interface DeviceGroup {
   subgroups: DeviceSubgroup[]
 }
 
+/**
+ * The device categories an operator can pick from (`devices.type`). Shared by
+ * the single-record form and the bulk sheet so the two can't drift apart.
+ */
+export const DEVICE_TYPES = [
+  'lighting',
+  'audio',
+  'microphone',
+  'video',
+  'display',
+  'matrix',
+  'blind',
+  'power',
+  'custom',
+] as const
+
 /** Friendlier labels for the known device `type` values; falls back to Capitalised. */
 const TYPE_LABELS: Record<string, string> = {
   light: 'Lights',

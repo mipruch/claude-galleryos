@@ -47,6 +47,9 @@ export const manifest: DriverManifest = {
 
   capabilities: { discovery: false, subscriptions: false, bidirectional: true },
 
+  // One simple box behind one socket; the address carries only a label.
+  soloEndpointType: "tcp-generic.endpoint",
+
   endpointTypes: [
     {
       type: "tcp-generic.endpoint",

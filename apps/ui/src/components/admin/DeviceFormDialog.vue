@@ -10,7 +10,7 @@ import { computed, ref, watch } from 'vue'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
-import type { DeviceRecord } from '@/lib/devices'
+import { DEVICE_TYPES, type DeviceRecord } from '@/lib/devices'
 import { useDevicesStore } from '@/stores/devices'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDriversStore } from '@/stores/drivers'
@@ -40,10 +40,6 @@ const emit = defineEmits<{ 'update:open': [boolean] }>()
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
 const drivers = useDriversStore()
-
-const DEVICE_TYPES = [
-  'lighting', 'audio', 'microphone', 'video', 'display', 'matrix', 'blind', 'power', 'custom',
-] as const
 
 // Sentinel for the "no room" option (reka-ui forbids an empty <SelectItem value>).
 const NONE = '__none__'

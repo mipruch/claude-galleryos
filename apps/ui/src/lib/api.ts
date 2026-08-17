@@ -13,6 +13,10 @@
 
 import type { DriverManifest } from '@gallery/driver-core'
 import type {
+  BulkApplyInput,
+  BulkApplyResult,
+  BulkDeleteInput,
+  BulkDeleteResult,
   CameraDTO,
   CameraCreateInput,
   CameraUpdateInput,
@@ -171,6 +175,17 @@ export const api = {
       post<CommandResult>(`/devices/${id}/command`, { command, params }),
     state: (id: string) => get<DeviceState>(`/devices/${id}/state`),
     status: (id: string) => get<DeviceStatus>(`/devices/${id}/status`),
+  },
+
+  /**
+   * Multi-row writes for the admin spreadsheet editor. Unlike the per-record
+   * calls above these resolve even when the server rejects the batch: an apply
+   * comes back with `ok: false` plus row/field-addressed errors so the grid can
+   * mark the offending cells, and nothing was written.
+   */
+  bulk: {
+    applyDevices: (input: BulkApplyInput) => post<BulkApplyResult>('/bulk/devices', input),
+    deleteDevices: (input: BulkDeleteInput) => post<BulkDeleteResult>('/bulk/devices/delete', input),
   },
 
   connections: {
