@@ -16,10 +16,16 @@
  *
  * A row is one *physical box*, not one database record. For a driver that
  * declares `soloEndpointType` (a Samsung display on its own IP, a projector)
- * the connection and the endpoint are written together from one row, so
- * nobody names 64 connections by hand — see `lib/bulkSheet.ts` for the two
- * sheet shapes. For gateway drivers the connection is picked once above the
- * grid and rows are endpoints on it.
+ * the connection and the endpoint are written together from one row — see
+ * `lib/bulkSheet.ts` for the two sheet shapes. For gateway drivers the
+ * connection is picked once above the grid and rows are endpoints on it.
+ *
+ * Collapsing the pair into one row does not collapse their *names*: a row
+ * carries both, because they are read by different people. The device name is
+ * what a custodian sees on the panel ("Panel lighting"); the connection name is
+ * what an integrator sees in Connections while tracing a rack ("Hall 1 — Netio
+ * 2"). Either column may be left blank and takes the other's value on save, so
+ * naming 64 boxes still costs one column, not two.
  *
  * Nothing is written until Save, which sends every changed row in one
  * all-or-nothing request (`POST /bulk/devices`). A rejected batch comes back
@@ -220,7 +226,7 @@ function cellError(rowIndex: number, column: SheetColumn): string | null {
   if (server) return server
   const row = rows.value[rowIndex]
   if (!row) return null
-  return validateCell(column, row.values[column.key] ?? null)
+  return validateCell(column, row.values[column.key] ?? null, row.values)
 }
 
 const isRowDirty = (row: SheetRow): boolean => {
@@ -696,7 +702,7 @@ onMounted(() => {
               :title="column.description"
             >
               {{ column.label }}
-              <span v-if="column.required" class="text-destructive">*</span>
+              <span v-if="column.required && !column.requiredUnless" class="text-destructive">*</span>
             </th>
           </tr>
         </thead>

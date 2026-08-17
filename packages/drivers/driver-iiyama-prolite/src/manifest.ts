@@ -82,6 +82,10 @@ export const manifest: DriverManifest = {
     endpointHealth: false,
   },
 
+  // WoL + RS232-over-LAN both address the set directly: one connection, one
+  // display. The admin UI collapses that pair into a single sheet row.
+  soloEndpointType: "iiyama-prolite.display",
+
   endpointTypes: [
     {
       type: "iiyama-prolite.display",

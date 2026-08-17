@@ -116,6 +116,15 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+/** The checkbox and row-number columns that sit in front of every data column. */
+const LEADING_COLUMNS = 2
+
+/** Drive a clipboard paste at the grid's current cursor. */
+async function paste(wrapper: VueWrapper, text: string): Promise<void> {
+  await wrapper.find('.sheet').trigger('paste', { clipboardData: { getData: () => text } })
+  await flush()
+}
+
 const headers = (wrapper: VueWrapper): string[] =>
   wrapper.findAll('thead th').map((th) => th.text().replace('*', '').trim())
 
@@ -129,9 +138,18 @@ describe('DeviceSheet', () => {
   it('renders one row per physical box: connection and device columns together', async () => {
     const wrapper = await mountSheet()
 
-    // Both halves of a 1:1 device are columns of the same row.
+    // Both halves of a 1:1 device are columns of the same row — including both
+    // names, which serve different readers and stay separate.
     expect(headers(wrapper)).toEqual(
-      expect.arrayContaining(['Name', 'Host / IP', 'Display ID', 'Type', 'Room', 'Enabled']),
+      expect.arrayContaining([
+        'Name',
+        'Connection name',
+        'Host / IP',
+        'Display ID',
+        'Type',
+        'Room',
+        'Enabled',
+      ]),
     )
     expect(wrapper.text()).toContain('One row = one device')
   })
@@ -189,7 +207,7 @@ describe('DeviceSheet', () => {
     expect(cellTexts(wrapper, 3).join(' ')).toContain('Displej 04')
   })
 
-  it('fills a pasted block from the cursor, growing the sheet to fit', async () => {
+  it('fills a pasted block from the top-left cell, growing the sheet to fit', async () => {
     const wrapper = await mountSheet()
     await wrapper
       .findAll('button')
@@ -197,19 +215,39 @@ describe('DeviceSheet', () => {
       .trigger('click')
     await flush()
 
-    // Put the cursor on the first cell, then paste two rows × two columns.
+    // Anchor on the first cell, then paste two rows × two columns: the sheet's
+    // first two columns are the friendly name and the technical one.
     await wrapper.findAll('tbody td.cell')[0]!.trigger('mousedown')
-    await wrapper.find('.sheet').trigger('paste', {
-      clipboardData: {
-        getData: () => 'Wall 1\t10.0.2.1\nWall 2\t10.0.2.2',
-      },
-    })
-    await flush()
+    await paste(wrapper, 'Panel lighting\tHall 1 — Netio 2\nPanel spots\tHall 1 — Netio 3')
 
     const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
     expect(sheet.rows).toHaveLength(2)
-    expect(sheet.rows.map((row) => row.values.name)).toEqual(['Wall 1', 'Wall 2'])
-    expect(sheet.rows.map((row) => row.values['connection.host'])).toEqual(['10.0.2.1', '10.0.2.2'])
+    expect(sheet.rows.map((row) => row.values.name)).toEqual(['Panel lighting', 'Panel spots'])
+    expect(sheet.rows.map((row) => row.values['connection.name'])).toEqual([
+      'Hall 1 — Netio 2',
+      'Hall 1 — Netio 3',
+    ])
+  })
+
+  it('pastes a single column wherever the cursor is', async () => {
+    const wrapper = await mountSheet()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Add rows'))!
+      .trigger('click')
+    await flush()
+
+    // A column of addresses out of the customer's spreadsheet, dropped on Host.
+    const hostColumn = headers(wrapper).indexOf('Host / IP') - LEADING_COLUMNS
+    await wrapper.findAll('tbody td.cell')[hostColumn]!.trigger('mousedown')
+    await paste(wrapper, '10.0.2.1\n10.0.2.2\n10.0.2.3')
+
+    const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
+    expect(sheet.rows.map((row) => row.values['connection.host'])).toEqual([
+      '10.0.2.1',
+      '10.0.2.2',
+      '10.0.2.3',
+    ])
   })
 
   it('assigns a room to every checked row in one action', async () => {

@@ -1217,10 +1217,10 @@ device.
       — names the endpoint type a connection carries exactly one of, for
       drivers wired one-box-per-connection. Purely an authoring hint: the data
       model is unchanged, but the UI can collapse the pair into one row.
-      Declared by `pjlink`, `samsung-mdc` and `tcp-generic`; Samsung's
-      `displayId` gained the `default: 1` that a set on its own IP is left at,
-      so the sheet can fill the address without asking. Gateway drivers (DALI,
-      Extron, BSS, NETIO) deliberately omit it — their split is real.
+      Declared by `pjlink`, `samsung-mdc`, `iiyama-prolite` and `tcp-generic`;
+      Samsung's `displayId` gained the `default: 1` that a set on its own IP is
+      left at, so the sheet can fill the address without asking. Gateway drivers
+      (DALI, Extron, BSS, NETIO) deliberately omit it — their split is real.
 - [x] **Bulk contracts** (`packages/types/src/bulk.ts`) — `BulkApplyInput` /
       `BulkApplyResult` / `BulkDeleteInput` and friends, shared by server and
       UI like every other contract. A row nests its connection, mirroring what
@@ -1238,8 +1238,12 @@ device.
       logic in `lib/bulkSheet.ts`) — a *Sheet* tab on `/admin/devices` with
       keyboard navigation, rectangular selection, TSV copy/paste against Google
       Sheets, series-aware fill-down (names, IPv4, zero padding), row
-      multi-select with bulk room assignment, and an all-or-nothing save.
-      Logic unit-tested in `__tests__/bulkSheet.spec.ts` (28 tests).
+      multi-select with bulk room assignment, and an all-or-nothing save. A 1:1
+      row carries **both** names — the friendly one a custodian reads on the
+      panel and the technical one an integrator reads in Connections — with
+      either standing in for the other when left blank, so collapsing the record
+      pair never collapses the two audiences' names into one.
+      Logic unit-tested in `__tests__/bulkSheet.spec.ts`.
 
 **Not done / deliberately left:** no CSV file import (the clipboard covers the
 same ground without a file picker), no undo history beyond *Discard*, no column

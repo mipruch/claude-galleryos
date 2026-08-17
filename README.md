@@ -2048,12 +2048,22 @@ jsou jiné úlohy**:
   v duchu Notionu/DataGripu.
 
 **Řádek = jeden fyzický box, ne jeden DB záznam.** U driveru, který v manifestu
-deklaruje `soloEndpointType` (§6 — Samsung displej na vlastní IP, PJLink
+deklaruje `soloEndpointType` (§6 — Samsung/Iiyama displej na vlastní IP, PJLink
 projektor), nese řádek sloupce connection (host, port, …) i device a uloží obojí
-naráz; connection se **pojmenuje po zařízení**, takže nikdo nevyplňuje 64 jmen
-spojení. Gateway drivery (DALI, Extron, BSS) se chovají beze změny: connection
-se vybere jednou nad gridem a řádky jsou endpointy na ní. Datový model se
-nemění — sjednocení je čistě ve vrstvě UI + `POST /bulk/devices`.
+naráz. Gateway drivery (DALI, Extron, BSS, NETIO) se chovají beze změny:
+connection se vybere jednou nad gridem a řádky jsou endpointy na ní. Datový
+model se nemění — sjednocení je čistě ve vrstvě UI + `POST /bulk/devices`.
+
+**Sloučení řádku ale neslučuje jména.** Grid má v 1:1 režimu **dva jmenné
+sloupce vedle sebe**, protože je čte někdo jiný:
+
+- **Name** — přívětivý název, který vidí kustod na panelu („Osvětlení panelu“).
+- **Connection name** — technický název v *Connections*, podle kterého se
+  integrátor orientuje v racku („Hall 1 – Netio 2“).
+
+Kterýkoli z nich smí zůstat prázdný a **převezme hodnotu toho druhého**, takže
+pojmenovat 64 boxů stojí jeden sloupec, ne dva — ale rozdíl mezi „co to je“ a
+„kde to visí“ se nikam neztratí.
 
 Ovládání gridu (`lib/bulkSheet.ts`, unit-testované v `__tests__/bulkSheet.spec.ts`):
 

@@ -121,7 +121,23 @@ describe('sheet shape', () => {
 
     expect(column(columns, 'connection.host').advanced).toBeFalsy()
     expect(column(columns, 'connection.responseTimeoutMs').advanced).toBe(true)
-    expect(column(columns, 'connection.name').advanced).toBe(true)
+  })
+
+  it('shows both names side by side — the friendly one and the technical one', () => {
+    const columns = columnsFor(soloManifest)
+
+    // Two different audiences: a custodian reads the device name on the panel,
+    // an integrator reads the connection name while wiring the rack.
+    expect(columns.slice(0, 2).map((c) => c.key)).toEqual(['name', 'connection.name'])
+    expect(column(columns, 'connection.name').advanced).toBeFalsy()
+    // Either one satisfies the row; neither is required on its own.
+    expect(column(columns, 'name').requiredUnless).toBe('connection.name')
+    expect(column(columns, 'connection.name').requiredUnless).toBe('name')
+  })
+
+  it('has no connection name to offer on a gateway sheet — the connection is picked above the grid', () => {
+    expect(columnsFor(gatewayManifest).some((c) => c.key === 'connection.name')).toBe(false)
+    expect(column(columnsFor(gatewayManifest), 'name').requiredUnless).toBeUndefined()
   })
 
   it('offers rooms by name, not id', () => {
@@ -161,6 +177,17 @@ describe('cell values', () => {
     expect(validateCell(displayId, 300)).toBe('Must be ≤ 255')
     expect(validateCell(displayId, 1)).toBeNull()
     expect(validateCell(column(columns, 'name'), null)).toBe('Required')
+  })
+
+  it('accepts a blank name when the other name column carries one', () => {
+    const name = column(columns, 'name')
+    const connectionName = column(columns, 'connection.name')
+
+    // Neither filled in: the row genuinely has no name.
+    expect(validateCell(name, null, { name: null, 'connection.name': null })).toBe('Required')
+    // Either one filled in is enough — the blank one borrows it on save.
+    expect(validateCell(name, null, { name: null, 'connection.name': 'Hall 1 — Netio 2' })).toBeNull()
+    expect(validateCell(connectionName, null, { name: 'Panel lighting' })).toBeNull()
   })
 })
 
@@ -309,7 +336,7 @@ describe('payload', () => {
     expect(payload!.connection!.config).toEqual({ responseTimeoutMs: 3000 })
   })
 
-  it('keeps an explicit connection name when the operator opted into the column', () => {
+  it('keeps the two names apart when the operator gave each its own', () => {
     const named: SheetRow = {
       ...newRow,
       values: { ...newRow.values, 'connection.name': 'Wall link 7' },
@@ -321,6 +348,23 @@ describe('payload', () => {
     })
 
     expect(payload!.connection!.name).toBe('Wall link 7')
+    // The friendly name is untouched — that distinction is the point.
+    expect(payload!.name).toBe('Displej 07')
+  })
+
+  it('lets the device borrow the connection name when only that column was filled', () => {
+    const technicalOnly: SheetRow = {
+      ...newRow,
+      values: { ...newRow.values, name: null, 'connection.name': 'Hall 1 — Netio 2' },
+    }
+    const [payload] = buildBulkPayload([technicalOnly], columns, {
+      mode: 'unit',
+      driverId: 'samsung-mdc',
+      endpointType: 'samsung-mdc.display',
+    })
+
+    expect(payload!.name).toBe('Hall 1 — Netio 2')
+    expect(payload!.connection!.name).toBe('Hall 1 — Netio 2')
   })
 
   it('sends an existing row as an update, carrying both ids', () => {

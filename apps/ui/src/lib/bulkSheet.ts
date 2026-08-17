@@ -53,6 +53,12 @@ export interface SheetColumn {
   kind: SheetColumnKind
   description?: string
   required?: boolean
+  /**
+   * Required only while this other column is empty — the two name columns lean
+   * on each other (fill either one and the row is valid; whichever is blank
+   * takes the other's value on save).
+   */
+  requiredUnless?: string
   min?: number
   max?: number
   options?: SheetSelectOption[]
@@ -163,6 +169,7 @@ export function buildColumns(
   mode: SheetMode,
 ): SheetColumn[] {
   if (!manifest) return []
+  const unit = mode === 'unit'
   const columns: SheetColumn[] = [
     {
       key: 'name',
@@ -170,28 +177,42 @@ export function buildColumns(
       scope: 'device',
       label: 'Name',
       kind: 'text',
+      description:
+        'The friendly name, shown to everyone using the panels — say “Panel lighting”, not the ' +
+        'hardware it happens to run on.',
       required: true,
+      // In a 1:1 sheet either name will do (see `connection.name` below).
+      requiredUnless: unit ? 'connection.name' : undefined,
       fallback: '',
     },
   ]
 
-  if (mode === 'unit') {
-    const required = new Set(manifest.connectionSchema.required ?? [])
-    for (const [key, property] of scalarProperties(manifest.connectionSchema)) {
-      columns.push(columnFromSchema(key, property, 'connection', required.has(key)))
-    }
-    // The connection's own name: defaulted from the device name on save, so
-    // it's an opt-in column rather than 64 rows of duplicated typing.
+  if (unit) {
+    // The connection's own name — a *different* name on purpose, and the
+    // reason it's a column and not something derived. The connection is what
+    // an integrator sees in Connections and reasons about while wiring ("Hall
+    // 1 — Netio 2"); the device name above is what a custodian who has never
+    // heard of a Netio reads on the panel ("Panel lighting"). Either one may
+    // be left blank and takes the other's value on save, so a rack of
+    // identical hardware still only needs one column filled in.
     columns.push({
       key: 'connection.name',
       field: 'name',
       scope: 'connection',
       label: 'Connection name',
       kind: 'text',
-      description: "Defaults to the device's name.",
+      description:
+        'The technical name, listed under Connections — e.g. “Hall 1 — Iiyama 3”. Left blank it ' +
+        'takes the device name.',
+      required: true,
+      requiredUnless: 'name',
       fallback: '',
-      advanced: true,
     })
+
+    const required = new Set(manifest.connectionSchema.required ?? [])
+    for (const [key, property] of scalarProperties(manifest.connectionSchema)) {
+      columns.push(columnFromSchema(key, property, 'connection', required.has(key)))
+    }
   }
 
   const addressRequired = new Set(endpointType?.addressSchema.required ?? [])
@@ -281,10 +302,20 @@ export function parseCell(column: SheetColumn, raw: string): SheetValue {
  * Client-side check for one cell — instant feedback while typing. The server
  * re-validates everything against the driver manifest on save; this only
  * catches what can be known without it.
+ *
+ * `row` is only consulted for `requiredUnless` columns (the two names), where
+ * whether a blank cell is a problem depends on its counterpart.
  */
-export function validateCell(column: SheetColumn, value: SheetValue): string | null {
+export function validateCell(
+  column: SheetColumn,
+  value: SheetValue,
+  row?: Record<string, SheetValue>,
+): string | null {
   const empty = value === null || value === ''
-  if (column.required && empty) return 'Required'
+  if (column.required && empty) {
+    const standIn = column.requiredUnless ? row?.[column.requiredUnless] : undefined
+    if (standIn === undefined || standIn === null || standIn === '') return 'Required'
+  }
   if (empty) return null
   if (column.kind === 'number') {
     if (typeof value !== 'number' || !Number.isFinite(value)) return 'Must be a number'
@@ -567,9 +598,15 @@ export function buildBulkPayload(
   return rows.map((row) => {
     const device = scopedValues(row, columns, 'device')
     const address = scopedValues(row, columns, 'address')
+    const connectionValues = scopedValues(row, columns, 'connection')
+    // The two names stand in for each other: fill either column and the row is
+    // complete. Only in `unit` mode is there a connection name to borrow.
+    const deviceName =
+      (device.name as string | undefined) ??
+      (options.mode === 'unit' ? (connectionValues.name as string | undefined) : undefined)
     const input: BulkDeviceRowInput = {
       deviceId: row.deviceId,
-      name: device.name as string | undefined,
+      name: deviceName,
       type: device.type as string | undefined,
       subtype: options.endpointType,
       // An unset room is a real value (clear it), unlike an omitted column.
@@ -581,17 +618,17 @@ export function buildBulkPayload(
     if (Object.keys(address).length) input.address = address
 
     if (options.mode === 'unit') {
-      const connectionValues = scopedValues(row, columns, 'connection')
       const config: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(connectionValues)) {
         if (!CONNECTION_COLUMNS.has(key)) config[key] = value
       }
       input.connection = {
         id: row.connectionId,
-        // Naming 64 connections by hand is the chore this whole editor exists
-        // to remove: the box's name is the connection's name unless the
-        // operator opts into the column and says otherwise.
-        name: (connectionValues.name as string | undefined) || (device.name as string | undefined),
+        // Its own name when the operator gave it one — the technical name and
+        // the friendly one are different things and both are worth keeping —
+        // and the device's name when they didn't, so a rack of identical
+        // hardware still needs only one name column filled in.
+        name: (connectionValues.name as string | undefined) ?? deviceName,
         driverId: row.connectionId ? undefined : options.driverId,
         host: (connectionValues.host as string | undefined) ?? null,
         port: (connectionValues.port as number | undefined) ?? null,
