@@ -1,0 +1,19 @@
+{
+	"name": "@gallery/driver-iiyama-prolite",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Iiyama ProLite display driver for GalleryOS — Wake-on-LAN power-on, binary RS232-over-LAN power-off over TCP.",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@gallery/driver-core": "workspace:*"
+	}
+}

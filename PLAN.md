@@ -254,6 +254,54 @@ probed independently since several can share one connection)
       `@gallery/driver-samsung-mdc`)
 - [ ] `setInput` (0x14) and combined status query (0xF9) — deferred, not requested yet
 
+### 1.5b `driver-iiyama-prolite` — Iiyama ProLite (Wake-on-LAN + TCP 5000) ✓ (power on/off only)
+
+**Not in the original plan** — added on request for the ProLite T6529AS, verified
+against the manufacturer's "RS232 Serial Interface Communication Protocol"
+application note (bundled at `packages/drivers/driver-iiyama-prolite/manuals/`).
+
+**Protocol** (binary), two different transports depending on direction:
+- **Power on** — the display accepts no TCP connections while off, so `on` sends
+  a standard Wake-on-LAN magic packet (UDP broadcast) to the configured MAC
+  address instead. Requires the display's OSD "Power Save" setting to be Mode 2.
+- **Power off / power query** — RS232-over-LAN, TCP port 5000:
+  - Command frame: `0xA6 | monitorId(1) | 0x00 | 0x00 | 0x00 | length(1) | 0x01 | data[N] | checksum(1)`
+  - Report frame: `0x21 | monitorId(1) | 0x00 | 0x00 | length(1) | 0x01 | data[N] | checksum(1)`
+  - `length = N + 2`, `checksum` = XOR of every byte except itself — both cross-checked
+    against every worked example in the manual, not just the power commands.
+  - Power state Set (`data = [0x18, powerByte]`, `0x01`=off/`0x02`=on) is
+    acknowledged by the display's own **Communication Control report**
+    (`data = [0x00, status]`, `0x00`=Completed) — `off` waits for this confirmation
+    before reporting success, per the exact sequence requested.
+  - Power state Get (`data = [0x19]`) replies with a Power state report
+    (`data = [0x19, powerByte]`) — used for `readState`/`healthCheck` (the watchdog).
+
+**Connection + endpoint model:** no persistent socket — the display can't hold one
+open while powered off, so every action is a short-lived transaction (mirrors
+`driver-pjlink`'s short-lived-connection approach, for a different underlying
+reason). One connection = one display (like `driver-pjlink`/`driver-netio`), so
+`endpointHealth` is not needed — the connection-level `healthCheck` already covers
+it.`online` tracks network reachability (a refused TCP connection), not power
+state — a display that's fully off is expected to refuse it.
+
+**Endpoint type:** `iiyama-prolite.display`  
+**Address:** `{}` (one display per connection)  
+**Connection config:** `{ host, port?=5000, macAddress, wolPort?=9, broadcastAddress?="255.255.255.255", monitorId?=1, responseTimeoutMs?=3000 }`  
+**Commands:** `on` (Wake-on-LAN), `off` (RS232-over-LAN, waits for confirmation)  
+**Capabilities:** `subscriptions: false`, `bidirectional: true` (power read back via GET), `discovery: false`, `endpointHealth: false`
+
+- [x] `src/iiyama.ts` — pure codec (frame encode/decode, length-prefixed incremental
+      decoder, checksum, Wake-on-LAN magic-packet builder), unit-tested against the
+      manual's own worked examples
+- [x] `IiyamaProliteDriver.ts` — short-lived TCP transaction per command/query
+      (mutex-serialised), UDP Wake-on-LAN for `on`
+- [x] Mock TCP device for tests (`test/mock-device.ts`) + UDP capture mock
+      (`test/mock-udp-server.ts`) — power get/set, confirmation sequence, timeout path
+- [x] Register in `apps/server/src/drivers/registry.ts` (id `iiyama-prolite`, pkg
+      `@gallery/driver-iiyama-prolite`)
+- [ ] Other RS232 commands (input select, volume, video parameters, scheduling, …)
+      — documented in the manual but not requested; deferred
+
 ### 1.6 `driver-vmix` — vMix (TCP 8099)
 
 **Protocol** (UTF-8, newline-delimited, persistent socket):

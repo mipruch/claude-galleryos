@@ -177,6 +177,7 @@ gallery-control/
         ├── driver-pjlink/
         ├── driver-extron-matrix/
         ├── driver-samsung-mdc/
+        ├── driver-iiyama-prolite/  # Iiyama ProLite (Wake-on-LAN + TCP RS232-over-LAN)
         ├── driver-pixera/
         ├── driver-vmix/
         ├── driver-tcp-generic/     # Konfigurovatelný TCP driver pro jednoduché zařízení
@@ -1111,6 +1112,59 @@ přidání je aditivní — nový builder v `mdc.ts` + nový `case` v driveru.
   `bidirectional: true` (GET vrátí aktuální stav), `discovery: false`,
   `endpointHealth: true` (každý displej se testuje samostatně, i když sdílí
   connection s ostatními).
+
+#### `driver-iiyama-prolite` — Iiyama ProLite displeje (implementováno, jen zapnutí/vypnutí)
+
+Balíček `packages/drivers/driver-iiyama-prolite` (driver id `iiyama-prolite`).
+Ovládá Iiyama ProLite komerční displeje (např. ProLite T6529AS) přes binární
+**RS232-over-LAN protokol** popsaný v přiloženém manuálu (`manuals/TF39AS_RS232LAN_
+commands_improved_2023_08.pdf`) — na rozdíl od ostatních TCP driverů jsou ale
+**zapnutí a vypnutí dva různé transporty**, ne jeden persistentní socket:
+
+- **Zapnutí (`on`)** — displej ve vypnutém stavu nepřijímá žádná TCP spojení
+  (síťová část je v hlubokém spánku), takže se posílá standardní **Wake-on-LAN
+  magic packet přes UDP broadcast** na nakonfigurovanou MAC adresu. Vyžaduje na
+  displeji nastavení OSD „Power Save" na Mode 2 (jinak síťové rozhraní zapnutí
+  vůbec nezachytí).
+- **Vypnutí (`off`) a dotaz na stav** — binární protokol nad **TCP 5000**:
+  rámec příkazu `0xA6 │ monitorId(1) │ 0x00 │ 0x00 │ 0x00 │ length(1) │ 0x01 │
+  data[N] │ checksum(1)`, rámec odpovědi `0x21 │ monitorId(1) │ 0x00 │ 0x00 │
+  length(1) │ 0x01 │ data[N] │ checksum(1)`. `length = N+2`, `checksum` = XOR
+  všech bytů rámce kromě sebe sama — ověřeno proti všem vzorovým rámcům
+  v manuálu, ne jen proti příkazům pro napájení.
+  ⚠️ Manuálova prozaická tabulka polí popisuje samostatné pole „Code1"
+  (funkce), ale ve všech vzorových rámcích je funkční kód ve skutečnosti prvním
+  bytem datové části (`data[0]`) a Code1 je vždy `0x00` — `src/iiyama.ts` se
+  drží konkrétních bytových sekvencí z manuálu, ne jeho prozaického popisu.
+
+- **`src/iiyama.ts`** — čistý, samostatně testovaný kodek (proti vzorovým
+  rámcům z manuálu): stavění příkazových rámců, `IiyamaFrameDecoder` pro
+  inkrementální dekódování rámců odpovědí bez oddělovače (délka je v hlavičce),
+  a `buildMagicPacket` pro Wake-on-LAN (6× `0xFF` + 16× zopakovaná MAC adresa).
+- **`src/IiyamaProliteDriver.ts`** — **žádný persistentní socket** — displej ho
+  ve vypnutém stavu nemůže držet otevřený, takže každá akce je krátkodobá
+  transakce (podobně jako `driver-pjlink`, ale z jiného důvodu). Vypnutí
+  (`off`) čeká na displejem odeslané **potvrzení Communication Control**
+  (`data = [0x00, 0x00]` = Completed) — příkaz nahlásí úspěch teprve po tomto
+  potvrzení, přesně podle zadané sekvence. Dotaz na stav (Get Power,
+  `data = [0x19]`) se používá pro `readState` i pro watchdog (`healthCheck`).
+  Veškeré TCP I/O je serializováno mutexem (jedna transakce najednou).
+- **`online` znamená síťovou dosažitelnost, ne stav napájení** — odmítnuté TCP
+  spojení (displej je vypnutý) je očekávaný běžný stav, ne chyba driveru;
+  `connect()` proto nikdy nevyhazuje výjimku, jen zůstane offline, dokud další
+  úspěšný dotaz na stav (po probuzení) nenastaví `online` zpět na `true`.
+- **Endpoint `iiyama-prolite.display`**, bez extra adresace (jeden displej na
+  connection, stejně jako `pjlink`/`netio`). Connection config: `{ host,
+  port=5000, macAddress, wolPort=9, broadcastAddress="255.255.255.255",
+  monitorId=1, responseTimeoutMs=3000 }`. Příkazy: `on` (Wake-on-LAN), `off`
+  (RS232-over-LAN s potvrzením). Capabilities: `subscriptions: false`,
+  `bidirectional: true` (GET vrátí aktuální stav), `discovery: false`,
+  `endpointHealth: false` (jeden displej na connection, stačí connection-level
+  `healthCheck`).
+- ⚠️ **Rozsah je záměrně úzký** — zadání bylo „jen zapnout a vypnout", takže
+  jsou implementované jen dva RS232 příkazy (Power Get/Set). Výběr vstupu,
+  hlasitost, video parametry a další (viz manuál) zůstávají neimplementované;
+  přidání je aditivní — nový builder v `iiyama.ts` + nový `case` v driveru.
 
 #### `driver-pjlink` — PJLink projektory (Class 1, TCP 4352) ✓
 
