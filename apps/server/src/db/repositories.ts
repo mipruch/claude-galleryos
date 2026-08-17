@@ -275,6 +275,17 @@ export interface BulkDeviceWrite {
   values: Partial<NewDevice>;
 }
 
+/** One planned connection row of a connection sheet (no device attached). */
+export interface BulkConnectionWrite {
+  id?: string;
+  values: Partial<NewConnection>;
+}
+
+interface BulkConnectionOutcome {
+  connectionId: string;
+  action: BulkRecordAction;
+}
+
 /** One planned row: an optional connection to write, plus the device on it. */
 export interface BulkWriteRow {
   connection?: BulkConnectionWrite;
@@ -405,6 +416,49 @@ export const bulkRepo = {
       }
       return { deletedDevices: removed.length, deletedConnections, touchedConnections };
     });
+  },
+
+  /**
+   * Insert/update connections atomically — the connection sheet's write.
+   * Same all-or-nothing reasoning as `apply`: twenty NETIOs land together or
+   * not at all.
+   */
+  applyConnections(rows: BulkConnectionWrite[]): Promise<BulkConnectionOutcome[]> {
+    return db.transaction(async (tx) => {
+      const outcomes: BulkConnectionOutcome[] = [];
+      for (const { id, values } of rows) {
+        const written = id
+          ? await first(
+              tx
+                .update(connections)
+                .set({ ...values, updatedAt: new Date() })
+                .where(eq(connections.id, id))
+                .returning(),
+            )
+          : // The route guarantees the required columns are present for an insert.
+            await first(tx.insert(connections).values(values as NewConnection).returning());
+        if (!written) throw new Error(id ? `connection ${id} disappeared mid-batch` : "failed to create connection");
+        outcomes.push({ connectionId: written.id, action: id ? "updated" : "created" });
+      }
+      return outcomes;
+    });
+  },
+
+  /** Connection ids among `connectionIds` that still carry devices (delete would violate the FK). */
+  async connectionsWithDevices(connectionIds: string[]): Promise<string[]> {
+    if (!connectionIds.length) return [];
+    const rows = await db
+      .selectDistinct({ connectionId: devices.connectionId })
+      .from(devices)
+      .where(inArray(devices.connectionId, connectionIds));
+    return rows.map((r) => r.connectionId);
+  },
+
+  /** Delete connections atomically. Callers check `connectionsWithDevices` first. */
+  async deleteConnections(connectionIds: string[]): Promise<number> {
+    if (!connectionIds.length) return 0;
+    const removed = await db.delete(connections).where(inArray(connections.id, connectionIds)).returning();
+    return removed.length;
   },
 };
 

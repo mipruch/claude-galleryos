@@ -36,6 +36,10 @@
 import type { DriverManifest, JsonSchema } from "@gallery/driver-core";
 import type {
   BulkApplyResult,
+  BulkConnectionApplyResult,
+  BulkConnectionDeleteResult,
+  BulkConnectionRowInput,
+  BulkConnectionRowResult,
   BulkDeleteResult,
   BulkDeviceRowInput,
   BulkRowError,
@@ -104,7 +108,8 @@ interface AjvErrorDetail {
 function collectValidation(
   errors: BulkRowError[],
   row: number,
-  prefix: "connection" | "address",
+  /** Column-key prefix: `""` for a connection sheet, whose columns are bare. */
+  prefix: "connection" | "address" | "",
   assert: () => void,
 ): boolean {
   try {
@@ -114,15 +119,16 @@ function collectValidation(
     if (!(err instanceof HttpError)) throw err;
     const details = Array.isArray(err.details) ? (err.details as AjvErrorDetail[]) : [];
     if (!details.length) {
-      errors.push({ row, field: prefix, message: err.message });
+      errors.push({ row, field: prefix || undefined, message: err.message });
       return false;
     }
     for (const detail of details) {
       const missing = detail.params?.missingProperty;
       const path = detail.instancePath?.replace(/^\//, "").replace(/\//g, ".") || missing || "";
+      const qualified = prefix && path ? `${prefix}.${path}` : path || prefix;
       errors.push({
         row,
-        field: path ? `${prefix}.${path}` : prefix,
+        field: qualified || undefined,
         message: missing ? "is required" : (detail.message ?? "is invalid"),
       });
     }
@@ -131,16 +137,16 @@ function collectValidation(
 }
 
 /**
- * Fill in address properties the row didn't mention from the endpoint type's
- * schema defaults.
+ * Fill in properties the row didn't mention from a schema's declared defaults.
  *
- * This is what lets a 1:1 sheet drop columns the operator never touches: a
- * Samsung display on its own IP is always `displayId: 1`, declared once in the
- * manifest instead of typed 64 times.
+ * This is what lets a sheet drop columns the operator never touches: a Samsung
+ * display on its own IP is always `displayId: 1`, a NETIO always polls on the
+ * same interval — declared once in the manifest instead of typed into twenty
+ * rows. Used for both endpoint addresses and connection config.
  */
-function withAddressDefaults(schema: JsonSchema | undefined, address: Record<string, unknown>): Record<string, unknown> {
+function withSchemaDefaults(schema: JsonSchema | undefined, values: Record<string, unknown>): Record<string, unknown> {
   const properties = (schema?.properties ?? {}) as Record<string, JsonSchema>;
-  const filled: Record<string, unknown> = { ...address };
+  const filled: Record<string, unknown> = { ...values };
   for (const [key, property] of Object.entries(properties)) {
     if (filled[key] === undefined && property.default !== undefined) filled[key] = property.default;
   }
@@ -302,6 +308,73 @@ export function bulkRoutes(ctx: ApiContext): RouteMap {
   }
 
   /**
+   * Validate one row of a *connection* sheet — the flat case: a socket with a
+   * name, an address, and whatever config its driver insists on. Everything
+   * else the manifest can default is defaulted here rather than demanded as a
+   * column, which is what keeps the sheet narrow enough to fill in one pass.
+   */
+  async function planConnectionRow(
+    index: number,
+    input: BulkConnectionRowInput,
+    cache: PlanCache,
+    errors: BulkRowError[],
+  ): Promise<BulkConnectionWrite | null> {
+    const before = errors.length;
+    let existing: Connection | null = null;
+    if (input.connectionId) {
+      existing = await loadConnection(cache, input.connectionId);
+      if (!existing) return fail(errors, index, "connection not found", "connectionId");
+    }
+
+    // The driver is fixed at creation, so an update ignores whatever the row says.
+    const driverId = existing?.driverId ?? input.driverId;
+    if (!driverId) return fail(errors, index, "driver is required", "driverId");
+    if (!ctx.driverRegistry.has(driverId)) return fail(errors, index, `unknown driver: ${driverId}`, "driverId");
+    if (!existing && !input.name) return fail(errors, index, "name is required", "name");
+
+    const manifest = manifestOf(driverId);
+    const merged = {
+      ...((existing?.config as Record<string, unknown> | undefined) ?? {}),
+      ...(input.config ?? {}),
+    };
+    const config = coerceConnectionConfig(driverId, withSchemaDefaults(manifest?.connectionSchema, merged));
+    collectValidation(errors, index, "", () =>
+      assertValidConnectionConfig(driverId, {
+        ...config,
+        host: effective(input.host, existing?.host ?? null) ?? undefined,
+        port: effective(input.port, existing?.port ?? null) ?? undefined,
+      }),
+    );
+    if (errors.length > before) return null;
+
+    // Errors are addressed to bare column keys here (`host`, not
+    // `connection.host`): a connection sheet has no second record to qualify.
+    return existing
+      ? {
+          id: existing.id,
+          values: definedOnly({
+            name: input.name,
+            host: input.host,
+            port: input.port,
+            protocol: input.protocol,
+            config,
+            enabled: input.enabled,
+          }),
+        }
+      : {
+          values: {
+            name: input.name as string,
+            driverId,
+            host: input.host ?? null,
+            port: input.port ?? null,
+            protocol: input.protocol ?? "tcp",
+            config,
+            enabled: input.enabled ?? true,
+          },
+        };
+  }
+
+  /**
    * Validate one row and turn it into the write the repo will run, or push the
    * reasons it can't be onto `errors` and return null.
    */
@@ -351,7 +424,7 @@ export function bulkRoutes(ctx: ApiContext): RouteMap {
         ...((existingDevice?.address as Record<string, unknown> | undefined) ?? {}),
         ...(input.address ?? {}),
       };
-      address = withAddressDefaults(endpointType?.addressSchema, merged);
+      address = withSchemaDefaults(endpointType?.addressSchema, merged);
       if (driverId && subtype) {
         collectValidation(errors, index, "address", () =>
           assertValidDeviceAddress(driverId as string, subtype, address as Record<string, unknown>),
@@ -486,6 +559,119 @@ export function bulkRoutes(ctx: ApiContext): RouteMap {
           updated: result.updated,
           connectionsRestarted: toRestart.size,
         });
+        return json(result);
+      }),
+    },
+
+    "/api/v1/bulk/connections": {
+      POST: route(async (req) => {
+        const body = await readJson(req);
+        const rawRows = body.rows;
+        if (!Array.isArray(rawRows)) throw new HttpError(400, "BAD_REQUEST", "field 'rows' must be an array");
+        if (!rawRows.length) throw new HttpError(400, "BAD_REQUEST", "field 'rows' must not be empty");
+        if (rawRows.length > MAX_ROWS) {
+          throw new HttpError(400, "BAD_REQUEST", `too many rows: ${rawRows.length} (max ${MAX_ROWS})`);
+        }
+        const dryRun = body.dryRun === true;
+        const rows = rawRows.map((row, index) => asObject(row, `rows[${index}]`) as BulkConnectionRowInput);
+
+        const errors: BulkRowError[] = [];
+        const cache: PlanCache = { connections: new Map(), devices: new Map(), roomIds: null };
+        const planned: (BulkConnectionWrite | null)[] = [];
+        for (const [index, row] of rows.entries()) {
+          planned.push(await planConnectionRow(index, row, cache, errors));
+        }
+
+        if (errors.length) {
+          log.info("bulk connection apply rejected", { rows: rows.length, errors: errors.length, dryRun });
+          const rejected: BulkConnectionApplyResult = {
+            ok: false,
+            dryRun,
+            created: 0,
+            updated: 0,
+            errors,
+            rows: [],
+          };
+          return json(rejected);
+        }
+
+        const writes = planned.filter((row): row is BulkConnectionWrite => row !== null);
+        if (dryRun) {
+          const simulated: BulkConnectionApplyResult = {
+            ok: true,
+            dryRun: true,
+            created: writes.filter((write) => !write.id).length,
+            updated: writes.filter((write) => !!write.id).length,
+            errors: [],
+            rows: writes.map((write, index) => ({
+              row: index,
+              connectionId: write.id ?? "",
+              connection: write.id ? "updated" : "created",
+            })),
+          };
+          return json(simulated);
+        }
+
+        const outcomes = await ctx.bulk.applyConnections(writes);
+
+        // Every written connection restarts: host/port/config may all have moved.
+        await mapLimit(outcomes, RESTART_CONCURRENCY, async ({ connectionId }) => {
+          const row = await ctx.connections.get(connectionId);
+          if (!row) return;
+          await ctx.deviceManager.stopConnection(connectionId);
+          if (row.enabled) await ctx.deviceManager.addConnection(toConnectionRecord(row));
+        });
+
+        const rowResults: BulkConnectionRowResult[] = outcomes.map((outcome, index) => ({
+          row: index,
+          connectionId: outcome.connectionId,
+          connection: outcome.action,
+        }));
+        const result: BulkConnectionApplyResult = {
+          ok: true,
+          dryRun: false,
+          created: rowResults.filter((row) => row.connection === "created").length,
+          updated: rowResults.filter((row) => row.connection === "updated").length,
+          errors: [],
+          rows: rowResults,
+        };
+        log.info("bulk connection apply", { rows: writes.length, created: result.created, updated: result.updated });
+        return json(result);
+      }),
+    },
+
+    "/api/v1/bulk/connections/delete": {
+      POST: route(async (req) => {
+        const body = await readJson(req);
+        const rawIds = body.connectionIds;
+        if (!Array.isArray(rawIds)) throw new HttpError(400, "BAD_REQUEST", "field 'connectionIds' must be an array");
+        if (!rawIds.length) throw new HttpError(400, "BAD_REQUEST", "field 'connectionIds' must not be empty");
+        if (rawIds.length > MAX_ROWS) {
+          throw new HttpError(400, "BAD_REQUEST", `too many connections: ${rawIds.length} (max ${MAX_ROWS})`);
+        }
+        const connectionIds = [...new Set(rawIds.map(String))];
+
+        // Same all-or-nothing contract, and the same refusal the single-record
+        // route makes: a connection with devices on it is never cascaded away.
+        const errors: BulkConnectionDeleteResult["errors"] = [];
+        const known = new Set((await ctx.connections.list()).map((row) => row.id));
+        for (const connectionId of connectionIds) {
+          if (!known.has(connectionId)) errors.push({ connectionId, message: "connection not found" });
+        }
+        for (const connectionId of await ctx.bulk.connectionsWithDevices(connectionIds)) {
+          errors.push({ connectionId, message: "connection still has devices; delete them first" });
+        }
+        if (errors.length) {
+          const rejected: BulkConnectionDeleteResult = { ok: false, deletedConnections: 0, errors };
+          return json(rejected);
+        }
+
+        const deleted = await ctx.bulk.deleteConnections(connectionIds);
+        await mapLimit(connectionIds, RESTART_CONCURRENCY, (connectionId) =>
+          ctx.deviceManager.stopConnection(connectionId),
+        );
+        log.info("bulk connection delete", { connections: deleted });
+        const result: BulkConnectionDeleteResult = { ok: true, deletedConnections: deleted, errors: [] };
         return json(result);
       }),
     },

@@ -14,7 +14,12 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
-import type { BulkApplyResult, BulkDeleteResult } from "@gallery/types";
+import type {
+  BulkApplyResult,
+  BulkConnectionApplyResult,
+  BulkConnectionDeleteResult,
+  BulkDeleteResult,
+} from "@gallery/types";
 import { bulkRoutes } from "../../src/api/routes/bulk.ts";
 import type { ApiContext } from "../../src/api/context.ts";
 import type { BulkWriteRow } from "../../src/db/repositories.ts";
@@ -91,6 +96,27 @@ const fakeBulk = {
       deviceRows[deviceId] = { id: deviceId, connectionId, ...row.device.values };
       return { connectionId: connectionId as string, deviceId, connectionAction, deviceAction: "created" as const };
     });
+  },
+
+  async applyConnections(rows: { id?: string; values: Record<string, unknown> }[]) {
+    return rows.map((row) => {
+      if (row.id) {
+        connectionRows[row.id] = { ...connectionRows[row.id], ...row.values };
+        return { connectionId: row.id, action: "updated" as const };
+      }
+      const connectionId = newId("c");
+      connectionRows[connectionId] = { id: connectionId, ...row.values };
+      return { connectionId, action: "created" as const };
+    });
+  },
+
+  async connectionsWithDevices(connectionIds: string[]) {
+    return connectionIds.filter((id) => Object.values(deviceRows).some((d) => d.connectionId === id));
+  },
+
+  async deleteConnections(connectionIds: string[]) {
+    for (const id of connectionIds) delete connectionRows[id];
+    return connectionIds.length;
   },
 
   async sceneReferenced(deviceIds: string[]) {
@@ -401,5 +427,111 @@ describe("POST /bulk/devices/delete", () => {
 
     expect(body.ok).toBe(false);
     expect(body.errors[0]).toMatchObject({ deviceId: "ghost", message: "device not found" });
+  });
+});
+
+describe("POST /bulk/connections", () => {
+  test("creates a batch of plain connections — the twenty-NETIOs case", async () => {
+    const { status, body } = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [
+        { name: "Hall 1 — Netio 1", driverId: "netio", host: "10.0.3.1" },
+        { name: "Hall 1 — Netio 2", driverId: "netio", host: "10.0.3.2" },
+        { name: "Hall 1 — Netio 3", driverId: "netio", host: "10.0.3.3" },
+      ],
+    });
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, created: 3, updated: 0 });
+    expect(Object.keys(connectionRows)).toHaveLength(3);
+    // No endpoint had to be decided first — that is the whole point of the sheet.
+    expect(Object.keys(deviceRows)).toHaveLength(0);
+    expect(managerCalls.filter((c) => c.startsWith("add:"))).toHaveLength(3);
+  });
+
+  test("fills driver config from the manifest defaults, so the sheet needs no config columns", async () => {
+    await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [{ name: "Wall 1", driverId: "samsung-mdc", host: "10.0.4.1" }],
+    });
+
+    const created = Object.values(connectionRows)[0]!;
+    expect(created.config).toMatchObject({ responseTimeoutMs: 2000, reconnectMs: 2000 });
+    expect(created).toMatchObject({ host: "10.0.4.1", protocol: "tcp", enabled: true });
+  });
+
+  test("rejects the whole batch for one bad row, addressed to a bare column key", async () => {
+    const { body } = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [
+        { name: "Good", driverId: "netio", host: "10.0.3.1" },
+        { name: "Bad", driverId: "netio", host: "10.0.3.999" },
+      ],
+    });
+
+    expect(body.ok).toBe(false);
+    // A connection sheet has no second record, so no `connection.` prefix.
+    expect(body.errors[0]).toMatchObject({ row: 1, field: "host" });
+    expect(Object.keys(connectionRows)).toHaveLength(0);
+  });
+
+  test("requires a driver and a name when creating", async () => {
+    const missingDriver = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [{ name: "Nameless", host: "10.0.3.1" }],
+    });
+    expect(missingDriver.body.errors[0]).toMatchObject({ row: 0, field: "driverId" });
+
+    const missingName = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [{ driverId: "netio", host: "10.0.3.1" }],
+    });
+    expect(missingName.body.errors[0]).toMatchObject({ row: 0, field: "name" });
+  });
+
+  test("updates in place and restarts the driver host", async () => {
+    connectionRows.c9 = { id: "c9", name: "Old", driverId: "netio", host: "10.0.3.1", enabled: true };
+    const { body } = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [{ connectionId: "c9", name: "New", host: "10.0.3.9" }],
+    });
+
+    expect(body).toMatchObject({ ok: true, created: 0, updated: 1 });
+    expect(connectionRows.c9).toMatchObject({ name: "New", host: "10.0.3.9" });
+    expect(managerCalls).toEqual(["stop:c9", "add:c9"]);
+  });
+
+  test("a dry run reports the batch without writing it", async () => {
+    const { body } = await post<BulkConnectionApplyResult>("/api/v1/bulk/connections", {
+      rows: [{ name: "Netio 1", driverId: "netio", host: "10.0.3.1" }],
+      dryRun: true,
+    });
+
+    expect(body).toMatchObject({ ok: true, dryRun: true, created: 1 });
+    expect(Object.keys(connectionRows)).toHaveLength(0);
+    expect(managerCalls).toEqual([]);
+  });
+});
+
+describe("POST /bulk/connections/delete", () => {
+  beforeEach(() => {
+    connectionRows.c1 = { id: "c1", name: "Empty", driverId: "netio", host: "10.0.3.1" };
+    connectionRows.c2 = { id: "c2", name: "In use", driverId: "netio", host: "10.0.3.2" };
+    deviceRows.d1 = { id: "d1", connectionId: "c2", name: "Socket 1" };
+  });
+
+  test("deletes connections nothing hangs off, and stops their hosts", async () => {
+    const { body } = await post<BulkConnectionDeleteResult>("/api/v1/bulk/connections/delete", {
+      connectionIds: ["c1"],
+    });
+
+    expect(body).toMatchObject({ ok: true, deletedConnections: 1 });
+    expect(connectionRows.c1).toBeUndefined();
+    expect(managerCalls).toEqual(["stop:c1"]);
+  });
+
+  test("refuses the batch when a connection still carries devices", async () => {
+    const { body } = await post<BulkConnectionDeleteResult>("/api/v1/bulk/connections/delete", {
+      connectionIds: ["c1", "c2"],
+    });
+
+    expect(body.ok).toBe(false);
+    expect(body.errors[0]).toMatchObject({ connectionId: "c2" });
+    // Nothing deleted — not even the one that was fine.
+    expect(connectionRows.c1).toBeDefined();
   });
 });

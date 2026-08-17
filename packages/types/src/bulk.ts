@@ -149,3 +149,68 @@ export interface BulkDeleteResult {
   deletedConnections: number;
   errors: Array<{ deviceId: string; message: string }>;
 }
+
+// ── connections ─────────────────────────────────────────────────────────────
+
+/**
+ * One row of a connection sheet: a physical socket, with nothing above it.
+ *
+ * This is the sheet that matters for standing up a site — twenty NETIOs or
+ * sixty displays are twenty or sixty *connections*, each just a name and an
+ * address, and none of them need an endpoint decided before they can exist.
+ * Driver-specific `config` is optional here on purpose: the server fills in
+ * every property the driver's `connectionSchema` gives a default for, so a
+ * sheet that shows only name/host/port produces valid connections.
+ */
+export interface BulkConnectionRowInput {
+  /** Existing connection to update; omit to create a new one. */
+  connectionId?: string;
+  name?: string;
+  /** Required when creating. Ignored on update — a connection's driver is fixed. */
+  driverId?: string;
+  host?: string | null;
+  port?: number | null;
+  protocol?: string;
+  /** Merged over the manifest defaults; omit entirely to accept them all. */
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+/** Body accepted by `POST /api/v1/bulk/connections`. */
+export interface BulkConnectionApplyInput {
+  rows: BulkConnectionRowInput[];
+  dryRun?: boolean;
+}
+
+export interface BulkConnectionRowResult {
+  row: number;
+  /** Empty on a dry run — nothing was written, so there is no id yet. */
+  connectionId: string;
+  connection: BulkRecordAction;
+}
+
+/**
+ * Result of `POST /api/v1/bulk/connections` — same contract as the device
+ * apply: 200 with `ok: false` and cell-addressed errors when the batch is
+ * rejected, and nothing written in that case.
+ */
+export interface BulkConnectionApplyResult {
+  ok: boolean;
+  dryRun: boolean;
+  created: number;
+  updated: number;
+  errors: BulkRowError[];
+  rows: BulkConnectionRowResult[];
+}
+
+/** Body accepted by `POST /api/v1/bulk/connections/delete`. */
+export interface BulkConnectionDeleteInput {
+  connectionIds: string[];
+}
+
+export interface BulkConnectionDeleteResult {
+  ok: boolean;
+  deletedConnections: number;
+  /** A connection that still carries devices is reported, never silently cascaded. */
+  errors: Array<{ connectionId: string; message: string }>;
+}
