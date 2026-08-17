@@ -65,11 +65,10 @@ export interface SheetColumn {
   /** Seed for a freshly added row when there's no earlier row to continue from. */
   fallback: SheetValue
   /**
-   * Hidden until the operator turns it on. Used for connection settings that
-   * have a sensible manifest default (timeouts, delimiters) — real columns,
-   * just not ones worth 64 rows of screen width.
+   * Fixed CSS width. The grid lays out `table-fixed`, so a cell never changes
+   * size while it is being edited — the editor floats above it instead.
    */
-  advanced?: boolean
+  width?: string
 }
 
 /** One row of the grid — a device, and in `unit` mode the connection under it. */
@@ -149,9 +148,6 @@ function columnFromSchema(
     max: property.maximum,
     options: property.enum?.map((value) => ({ value: String(value), label: String(value) })),
     fallback: (property.default as SheetValue | undefined) ?? null,
-    // A field the manifest gives a default to is one nobody needs to see to
-    // add a device — keep it available but out of the way.
-    advanced: scope === 'connection' && !required && property.default !== undefined,
   }
 }
 
@@ -167,9 +163,14 @@ export function buildColumns(
   endpointType: EndpointTypeDefinition | undefined,
   rooms: RoomDTO[],
   mode: SheetMode,
+  /**
+   * Connections a row may hang off. Passing them adds a Connection column,
+   * which is what lets the device sheet open with every device already in it
+   * instead of demanding a driver and a gateway be chosen first.
+   */
+  connections: SheetSelectOption[] = [],
 ): SheetColumn[] {
-  if (!manifest) return []
-  const unit = mode === 'unit'
+  const unit = manifest ? mode === 'unit' : false
   const columns: SheetColumn[] = [
     {
       key: 'name',
@@ -186,6 +187,21 @@ export function buildColumns(
       fallback: '',
     },
   ]
+
+  if (!unit && connections.length) {
+    columns.push({
+      key: 'connectionId',
+      field: 'connectionId',
+      scope: 'device',
+      label: 'Connection',
+      kind: 'select',
+      description: 'The socket this endpoint lives on. Fixed once the device exists.',
+      required: true,
+      options: connections,
+      fallback: null,
+      width: '15rem',
+    })
+  }
 
   if (unit) {
     // The connection's own name — a *different* name on purpose, and the
@@ -209,8 +225,9 @@ export function buildColumns(
       fallback: '',
     })
 
-    const required = new Set(manifest.connectionSchema.required ?? [])
-    for (const [key, property] of scalarProperties(manifest.connectionSchema)) {
+    const schema = manifest?.connectionSchema
+    const required = new Set(schema?.required ?? [])
+    for (const [key, property] of scalarProperties(schema)) {
       columns.push(columnFromSchema(key, property, 'connection', required.has(key)))
     }
   }
@@ -545,10 +562,27 @@ export function appendRows(
   return created
 }
 
-/** Rows whose values differ from the saved snapshot (plus every unsaved row). */
+/** A row copy the grid can mutate without touching the caller's array. */
+export const cloneRow = (row: SheetRow): SheetRow => ({ ...row, values: { ...row.values } })
+
+/**
+ * One row seeded only from the column fallbacks — "add an empty row", as
+ * opposed to `appendRows`, which continues whatever series the sheet already
+ * holds. Both exist because both are things an operator means.
+ */
+export function blankRow(columns: SheetColumn[], key: number): SheetRow {
+  const values: Record<string, SheetValue> = {}
+  for (const column of columns) values[column.key] = column.fallback
+  return { key: `new:${key}`, values }
+}
+
+/**
+ * Rows whose values differ from the saved snapshot, plus every row that has no
+ * snapshot at all — which is exactly the set of freshly added rows, whatever
+ * kind of record the sheet holds.
+ */
 export function dirtyRows(rows: SheetRow[], originals: Map<string, SheetRow>): SheetRow[] {
   return rows.filter((row) => {
-    if (!row.deviceId) return true
     const original = originals.get(row.key)
     if (!original) return true
     return Object.keys(row.values).some((key) => row.values[key] !== original.values[key])
@@ -636,7 +670,9 @@ export function buildBulkPayload(
         enabled: input.enabled,
       }
     } else if (!row.deviceId) {
-      input.connectionId = options.connectionId
+      // Endpoint rows name their own connection through the Connection column,
+      // which is what lets one sheet hold endpoints from several gateways.
+      input.connectionId = (row.values.connectionId as string | null) ?? options.connectionId
     }
     return input
   })
@@ -654,6 +690,99 @@ export function rangeBetween(anchor: CellRef, focus: CellRef): CellRange {
   }
 }
 
-export function isInRange(range: CellRange, row: number, col: number): boolean {
+function isInRange(range: CellRange, row: number, col: number): boolean {
   return row >= range.top && row <= range.bottom && col >= range.left && col <= range.right
+}
+
+/**
+ * The selection is a *list* of rectangles, not one, so ⌘-clicking rows 4, 6
+ * and 7 is a thing you can express — and so the row checkboxes have something
+ * truthful to mirror.
+ */
+export type Selection = CellRange[]
+
+export function isSelected(selection: Selection, row: number, col: number): boolean {
+  return selection.some((range) => isInRange(range, row, col))
+}
+
+/** Row indices touched by any rectangle, ascending — what a row action applies to. */
+export function selectedRowIndices(selection: Selection): number[] {
+  const rows = new Set<number>()
+  for (const range of selection) {
+    for (let row = range.top; row <= range.bottom; row++) rows.add(row)
+  }
+  return [...rows].sort((a, b) => a - b)
+}
+
+/** A whole-row rectangle — what ticking a row's checkbox selects. */
+export const wholeRow = (row: number, columnCount: number): CellRange => ({
+  top: row,
+  bottom: row,
+  left: 0,
+  right: Math.max(columnCount - 1, 0),
+})
+
+/** Every cell the selection covers, in row-major order. */
+export function selectedCells(selection: Selection): CellRef[] {
+  const seen = new Set<string>()
+  const cells: CellRef[] = []
+  for (const range of selection) {
+    for (let row = range.top; row <= range.bottom; row++) {
+      for (let col = range.left; col <= range.right; col++) {
+        const key = `${row}:${col}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        cells.push({ row, col })
+      }
+    }
+  }
+  return cells.sort((a, b) => a.row - b.row || a.col - b.col)
+}
+
+/** One cell a paste resolves to. */
+export interface PasteTarget {
+  row: number
+  col: number
+  text: string
+}
+
+/**
+ * Work out where a pasted block lands.
+ *
+ * Two behaviours, both taken from what spreadsheets do and what the operator
+ * expects: a block bigger than one cell is laid down from the cursor (growing
+ * the sheet if it runs past the end), while a block pasted into a *selection*
+ * repeats across it — copy one cell, select thirty, paste, and all thirty take
+ * the value. Without that second rule, "set these twenty ports to 1515" means
+ * twenty pastes.
+ */
+export function pastePlan(
+  source: string[][],
+  cursor: CellRef,
+  selection: Selection,
+): PasteTarget[] {
+  if (!source.length) return []
+  const height = source.length
+  const width = Math.max(...source.map((line) => line.length))
+  const cells = selectedCells(selection)
+  const fillsSelection = cells.length > 1 && (height * width === 1 || cells.length > height * width)
+
+  if (fillsSelection) {
+    // Tile the block over the selection, anchored on its top-left cell.
+    const top = Math.min(...cells.map((cell) => cell.row))
+    const left = Math.min(...cells.map((cell) => cell.col))
+    return cells.map((cell) => ({
+      row: cell.row,
+      col: cell.col,
+      text: source[(cell.row - top) % height]?.[(cell.col - left) % width] ?? '',
+    }))
+  }
+
+  const targets: PasteTarget[] = []
+  source.forEach((line, rowOffset) => {
+    line.forEach((text, colOffset) => {
+      targets.push({ row: cursor.row + rowOffset, col: cursor.col + colOffset, text })
+    })
+  })
+  return targets
 }

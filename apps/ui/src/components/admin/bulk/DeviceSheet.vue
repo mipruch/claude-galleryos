@@ -1,94 +1,44 @@
 <script setup lang="ts">
 /**
- * Bulk device sheet — a spreadsheet over the device list, for the jobs the
- * single-record dialog is wrong for: standing up 64 identical displays, or
- * retyping one field across a whole room.
+ * Device sheet — the endpoint side of bulk editing, on the shared `SheetGrid`.
  *
- * The grid behaves the way an operator coming from Google Sheets or DataGrip
- * expects: click a cell, type; arrow keys and Tab move; Shift extends a
- * rectangular selection; ⌘/Ctrl+C and ⌘/Ctrl+V exchange TSV with the outside
- * world (so a column of names and IPs can be pasted straight out of the
- * customer's spreadsheet); ⌘/Ctrl+D fills a selection down, continuing a
- * series rather than just copying — "Displej 01" and 10.0.1.1 become
- * "Displej 02" and 10.0.1.2. "Add rows" does the same thing without a
- * clipboard: fill one row, ask for 63 more, and the counter and the address
- * walk forward while the settled columns (type, room, port) carry down.
+ * It opens with every device already in it: name, connection, type, room,
+ * enabled. Nothing has to be chosen to see the table, and those columns are
+ * editable for any device regardless of driver — which covers most of what
+ * bulk editing devices is actually for.
  *
- * A row is one *physical box*, not one database record. For a driver that
- * declares `soloEndpointType` (a Samsung display on its own IP, a projector)
- * the connection and the endpoint are written together from one row — see
- * `lib/bulkSheet.ts` for the two sheet shapes. For gateway drivers the
- * connection is picked once above the grid and rows are endpoints on it.
+ * Choosing a driver (and, where the driver offers several, an endpoint type)
+ * *scopes* the sheet: the rows narrow to that kind of endpoint and the columns
+ * grow to include its addressing. That is the mode worth having for something
+ * like a BSS DSP, where a rack of matrix crosspoints differs only by a few
+ * numbers per row — and it's the only mode in which new rows can be added,
+ * since an endpoint can't be created without knowing how it is addressed.
  *
- * Collapsing the pair into one row does not collapse their *names*: a row
- * carries both, because they are read by different people. The device name is
- * what a custodian sees on the panel ("Panel lighting"); the connection name is
- * what an integrator sees in Connections while tracing a rack ("Hall 1 — Netio
- * 2"). Either column may be left blank and takes the other's value on save, so
- * naming 64 boxes still costs one column, not two.
- *
- * Nothing is written until Save, which sends every changed row in one
- * all-or-nothing request (`POST /bulk/devices`). A rejected batch comes back
- * addressed by row and field, so the offending cells turn red and nothing is
- * half-applied. The single-record dialog on the List tab is untouched and
- * remains the right tool for editing one device.
- *
- * The grid is built from the vendored shadcn-vue `Table` primitives, so it
- * inherits the same borders, hover and spacing as every other admin table.
- * What stays native is *inside* a cell: the select and checkbox are plain
- * elements because a popover-based select would fight keyboard navigation and
- * paste targeting, which matter more than styling in a grid.
+ * For a 1:1 driver (`soloEndpointType` — a display on its own IP) the scoped
+ * sheet also carries the connection's own columns, so one row still means one
+ * physical box. Connections that aren't 1:1 are created in the Connections
+ * sheet instead, which needs no scoping at all.
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  ArrowDownIcon,
-  CheckIcon,
-  Columns3Icon,
-  PlusIcon,
-  RotateCcwIcon,
-  SaveIcon,
-  Trash2Icon,
-  TriangleAlertIcon,
-} from '@lucide/vue'
+import { CheckIcon, RotateCcwIcon, SaveIcon, TriangleAlertIcon } from '@lucide/vue'
 import type { BulkApplyResult } from '@gallery/types'
 import { api } from '@/lib/api'
 import { errMsg } from '@/lib/http'
 import {
-  appendRows,
   buildBulkPayload,
   buildColumns,
+  cloneRow,
   dirtyRows,
-  extendSeries,
-  formatCell,
-  isInRange,
-  parseCell,
-  parseClipboardGrid,
-  rangeBetween,
   resolveEndpointType,
   rowFromDevice,
   sheetModeOf,
-  toClipboardGrid,
-  validateCell,
-  type CellRef,
-  type SheetColumn,
   type SheetRow,
-  type SheetValue,
 } from '@/lib/bulkSheet'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDevicesStore } from '@/stores/devices'
 import { useDriversStore } from '@/stores/drivers'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,434 +49,88 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-
-/**
- * Header cells stick to the top of the scrolling grid. It goes on the cells
- * rather than the header row because Tailwind's preflight collapses table
- * borders, and a collapsed-border table only honours `position: sticky` on
- * `<th>`/`<td>`.
- */
-const STICKY_HEAD = 'bg-muted/60 sticky top-0 z-10'
+import SheetGrid from './SheetGrid.vue'
 
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
 const drivers = useDriversStore()
 
-// ── what this sheet is editing ──────────────────────────────────────────────
+// ── scope (optional: an empty driver means "every device") ──────────────────
 const driverId = ref('')
-const gatewayId = ref('')
-/** Explicit endpoint type, for gateway drivers that offer several (BSS: fader / mute / meter). */
 const endpointTypeName = ref('')
 const manifest = computed(() => drivers.get(driverId.value))
 const mode = computed(() => sheetModeOf(manifest.value))
 const endpointType = computed(() => resolveEndpointType(manifest.value, endpointTypeName.value))
-/** Shown only when the driver leaves the choice open. */
 const endpointChoices = computed(() =>
   manifest.value && !manifest.value.soloEndpointType && manifest.value.endpointTypes.length > 1
     ? manifest.value.endpointTypes
     : [],
 )
-/** Gateways available to hang endpoint rows off, for non-1:1 drivers. */
-const gateways = computed(() =>
-  connections.connections.filter((c) => c.driverId === driverId.value),
-)
-const ready = computed(
-  () => !!manifest.value && !!endpointType.value && (mode.value === 'unit' || !!gatewayId.value),
+/** New endpoints need addressing, which only a scoped sheet knows. */
+const scoped = computed(() => !!manifest.value && !!endpointType.value)
+
+const connectionOptions = computed(() =>
+  connections.connections
+    .filter((connection) => !driverId.value || connection.driverId === driverId.value)
+    .map((connection) => ({ value: connection.id, label: connection.name })),
 )
 
-// Every column the sheet knows about; `columns` is what's on screen. Rows carry
-// values for all of them so hiding a column never drops what it holds.
-const allColumns = computed(() =>
-  buildColumns(manifest.value, endpointType.value, devices.rooms, mode.value),
+const columns = computed(() =>
+  buildColumns(
+    manifest.value,
+    endpointType.value,
+    devices.rooms,
+    mode.value,
+    // A 1:1 row *is* its connection, so it needs no picker.
+    mode.value === 'unit' && scoped.value ? [] : connectionOptions.value,
+  ),
 )
-const showAdvanced = ref(false)
-const columns = computed(() => allColumns.value.filter((c) => showAdvanced.value || !c.advanced))
-const advancedCount = computed(() => allColumns.value.filter((c) => c.advanced).length)
 
-// ── grid state ──────────────────────────────────────────────────────────────
+// ── rows ────────────────────────────────────────────────────────────────────
 const rows = ref<SheetRow[]>([])
 const originals = ref(new Map<string, SheetRow>())
-const selectedRowKeys = ref(new Set<string>())
-const anchor = ref<CellRef | null>(null)
-const cursor = ref<CellRef | null>(null)
-const editing = ref(false)
-const draft = ref('')
-/** Server-reported problems, keyed `${rowIndex}:${columnKey}`. */
 const serverErrors = ref(new Map<string, string>())
 const saving = ref(false)
-const addCount = ref(1)
+const pendingDelete = ref<string[]>([])
 const deleteOpen = ref(false)
-const gridRef = ref<HTMLElement | null>(null)
-// A `ref` inside a v-for collects an array; the editor is a single element that
-// comes and goes, so it's captured by callback instead.
-let editorEl: HTMLInputElement | null = null
-const setEditorEl = (el: unknown): void => {
-  editorEl = (el as HTMLInputElement | null) ?? null
-}
-let newRowSeq = 0
 
-const selection = computed(() =>
-  anchor.value && cursor.value ? rangeBetween(anchor.value, cursor.value) : null,
-)
 const changed = computed(() => dirtyRows(rows.value, originals.value))
-const selectedRows = computed(() => rows.value.filter((row) => selectedRowKeys.value.has(row.key)))
+const dirtyKeys = computed(() => new Set(changed.value.map((row) => row.key)))
 
-const cloneRow = (row: SheetRow): SheetRow => ({ ...row, values: { ...row.values } })
-
-/** Rebuild the grid from the store for the current driver / gateway. */
 function hydrate(): void {
   serverErrors.value = new Map()
-  selectedRowKeys.value = new Set()
-  anchor.value = null
-  cursor.value = null
-  if (!driverId.value) {
-    rows.value = []
-    originals.value = new Map()
-    return
-  }
-  const byId = new Map(connections.connections.map((c) => [c.id, c]))
+  const byId = new Map(connections.connections.map((connection) => [connection.id, connection]))
   const mine = devices.records
     .filter((device) => {
+      if (!driverId.value) return true
       const connection = byId.get(device.connectionId)
-      if (!connection || connection.driverId !== driverId.value) return false
-      return mode.value === 'unit' || device.connectionId === gatewayId.value
+      if (connection?.driverId !== driverId.value) return false
+      return !endpointType.value || device.subtype === endpointType.value.type
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   rows.value = mine.map((device) =>
-    rowFromDevice(device, byId.get(device.connectionId), allColumns.value),
+    rowFromDevice(device, byId.get(device.connectionId), columns.value),
   )
   originals.value = new Map(rows.value.map((row) => [row.key, cloneRow(row)]))
 }
 
 watch(driverId, () => {
   endpointTypeName.value = ''
-  gatewayId.value = ''
 })
-watch([driverId, gatewayId, endpointTypeName], hydrate)
+watch([columns], hydrate)
 watch(
   () => devices.records.length + connections.connections.length,
   () => {
-    // Don't clobber unsaved edits when a socket update refreshes the stores.
     if (!changed.value.length) hydrate()
   },
 )
 
-// Preselect the driver when there's only one sensible answer.
-watch(
-  () => drivers.manifests.length,
-  () => {
-    if (!driverId.value && drivers.manifests.length === 1) driverId.value = drivers.manifests[0]!.id
-  },
-)
-watch(gateways, (list) => {
-  if (mode.value === 'endpoint' && !gatewayId.value && list.length === 1)
-    gatewayId.value = list[0]!.id
-})
-
-// ── cell helpers ────────────────────────────────────────────────────────────
-const cellKey = (rowIndex: number, column: SheetColumn): string => `${rowIndex}:${column.key}`
-
-function cellText(rowIndex: number, column: SheetColumn): string {
-  const row = rows.value[rowIndex]
-  return row ? formatCell(column, row.values[column.key] ?? null) : ''
-}
-
-function setCell(rowIndex: number, column: SheetColumn, value: SheetValue): void {
-  const row = rows.value[rowIndex]
-  if (!row) return
-  row.values[column.key] = value
-  serverErrors.value.delete(cellKey(rowIndex, column))
-}
-
-function cellError(rowIndex: number, column: SheetColumn): string | null {
-  const server = serverErrors.value.get(cellKey(rowIndex, column))
-  if (server) return server
-  const row = rows.value[rowIndex]
-  if (!row) return null
-  return validateCell(column, row.values[column.key] ?? null, row.values)
-}
-
-const isRowDirty = (row: SheetRow): boolean => {
-  if (!row.deviceId) return true
-  const original = originals.value.get(row.key)
-  return (
-    !original || Object.keys(row.values).some((key) => row.values[key] !== original.values[key])
-  )
-}
-
-// ── selection & keyboard ────────────────────────────────────────────────────
-function focusCell(rowIndex: number, colIndex: number, extend = false): void {
-  const target = {
-    row: Math.max(0, Math.min(rowIndex, rows.value.length - 1)),
-    col: Math.max(0, Math.min(colIndex, columns.value.length - 1)),
-  }
-  cursor.value = target
-  if (!extend || !anchor.value) anchor.value = { ...target }
-  editing.value = false
-  void nextTick(() => gridRef.value?.focus())
-}
-
-function onCellMouseDown(rowIndex: number, colIndex: number, event: MouseEvent): void {
-  focusCell(rowIndex, colIndex, event.shiftKey)
-}
-
-function startEditing(initial?: string): void {
-  const cell = cursor.value
-  if (!cell) return
-  const column = columns.value[cell.col]
-  if (!column || column.kind === 'boolean' || column.kind === 'select') return
-  draft.value = initial ?? cellText(cell.row, column)
-  editing.value = true
-  void nextTick(() => {
-    editorEl?.focus()
-    if (initial === undefined) editorEl?.select()
-  })
-}
-
-function commitEdit(move: 'down' | 'right' | 'none' = 'none'): void {
-  // Enter commits and moves on, which unmounts the input and fires blur —
-  // without this guard that second call would write the draft into the *next*
-  // cell.
-  if (!editing.value) return
-  const cell = cursor.value
-  const column = cell ? columns.value[cell.col] : undefined
-  if (cell && column) setCell(cell.row, column, parseCell(column, draft.value))
-  editing.value = false
-  if (!cell) return
-  if (move === 'down') focusCell(cell.row + 1, cell.col)
-  else if (move === 'right') focusCell(cell.row, cell.col + 1)
-  else void nextTick(() => gridRef.value?.focus())
-}
-
-function clearSelectedCells(): void {
-  const range = selection.value
-  if (!range) return
-  for (let row = range.top; row <= range.bottom; row++) {
-    for (let col = range.left; col <= range.right; col++) {
-      const column = columns.value[col]
-      if (column) setCell(row, column, column.kind === 'boolean' ? false : null)
-    }
-  }
-}
-
-/**
- * Continue each selected column downwards from the top of the selection.
- *
- * One filled seed row steps by one ("Displej 01" → "Displej 02"); two filled
- * rows set the step, which is how a `10.0.1.1 / 10.0.1.3` pair fills every
- * other address. Non-text columns (type, room, enabled) copy the seed.
- */
-function fillDown(): void {
-  const range = selection.value
-  if (!range || range.bottom === range.top) return
-  for (let col = range.left; col <= range.right; col++) {
-    const column = columns.value[col]
-    if (!column) continue
-    const secondSeeded = range.top + 1 <= range.bottom && cellText(range.top + 1, column) !== ''
-    const seedRows = secondSeeded ? [range.top, range.top + 1] : [range.top]
-    const firstTarget = range.top + seedRows.length
-    if (firstTarget > range.bottom) continue
-
-    if (column.kind === 'text' || column.kind === 'number') {
-      const seeds = seedRows.map((row) => cellText(row, column))
-      const filled = extendSeries(seeds, range.bottom - firstTarget + 1)
-      filled.forEach((value, offset) =>
-        setCell(firstTarget + offset, column, parseCell(column, value)),
-      )
-    } else {
-      const seed = rows.value[range.top]?.values[column.key] ?? null
-      for (let row = firstTarget; row <= range.bottom; row++) setCell(row, column, seed)
-    }
-  }
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  const cell = cursor.value
-  if (!cell || editing.value) return
-  const meta = event.metaKey || event.ctrlKey
-  const column = columns.value[cell.col]
-
-  if (meta && event.key.toLowerCase() === 'd') {
-    event.preventDefault()
-    fillDown()
-    return
-  }
-  // Copy/paste are handled by the clipboard events, which carry the payload.
-  if (meta && ['c', 'v', 'x', 'a'].includes(event.key.toLowerCase())) return
-
-  switch (event.key) {
-    case 'ArrowUp':
-      event.preventDefault()
-      focusCell(cell.row - 1, cell.col, event.shiftKey)
-      return
-    case 'ArrowDown':
-      event.preventDefault()
-      focusCell(cell.row + 1, cell.col, event.shiftKey)
-      return
-    case 'ArrowLeft':
-      event.preventDefault()
-      focusCell(cell.row, cell.col - 1, event.shiftKey)
-      return
-    case 'ArrowRight':
-      event.preventDefault()
-      focusCell(cell.row, cell.col + 1, event.shiftKey)
-      return
-    case 'Tab':
-      event.preventDefault()
-      focusCell(cell.row, cell.col + (event.shiftKey ? -1 : 1))
-      return
-    case 'Enter':
-    case 'F2':
-      event.preventDefault()
-      if (column?.kind === 'boolean')
-        setCell(cell.row, column, !rows.value[cell.row]?.values[column.key])
-      else startEditing()
-      return
-    case ' ':
-      if (column?.kind === 'boolean') {
-        event.preventDefault()
-        setCell(cell.row, column, !rows.value[cell.row]?.values[column.key])
-      }
-      return
-    case 'Escape':
-      anchor.value = { ...cell }
-      return
-    case 'Backspace':
-    case 'Delete':
-      event.preventDefault()
-      clearSelectedCells()
-      return
-    default:
-      break
-  }
-
-  // Any printable character starts an edit with that character, as in a sheet.
-  if (!meta && !event.altKey && event.key.length === 1) {
-    event.preventDefault()
-    startEditing(event.key)
-  }
-}
-
-function onCopy(event: ClipboardEvent): void {
-  const range = selection.value
-  if (!range || editing.value) return
-  const grid: string[][] = []
-  for (let row = range.top; row <= range.bottom; row++) {
-    const line: string[] = []
-    for (let col = range.left; col <= range.right; col++) {
-      const column = columns.value[col]
-      if (column) line.push(cellText(row, column))
-    }
-    grid.push(line)
-  }
-  event.clipboardData?.setData('text/plain', toClipboardGrid(grid))
-  event.preventDefault()
-}
-
-/** Paste a TSV block from Sheets/Excel at the cursor, growing the sheet to fit. */
-function onPaste(event: ClipboardEvent): void {
-  const cell = cursor.value
-  if (!cell || editing.value) return
-  const text = event.clipboardData?.getData('text/plain') ?? ''
-  if (!text) return
-  event.preventDefault()
-
-  const grid = parseClipboardGrid(text)
-  if (!grid.length) return
-  const missing = cell.row + grid.length - rows.value.length
-  if (missing > 0) addRows(missing)
-
-  grid.forEach((line, rowOffset) => {
-    line.forEach((value, colOffset) => {
-      const column = columns.value[cell.col + colOffset]
-      if (column) setCell(cell.row + rowOffset, column, parseCell(column, value))
-    })
-  })
-  const width = Math.max(...grid.map((line) => line.length))
-  anchor.value = { ...cell }
-  cursor.value = {
-    row: Math.min(cell.row + grid.length - 1, rows.value.length - 1),
-    col: Math.min(cell.col + width - 1, columns.value.length - 1),
-  }
-}
-
-// ── row operations ──────────────────────────────────────────────────────────
-function addRows(count: number): void {
-  const created = appendRows(rows.value, allColumns.value, count, newRowSeq)
-  newRowSeq += count
-  rows.value = [...rows.value, ...created]
-  void nextTick(() => focusCell(rows.value.length - created.length, 0))
-}
-
-function toggleRowSelection(key: string, checked: boolean): void {
-  const next = new Set(selectedRowKeys.value)
-  if (checked) next.add(key)
-  else next.delete(key)
-  selectedRowKeys.value = next
-}
-
-function toggleAllRows(checked: boolean): void {
-  selectedRowKeys.value = checked ? new Set(rows.value.map((row) => row.key)) : new Set()
-}
-
-/** Apply one value to a column across every selected row — the "assign a room to these six" action. */
-function applyToSelection(columnKey: string, value: SheetValue): void {
-  const column = allColumns.value.find((c) => c.key === columnKey)
-  if (!column) return
-  for (const row of selectedRows.value) {
-    row.values[columnKey] = value
-    const index = rows.value.indexOf(row)
-    serverErrors.value.delete(cellKey(index, column))
-  }
-}
-
-async function deleteSelectedRows(): Promise<void> {
-  deleteOpen.value = false
-  const saved = selectedRows.value.filter((row) => row.deviceId)
-  const unsaved = selectedRows.value.filter((row) => !row.deviceId)
-  rows.value = rows.value.filter((row) => !unsaved.includes(row))
-
-  if (saved.length) {
-    try {
-      const result = await api.bulk.deleteDevices({
-        deviceIds: saved.map((row) => row.deviceId as string),
-        // A 1:1 row is one box: deleting the device should not leave its
-        // connection behind for someone to find later and wonder about.
-        deleteOrphanedConnections: mode.value === 'unit',
-      })
-      if (!result?.ok) {
-        toast.error('Nothing was deleted', {
-          description: result?.errors.map((e) => e.message).join('; ') ?? 'Unknown error',
-        })
-        return
-      }
-      toast.success(`Deleted ${result.deletedDevices} device(s)`)
-      await Promise.all([devices.fetchAll(), connections.fetchAll()])
-    } catch (err) {
-      toast.error('Could not delete devices', { description: errMsg(err) })
-      return
-    }
-  }
-  selectedRowKeys.value = new Set()
-  hydrate()
-}
-
-// ── saving ──────────────────────────────────────────────────────────────────
-function payloadFor(dirty: SheetRow[]) {
-  return buildBulkPayload(dirty, allColumns.value, {
-    mode: mode.value,
-    driverId: driverId.value,
-    endpointType: endpointType.value?.type,
-    connectionId: gatewayId.value || undefined,
-  })
-}
-
-/** Map a rejected batch back onto cells: `errors[].row` indexes the rows we sent. */
-function markErrors(result: BulkApplyResult, dirty: SheetRow[]): void {
+/** Map a rejected batch back onto cells — `errors[].row` indexes what we sent. */
+function markErrors(result: BulkApplyResult, sent: SheetRow[]): void {
   const marks = new Map<string, string>()
   for (const error of result.errors) {
-    const row = dirty[error.row]
-    const index = row ? rows.value.findIndex((r) => r.key === row.key) : -1
+    const row = sent[error.row]
+    const index = row ? rows.value.findIndex((candidate) => candidate.key === row.key) : -1
     if (index < 0) continue
     marks.set(`${index}:${error.field ?? 'name'}`, error.message)
   }
@@ -534,14 +138,21 @@ function markErrors(result: BulkApplyResult, dirty: SheetRow[]): void {
 }
 
 async function submit(dryRun: boolean): Promise<void> {
-  const dirty = changed.value
-  if (!dirty.length || saving.value) return
+  const sent = changed.value
+  if (!sent.length || saving.value) return
   saving.value = true
   try {
-    const result = await api.bulk.applyDevices({ rows: payloadFor(dirty), dryRun })
+    const result = await api.bulk.applyDevices({
+      rows: buildBulkPayload(sent, columns.value, {
+        mode: mode.value,
+        driverId: driverId.value,
+        endpointType: endpointType.value?.type,
+      }),
+      dryRun,
+    })
     if (!result) return
     if (!result.ok) {
-      markErrors(result, dirty)
+      markErrors(result, sent)
       toast.error(`${result.errors.length} problem(s) — nothing was saved`, {
         description: result.errors[0]?.message,
       })
@@ -562,20 +173,51 @@ async function submit(dryRun: boolean): Promise<void> {
   }
 }
 
-function discard(): void {
+function askDelete(keys: string[]): void {
+  if (!keys.length) return
+  pendingDelete.value = keys
+  deleteOpen.value = true
+}
+
+async function confirmDelete(): Promise<void> {
+  deleteOpen.value = false
+  const keys = new Set(pendingDelete.value)
+  const saved = rows.value.filter((row) => keys.has(row.key) && row.deviceId)
+  rows.value = rows.value.filter((row) => !(keys.has(row.key) && !row.deviceId))
+
+  if (saved.length) {
+    try {
+      const result = await api.bulk.deleteDevices({
+        deviceIds: saved.map((row) => row.deviceId as string),
+        // A 1:1 row is one box: its connection goes with it rather than being
+        // left stranded for someone to puzzle over later.
+        deleteOrphanedConnections: mode.value === 'unit' && scoped.value,
+      })
+      if (!result?.ok) {
+        toast.error('Nothing was deleted', {
+          description: result?.errors.map((error) => error.message).join('; ') ?? 'Unknown error',
+        })
+        return
+      }
+      toast.success(`Deleted ${result.deletedDevices} device(s)`)
+      await Promise.all([devices.fetchAll(), connections.fetchAll()])
+    } catch (err) {
+      toast.error('Could not delete devices', { description: errMsg(err) })
+      return
+    }
+  }
   hydrate()
 }
 
-onMounted(() => {
-  devices.init()
-  connections.init()
-  drivers.load()
+onMounted(async () => {
+  await Promise.all([drivers.load(), devices.init(), connections.init()])
+  hydrate()
 })
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
-    <!-- What the sheet edits, and the row/column tools. -->
+    <!-- Scope: optional, and only needed to add endpoints or edit addressing. -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="space-y-1">
         <label class="text-muted-foreground text-xs font-medium" for="sheet-driver">Driver</label>
@@ -584,285 +226,97 @@ onMounted(() => {
           v-model="driverId"
           class="border-input bg-background h-9 w-56 rounded-md border px-2 text-sm"
         >
-          <option value="">Select a driver…</option>
-          <option v-for="d in drivers.manifests" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-      </div>
-
-      <div v-if="manifest && mode === 'endpoint'" class="space-y-1">
-        <label class="text-muted-foreground text-xs font-medium" for="sheet-gateway"
-          >Connection</label
-        >
-        <select
-          id="sheet-gateway"
-          v-model="gatewayId"
-          class="border-input bg-background h-9 w-56 rounded-md border px-2 text-sm"
-        >
-          <option value="">Select a connection…</option>
-          <option v-for="c in gateways" :key="c.id" :value="c.id">{{ c.name }}</option>
+          <option value="">All devices</option>
+          <option v-for="driver in drivers.manifests" :key="driver.id" :value="driver.id">
+            {{ driver.name }}
+          </option>
         </select>
       </div>
 
       <div v-if="endpointChoices.length" class="space-y-1">
-        <label class="text-muted-foreground text-xs font-medium" for="sheet-endpoint"
-          >Endpoint type</label
-        >
+        <label class="text-muted-foreground text-xs font-medium" for="sheet-endpoint">
+          Endpoint type
+        </label>
         <select
           id="sheet-endpoint"
           v-model="endpointTypeName"
-          class="border-input bg-background h-9 w-56 rounded-md border px-2 text-sm"
+          class="border-input bg-background h-9 w-64 rounded-md border px-2 text-sm"
         >
           <option value="">Select an endpoint type…</option>
-          <option v-for="e in endpointChoices" :key="e.type" :value="e.type">{{ e.name }}</option>
+          <option v-for="choice in endpointChoices" :key="choice.type" :value="choice.type">
+            {{ choice.name }}
+          </option>
         </select>
       </div>
 
-      <p v-if="manifest && mode === 'unit'" class="text-muted-foreground pb-2 text-sm">
-        One row = one device <span class="opacity-60">(its connection is created with it)</span>
+      <p class="text-muted-foreground pb-2 text-sm">
+        <template v-if="scoped && mode === 'unit'">
+          One row = one device, and its connection is written with it.
+        </template>
+        <template v-else-if="scoped">Rows are endpoints; pick each one's connection.</template>
+        <template v-else>
+          Every device. Pick a driver to edit addressing or add new endpoints.
+        </template>
       </p>
-      <p v-else-if="manifest && !gateways.length" class="text-muted-foreground pb-2 text-sm">
-        No connection uses this driver yet — create one first.
-      </p>
-
-      <div class="ml-auto flex items-end gap-2">
-        <Popover v-if="advancedCount">
-          <PopoverTrigger as-child>
-            <Button variant="outline" size="sm">
-              <Columns3Icon class="size-4" />
-              Columns
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent class="w-64">
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="showAdvanced" type="checkbox" class="size-4" />
-              Show advanced columns ({{ advancedCount }})
-            </label>
-            <p class="text-muted-foreground mt-2 text-xs">
-              Driver settings that already have a sensible default — timeouts, delimiters, the
-              connection's own name.
-            </p>
-          </PopoverContent>
-        </Popover>
-
-        <div v-if="ready" class="flex items-end gap-1">
-          <Input
-            v-model.number="addCount"
-            type="number"
-            min="1"
-            max="500"
-            class="h-9 w-20"
-            aria-label="Rows to add"
-          />
-          <Button variant="outline" size="sm" @click="addRows(Math.max(1, addCount))">
-            <PlusIcon class="size-4" />
-            Add rows
-          </Button>
-        </div>
-      </div>
     </div>
 
-    <!-- Row-level actions for the checkbox selection. -->
-    <div
-      v-if="selectedRows.length"
-      class="bg-muted/50 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2"
-    >
-      <span class="text-sm font-medium">{{ selectedRows.length }} row(s) selected</span>
-      <select
-        class="border-input bg-background h-8 rounded-md border px-2 text-sm"
-        aria-label="Assign room to selected rows"
-        @change="applyToSelection('roomId', ($event.target as HTMLSelectElement).value || null)"
-      >
-        <option value="">Assign room…</option>
-        <option v-for="room in devices.rooms" :key="room.id" :value="room.id">
-          {{ room.name }}
-        </option>
-      </select>
-      <Button variant="outline" size="sm" @click="applyToSelection('enabled', true)">Enable</Button>
-      <Button variant="outline" size="sm" @click="applyToSelection('enabled', false)"
-        >Disable</Button
-      >
-      <Button variant="ghost" size="sm" class="text-destructive" @click="deleteOpen = true">
-        <Trash2Icon class="size-4" />
-        Delete
-      </Button>
-    </div>
+    <SheetGrid
+      :columns="columns"
+      :rows="rows"
+      :dirty-keys="dirtyKeys"
+      :cell-errors="serverErrors"
+      :busy="saving"
+      empty-label="No devices here yet — pick a driver above, then add a row."
+      @update:rows="rows = $event"
+      @delete="askDelete"
+    />
 
-    <!-- The grid. Focus lives on this container; cells are painted, not inputs. -->
-    <div
-      v-if="ready"
-      ref="gridRef"
-      class="sheet max-h-[65vh] overflow-auto rounded-md border outline-none [&_[data-slot=table-container]]:overflow-visible"
-      tabindex="0"
-      @keydown="onKeydown"
-      @copy="onCopy"
-      @paste="onPaste"
-    >
-      <Table>
-        <TableHeader>
-          <TableRow class="hover:bg-transparent">
-            <TableHead :class="[STICKY_HEAD, 'w-10 text-center']">
-              <input
-                type="checkbox"
-                class="size-4"
-                aria-label="Select all rows"
-                :checked="!!rows.length && selectedRowKeys.size === rows.length"
-                @change="toggleAllRows(($event.target as HTMLInputElement).checked)"
-              />
-            </TableHead>
-            <TableHead :class="[STICKY_HEAD, 'w-10 text-right text-xs font-normal']">#</TableHead>
-            <TableHead
-              v-for="column in columns"
-              :key="column.key"
-              :class="[STICKY_HEAD, 'text-foreground border-l']"
-              :title="column.description"
-            >
-              {{ column.label }}
-              <span v-if="column.required && !column.requiredUnless" class="text-destructive"
-                >*</span
-              >
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow
-            v-for="(row, rowIndex) in rows"
-            :key="row.key"
-            :class="
-              isRowDirty(row)
-                ? 'bg-amber-50/60 hover:bg-amber-100/60 dark:bg-amber-950/20 dark:hover:bg-amber-950/40'
-                : undefined
-            "
-          >
-            <TableCell class="text-center">
-              <input
-                type="checkbox"
-                class="size-4"
-                :aria-label="`Select row ${rowIndex + 1}`"
-                :checked="selectedRowKeys.has(row.key)"
-                @change="toggleRowSelection(row.key, ($event.target as HTMLInputElement).checked)"
-              />
-            </TableCell>
-            <TableCell class="text-muted-foreground text-right text-xs tabular-nums">
-              {{ rowIndex + 1 }}
-            </TableCell>
-            <TableCell
-              v-for="(column, colIndex) in columns"
-              :key="column.key"
-              class="cell border-l p-0"
-              :class="{
-                selected: selection && isInRange(selection, rowIndex, colIndex),
-                cursor: cursor?.row === rowIndex && cursor?.col === colIndex,
-                invalid: !!cellError(rowIndex, column),
-              }"
-              :title="cellError(rowIndex, column) ?? undefined"
-              @mousedown="onCellMouseDown(rowIndex, colIndex, $event)"
-              @dblclick="startEditing()"
-            >
-              <!-- The focused text cell becomes a real input; everything else is painted text. -->
-              <input
-                v-if="editing && cursor?.row === rowIndex && cursor?.col === colIndex"
-                :ref="setEditorEl"
-                v-model="draft"
-                class="h-8 w-full bg-transparent px-2 outline-none"
-                @keydown.enter.prevent="commitEdit('down')"
-                @keydown.tab.prevent="commitEdit('right')"
-                @keydown.esc.prevent="editing = false"
-                @blur="commitEdit()"
-              />
-              <select
-                v-else-if="column.kind === 'select'"
-                class="h-8 w-full appearance-none bg-transparent px-2 outline-none"
-                :value="String(row.values[column.key] ?? '')"
-                @change="
-                  setCell(rowIndex, column, ($event.target as HTMLSelectElement).value || null)
-                "
-              >
-                <option value="">—</option>
-                <option v-for="option in column.options" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-              <div
-                v-else-if="column.kind === 'boolean'"
-                class="flex h-8 items-center justify-center"
-              >
-                <input
-                  type="checkbox"
-                  class="size-4"
-                  :checked="row.values[column.key] !== false"
-                  @change="setCell(rowIndex, column, ($event.target as HTMLInputElement).checked)"
-                />
-              </div>
-              <div v-else class="h-8 truncate px-2 leading-8">{{ cellText(rowIndex, column) }}</div>
-            </TableCell>
-          </TableRow>
-
-          <TableRow v-if="!rows.length" class="hover:bg-transparent">
-            <TableCell :colspan="columns.length + 2" class="text-muted-foreground p-10 text-center">
-              Nothing here yet — “Add rows” to start, or paste a block from your spreadsheet.
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
-
-    <p v-else class="text-muted-foreground rounded-md border p-10 text-center text-sm">
-      Pick a driver to start a sheet.
-    </p>
-
-    <!-- Save bar. -->
-    <div v-if="ready" class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <p class="text-muted-foreground text-sm">
         <template v-if="changed.length">
           {{ changed.length }} row(s) changed · nothing is written until you save
         </template>
         <template v-else>No changes</template>
       </p>
-      <p class="text-muted-foreground ml-auto hidden text-xs lg:block">
-        <ArrowDownIcon class="inline size-3" /> ⌘/Ctrl+D fills down · ⌘/Ctrl+C / ⌘/Ctrl+V exchange
-        cells with your spreadsheet
+      <p v-if="serverErrors.size" class="text-destructive flex items-center gap-1.5 text-sm">
+        <TriangleAlertIcon class="size-4" />
+        {{ serverErrors.size }} cell(s) rejected — nothing was written.
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        :disabled="!changed.length || saving"
-        @click="submit(true)"
-      >
-        <CheckIcon class="size-4" />
-        Check
-      </Button>
-      <Button variant="outline" size="sm" :disabled="!changed.length || saving" @click="discard">
-        <RotateCcwIcon class="size-4" />
-        Discard
-      </Button>
-      <Button size="sm" :disabled="!changed.length || saving" @click="submit(false)">
-        <SaveIcon class="size-4" />
-        Save {{ changed.length || '' }}
-      </Button>
+      <div class="ml-auto flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="!changed.length || saving"
+          @click="submit(true)"
+        >
+          <CheckIcon class="size-4" />
+          Check
+        </Button>
+        <Button variant="outline" size="sm" :disabled="!changed.length || saving" @click="hydrate">
+          <RotateCcwIcon class="size-4" />
+          Discard
+        </Button>
+        <Button size="sm" :disabled="!changed.length || saving" @click="submit(false)">
+          <SaveIcon class="size-4" />
+          Save {{ changed.length || '' }}
+        </Button>
+      </div>
     </div>
-
-    <p v-if="serverErrors.size" class="text-destructive flex items-center gap-2 text-sm">
-      <TriangleAlertIcon class="size-4" />
-      {{ serverErrors.size }} cell(s) rejected by the server — nothing was written.
-    </p>
 
     <AlertDialog v-model:open="deleteOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {{ selectedRows.length }} row(s)?</AlertDialogTitle>
+          <AlertDialogTitle>Delete {{ pendingDelete.length }} device(s)?</AlertDialogTitle>
           <AlertDialogDescription>
             Saved devices are removed immediately.
-            <template v-if="mode === 'unit'">
+            <template v-if="mode === 'unit' && scoped">
               Each device's connection goes with it once nothing else uses it.
             </template>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            class="bg-destructive hover:bg-destructive/90"
-            @click="deleteSelectedRows"
-          >
+          <AlertDialogAction class="bg-destructive hover:bg-destructive/90" @click="confirmDelete">
             Delete
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -870,30 +324,3 @@ onMounted(() => {
     </AlertDialog>
   </div>
 </template>
-
-<style scoped>
-.sheet {
-  /* A grid is only usable if a cell's state is legible at a glance: the cursor
-     reads as a single outlined cell, the range as a wash, an invalid cell as a
-     red field that survives both. */
-  .cell {
-    position: relative;
-    cursor: cell;
-    user-select: none;
-
-    &.selected {
-      background-color: color-mix(in oklab, var(--color-primary) 12%, transparent);
-    }
-
-    &.cursor {
-      outline: 2px solid var(--color-primary);
-      outline-offset: -2px;
-      z-index: 1;
-    }
-
-    &.invalid {
-      background-color: color-mix(in oklab, var(--color-destructive) 16%, transparent);
-    }
-  }
-}
-</style>

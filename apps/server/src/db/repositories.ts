@@ -256,8 +256,10 @@ export const devicesRepo = {
 // ── bulk writes (spreadsheet editor) ─────────────────────────
 
 /**
- * The connection half of one planned bulk row: `id` set updates that row,
- * absent inserts a new one. `values` is already validated by the route.
+ * A connection to write: `id` set updates that row, absent inserts a new one.
+ * `values` is already validated by the route. Used both as the connection half
+ * of a 1:1 device row and as a whole row of the connection sheet — it is the
+ * same write either way.
  */
 export interface BulkConnectionWrite {
   id?: string;
@@ -273,12 +275,6 @@ export interface BulkDeviceWrite {
   id?: string;
   connectionId?: string;
   values: Partial<NewDevice>;
-}
-
-/** One planned connection row of a connection sheet (no device attached). */
-export interface BulkConnectionWrite {
-  id?: string;
-  values: Partial<NewConnection>;
 }
 
 interface BulkConnectionOutcome {

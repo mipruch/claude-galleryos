@@ -1245,12 +1245,28 @@ device.
       pair never collapses the two audiences' names into one.
       Logic unit-tested in `__tests__/bulkSheet.spec.ts`.
 
+- [x] **Bulk connections API** (`POST /bulk/connections`, `/bulk/connections/delete`)
+      — the flat case the device sheet could not reach: a connection with no
+      endpoint decided yet, which is what standing up a site is mostly made of.
+      Driver config is filled from the manifest's declared defaults so a sheet
+      of name/host/port produces valid connections; errors address bare column
+      keys; deleting refuses a connection that still carries devices.
+- [x] **`SheetGrid.vue`** — one grid behind both sheets, rebuilt after review
+      feedback that the first cut was unintuitive. Single selection model (row
+      checkboxes mirror the cell selection), multi-rectangle selection with
+      drag and ⌘-click, undo/redo, paste that fills a selection, fixed column
+      widths with a floating editor, every column visible, an in-cell picker
+      that bulk-assigns any categorical column, and row adding at the bottom
+      (empty or series-continuing). Covered by `__tests__/sheetGrid.spec.ts`,
+      which is written as one case per reported complaint.
+- [x] **`ConnectionSheet.vue`** — every connection in one table, no filtering:
+      the driver is a column, not a prerequisite.
+
 **Not done / deliberately left:** no CSV file import (the clipboard covers the
-same ground without a file picker), no undo history beyond *Discard*, no column
-reordering, and no bulk editing of scenes/rooms — the same grid could serve them
-later, but nothing today needs it. `DeviceSheet.vue` is a large single component;
-fallow flags its template complexity, and splitting it was judged worse than
-leaving one coherent grid.
+same ground without a file picker), no column reordering or per-user column
+widths, and no bulk editing of scenes/rooms — the same grid could serve them
+later, but nothing today needs it. Undo history is in-memory and per-mount, and
+resets when the sheet is re-scoped.
 
 ---
 

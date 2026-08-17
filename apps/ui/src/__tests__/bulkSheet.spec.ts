@@ -116,11 +116,11 @@ describe('sheet shape', () => {
     expect(columns.map((c) => c.key)).toContain('address.outputId')
   })
 
-  it('hides driver settings that already have a default behind the advanced toggle', () => {
-    const columns = columnsFor(soloManifest)
+  it('shows every driver setting as a column — nothing is hidden behind a toggle', () => {
+    const keys = columnsFor(soloManifest).map((c) => c.key)
 
-    expect(column(columns, 'connection.host').advanced).toBeFalsy()
-    expect(column(columns, 'connection.responseTimeoutMs').advanced).toBe(true)
+    expect(keys).toContain('connection.host')
+    expect(keys).toContain('connection.responseTimeoutMs')
   })
 
   it('shows both names side by side — the friendly one and the technical one', () => {
@@ -129,7 +129,6 @@ describe('sheet shape', () => {
     // Two different audiences: a custodian reads the device name on the panel,
     // an integrator reads the connection name while wiring the rack.
     expect(columns.slice(0, 2).map((c) => c.key)).toEqual(['name', 'connection.name'])
-    expect(column(columns, 'connection.name').advanced).toBeFalsy()
     // Either one satisfies the row; neither is required on its own.
     expect(column(columns, 'name').requiredUnless).toBe('connection.name')
     expect(column(columns, 'connection.name').requiredUnless).toBe('name')
@@ -186,7 +185,9 @@ describe('cell values', () => {
     // Neither filled in: the row genuinely has no name.
     expect(validateCell(name, null, { name: null, 'connection.name': null })).toBe('Required')
     // Either one filled in is enough — the blank one borrows it on save.
-    expect(validateCell(name, null, { name: null, 'connection.name': 'Hall 1 — Netio 2' })).toBeNull()
+    expect(
+      validateCell(name, null, { name: null, 'connection.name': 'Hall 1 — Netio 2' }),
+    ).toBeNull()
     expect(validateCell(connectionName, null, { name: 'Panel lighting' })).toBeNull()
   })
 })

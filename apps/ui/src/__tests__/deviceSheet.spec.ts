@@ -1,11 +1,7 @@
 /**
- * DeviceSheet mount tests — the grid actually rendering and reacting.
- *
- * `bulkSheet.spec.ts` covers the logic; this covers the wiring the logic can't:
- * that columns reach the DOM for a 1:1 driver, that "Add rows" continues the
- * series into real cells, that a paste event fills a block, and that saving
- * posts one batch. Everything below the component (`api`, the sockets) is
- * stubbed — this is about the component, not the transport.
+ * DeviceSheet tests — what the device sheet does *around* the grid: which rows
+ * it shows, which columns it grows when scoped to a driver, and what it posts.
+ * The interactions themselves live in `sheetGrid.spec.ts`.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
@@ -14,7 +10,7 @@ import type { DriverManifest } from '@gallery/driver-core'
 import DeviceSheet from '@/components/admin/bulk/DeviceSheet.vue'
 import { api } from '@/lib/api'
 
-const manifest: DriverManifest = {
+const samsung: DriverManifest = {
   id: 'samsung-mdc',
   name: 'Samsung MDC Display',
   version: '0.1.0',
@@ -46,6 +42,28 @@ const manifest: DriverManifest = {
   ],
 }
 
+const netio: DriverManifest = {
+  ...samsung,
+  id: 'netio',
+  name: 'NETIO',
+  soloEndpointType: undefined,
+  endpointTypes: [
+    {
+      type: 'netio.socket',
+      name: 'Power Socket',
+      addressSchema: {
+        type: 'object',
+        required: ['outputId'],
+        properties: { outputId: { type: 'integer', title: 'Output ID' } },
+      },
+      stateSchema: { type: 'object', properties: {} },
+      commands: [
+        { command: 'on', description: 'on', paramsSchema: { type: 'object', properties: {} } },
+      ],
+    },
+  ],
+}
+
 vi.mock('@/lib/api', () => ({
   api: {
     drivers: { list: vi.fn<() => Promise<unknown>>() },
@@ -63,14 +81,49 @@ vi.mock('vue-sonner', () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>(), warning: vi.fn<() => void>() },
 }))
 
-const mocked = api as unknown as {
-  drivers: { list: ReturnType<typeof vi.fn> }
-  devices: { list: ReturnType<typeof vi.fn>; live: ReturnType<typeof vi.fn> }
-  rooms: { list: ReturnType<typeof vi.fn> }
-  iframes: { list: ReturnType<typeof vi.fn> }
-  connections: { list: ReturnType<typeof vi.fn>; live: ReturnType<typeof vi.fn> }
-  bulk: { applyDevices: ReturnType<typeof vi.fn>; deleteDevices: ReturnType<typeof vi.fn> }
-}
+const mocked = api as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>
+
+const CONNECTIONS = [
+  {
+    id: 'c1',
+    name: 'Wall 1',
+    driverId: 'samsung-mdc',
+    host: '10.0.1.1',
+    port: 1515,
+    config: {},
+    enabled: true,
+  },
+  {
+    id: 'c2',
+    name: 'Hall 1 — Netio 2',
+    driverId: 'netio',
+    host: '10.0.2.1',
+    config: {},
+    enabled: true,
+  },
+]
+const DEVICES = [
+  {
+    id: 'd1',
+    connectionId: 'c1',
+    name: 'Displej 01',
+    type: 'display',
+    subtype: 'samsung-mdc.display',
+    address: { displayId: 1 },
+    roomId: null,
+    enabled: true,
+  },
+  {
+    id: 'd2',
+    connectionId: 'c2',
+    name: 'Panel lighting',
+    type: 'power',
+    subtype: 'netio.socket',
+    address: { outputId: 3 },
+    roomId: null,
+    enabled: true,
+  },
+]
 
 beforeAll(() => {
   globalThis.WebSocket = class {
@@ -84,14 +137,14 @@ beforeAll(() => {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
-  mocked.drivers.list.mockResolvedValue([manifest])
-  mocked.devices.list.mockResolvedValue([])
-  mocked.devices.live.mockResolvedValue({})
-  mocked.rooms.list.mockResolvedValue([{ id: 'r1', name: 'Hall A', displayOrder: 0 }])
-  mocked.iframes.list.mockResolvedValue([])
-  mocked.connections.list.mockResolvedValue([])
-  mocked.connections.live.mockResolvedValue({})
-  mocked.bulk.applyDevices.mockResolvedValue({
+  mocked.drivers!.list!.mockResolvedValue([samsung, netio])
+  mocked.devices!.list!.mockResolvedValue(DEVICES)
+  mocked.devices!.live!.mockResolvedValue({})
+  mocked.rooms!.list!.mockResolvedValue([{ id: 'r1', name: 'Hall A', displayOrder: 0 }])
+  mocked.iframes!.list!.mockResolvedValue([])
+  mocked.connections!.list!.mockResolvedValue(CONNECTIONS)
+  mocked.connections!.live!.mockResolvedValue({})
+  mocked.bulk!.applyDevices!.mockResolvedValue({
     ok: true,
     dryRun: false,
     created: 0,
@@ -101,236 +154,96 @@ beforeEach(() => {
   })
 })
 
-/** Mount the sheet with the driver selected and its stores hydrated. */
-async function mountSheet(): Promise<VueWrapper> {
-  const wrapper = mount(DeviceSheet, { attachTo: document.body })
-  await flush()
-  await wrapper.find('#sheet-driver').setValue('samsung-mdc')
-  await flush()
-  return wrapper
-}
-
-/** Let the store fetches and the watchers settle. */
 async function flush(): Promise<void> {
-  for (let index = 0; index < 6; index++) await Promise.resolve()
+  for (let index = 0; index < 8; index++) await Promise.resolve()
   await new Promise((resolve) => setTimeout(resolve, 0))
-}
-
-/** The checkbox and row-number columns that sit in front of every data column. */
-const LEADING_COLUMNS = 2
-
-/** Drive a clipboard paste at the grid's current cursor. */
-async function paste(wrapper: VueWrapper, text: string): Promise<void> {
-  await wrapper.find('.sheet').trigger('paste', { clipboardData: { getData: () => text } })
-  await flush()
 }
 
 const headers = (wrapper: VueWrapper): string[] =>
   wrapper.findAll('thead th').map((th) => th.text().replace('*', '').trim())
 
-const cellTexts = (wrapper: VueWrapper, rowIndex: number): string[] =>
-  wrapper
-    .findAll('tbody tr')
-    [rowIndex]!.findAll('td')
-    .map((td) => td.text())
+const bodyText = (wrapper: VueWrapper): string => wrapper.find('tbody').text()
 
 describe('DeviceSheet', () => {
-  it('renders one row per physical box: connection and device columns together', async () => {
-    const wrapper = await mountSheet()
+  it('opens with every device in it — no driver has to be chosen first', async () => {
+    const wrapper = mount(DeviceSheet, { attachTo: document.body })
+    await flush()
 
-    // Both halves of a 1:1 device are columns of the same row — including both
-    // names, which serve different readers and stay separate.
+    // Both devices are there despite being on different drivers…
+    expect(bodyText(wrapper)).toContain('Displej 01')
+    expect(bodyText(wrapper)).toContain('Panel lighting')
+    // …with the columns that apply to any device, including its connection.
     expect(headers(wrapper)).toEqual(
-      expect.arrayContaining([
-        'Name',
-        'Connection name',
-        'Host / IP',
-        'Display ID',
-        'Type',
-        'Room',
-        'Enabled',
-      ]),
+      expect.arrayContaining(['Name', 'Connection', 'Type', 'Room', 'Enabled']),
     )
-    expect(wrapper.text()).toContain('One row = one device')
   })
 
-  it('keeps a column the manifest already defaults out of the way until asked for', async () => {
-    const wrapper = await mountSheet()
+  it('grows addressing columns once scoped to a driver', async () => {
+    const wrapper = mount(DeviceSheet, { attachTo: document.body })
+    await flush()
+    expect(headers(wrapper)).not.toContain('Display ID')
 
-    // Port defaults to 1515 for this driver, so it isn't worth 64 rows of width…
-    expect(headers(wrapper)).not.toContain('Port')
-
-    const sheet = wrapper.vm as unknown as { showAdvanced: boolean }
-    sheet.showAdvanced = true
+    await wrapper.find('#sheet-driver').setValue('samsung-mdc')
     await flush()
 
-    // …but it's a real column, one toggle away.
-    expect(headers(wrapper)).toContain('Port')
+    // A 1:1 driver brings its connection's columns along with the address.
+    expect(headers(wrapper)).toEqual(
+      expect.arrayContaining(['Name', 'Connection name', 'Host / IP', 'Display ID']),
+    )
+    // …and narrows to that driver's devices.
+    expect(bodyText(wrapper)).toContain('Displej 01')
+    expect(bodyText(wrapper)).not.toContain('Panel lighting')
   })
 
-  it('continues the series when rows are added, instead of copying', async () => {
-    const wrapper = await mountSheet()
-
-    // Seed the first row through the grid itself.
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
+  it('posts a scoped 1:1 row with its connection nested inside', async () => {
+    const wrapper = mount(DeviceSheet, { attachTo: document.body })
     await flush()
-    const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    sheet.rows[0]!.values.name = 'Displej 01'
-    sheet.rows[0]!.values['connection.host'] = '10.0.1.1'
-    await flush()
-
-    // Ask for three more.
-    await wrapper.find('input[aria-label="Rows to add"]').setValue('3')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
-    await flush()
-
-    expect(sheet.rows).toHaveLength(4)
-    expect(sheet.rows.map((row) => row.values.name)).toEqual([
-      'Displej 01',
-      'Displej 02',
-      'Displej 03',
-      'Displej 04',
-    ])
-    expect(sheet.rows.map((row) => row.values['connection.host'])).toEqual([
-      '10.0.1.1',
-      '10.0.1.2',
-      '10.0.1.3',
-      '10.0.1.4',
-    ])
-    // And it's on screen, not just in state.
-    expect(cellTexts(wrapper, 3).join(' ')).toContain('Displej 04')
-  })
-
-  it('fills a pasted block from the top-left cell, growing the sheet to fit', async () => {
-    const wrapper = await mountSheet()
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
-    await flush()
-
-    // Anchor on the first cell, then paste two rows × two columns: the sheet's
-    // first two columns are the friendly name and the technical one.
-    await wrapper.findAll('tbody td.cell')[0]!.trigger('mousedown')
-    await paste(wrapper, 'Panel lighting\tHall 1 — Netio 2\nPanel spots\tHall 1 — Netio 3')
-
-    const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    expect(sheet.rows).toHaveLength(2)
-    expect(sheet.rows.map((row) => row.values.name)).toEqual(['Panel lighting', 'Panel spots'])
-    expect(sheet.rows.map((row) => row.values['connection.name'])).toEqual([
-      'Hall 1 — Netio 2',
-      'Hall 1 — Netio 3',
-    ])
-  })
-
-  it('pastes a single column wherever the cursor is', async () => {
-    const wrapper = await mountSheet()
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
-    await flush()
-
-    // A column of addresses out of the customer's spreadsheet, dropped on Host.
-    const hostColumn = headers(wrapper).indexOf('Host / IP') - LEADING_COLUMNS
-    await wrapper.findAll('tbody td.cell')[hostColumn]!.trigger('mousedown')
-    await paste(wrapper, '10.0.2.1\n10.0.2.2\n10.0.2.3')
-
-    const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    expect(sheet.rows.map((row) => row.values['connection.host'])).toEqual([
-      '10.0.2.1',
-      '10.0.2.2',
-      '10.0.2.3',
-    ])
-  })
-
-  it('assigns a room to every checked row in one action', async () => {
-    const wrapper = await mountSheet()
-    await wrapper.find('input[aria-label="Rows to add"]').setValue('3')
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
-    await flush()
-
-    await wrapper.find('thead input[type="checkbox"]').setValue(true)
-    await flush()
-    await wrapper.find('select[aria-label="Assign room to selected rows"]').setValue('r1')
+    await wrapper.find('#sheet-driver').setValue('samsung-mdc')
     await flush()
 
     const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    expect(sheet.rows.every((row) => row.values.roomId === 'r1')).toBe(true)
-  })
-
-  it('sends every changed row as one batch, with the connection nested in it', async () => {
-    const wrapper = await mountSheet()
+    sheet.rows[0]!.values.name = 'Displej 01 renamed'
+    await flush()
     await wrapper
       .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
-    await flush()
-    const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    sheet.rows[0]!.values.name = 'Displej 01'
-    sheet.rows[0]!.values['connection.host'] = '10.0.1.1'
-    sheet.rows[0]!.values.type = 'display'
-    await flush()
-
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().startsWith('Save'))!
+      .find((button) => button.text().startsWith('Save'))!
       .trigger('click')
     await flush()
 
-    expect(mocked.bulk.applyDevices).toHaveBeenCalledTimes(1)
-    const [payload] = mocked.bulk.applyDevices.mock.calls[0] as [
-      { rows: Record<string, unknown>[]; dryRun: boolean },
+    expect(mocked.bulk!.applyDevices!).toHaveBeenCalledTimes(1)
+    const [payload] = mocked.bulk!.applyDevices!.mock.calls[0] as [
+      { rows: Record<string, unknown>[] },
     ]
-    expect(payload.dryRun).toBe(false)
-    expect(payload.rows).toHaveLength(1)
     expect(payload.rows[0]).toMatchObject({
-      name: 'Displej 01',
+      deviceId: 'd1',
+      name: 'Displej 01 renamed',
       subtype: 'samsung-mdc.display',
-      connection: { driverId: 'samsung-mdc', host: '10.0.1.1', name: 'Displej 01' },
+      connection: { id: 'c1', host: '10.0.1.1' },
     })
   })
 
-  it('paints the cells a rejected batch names, and reports that nothing was written', async () => {
-    mocked.bulk.applyDevices.mockResolvedValue({
+  it('marks the cells a rejected batch names and reports that nothing was written', async () => {
+    mocked.bulk!.applyDevices!.mockResolvedValue({
       ok: false,
       dryRun: false,
       created: 0,
       updated: 0,
       rows: [],
-      errors: [{ row: 0, field: 'connection.host', message: 'must match format "host"' }],
+      errors: [{ row: 0, field: 'name', message: 'name is required' }],
     })
 
-    const wrapper = await mountSheet()
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Add rows'))!
-      .trigger('click')
+    const wrapper = mount(DeviceSheet, { attachTo: document.body })
     await flush()
     const sheet = wrapper.vm as unknown as { rows: { values: Record<string, unknown> }[] }
-    sheet.rows[0]!.values.name = 'Displej 01'
-    sheet.rows[0]!.values['connection.host'] = '10.0.1.999'
+    sheet.rows[0]!.values.name = ''
     await flush()
-
     await wrapper
       .findAll('button')
-      .find((b) => b.text().startsWith('Save'))!
+      .find((button) => button.text().startsWith('Save'))!
       .trigger('click')
     await flush()
 
     expect(wrapper.text()).toContain('nothing was written')
-    // The Host cell — not the whole row — carries the mark.
-    const invalid = wrapper.findAll('tbody td.invalid')
-    expect(invalid.length).toBeGreaterThan(0)
-    expect(invalid[0]!.attributes('title')).toContain('host')
+    expect(wrapper.findAll('tbody td.invalid').length).toBeGreaterThan(0)
   })
 })

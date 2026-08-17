@@ -1,11 +1,26 @@
 <script setup lang="ts">
 /**
- * Admin connections list — every gateway/socket with its live state, plus
- * create/edit/delete. Reuses `useConnectionsStore` (already hydrated + live via
- * the shared socket) so the table reflects realtime status without re-fetching.
+ * Admin connections — two views over the same records:
+ *
+ *  - **List** (default) — every gateway/socket with its live state, edited one
+ *    at a time through `ConnectionFormDialog`. Unchanged.
+ *  - **Sheet** — every connection in one editable table, no filtering needed.
+ *    Standing up a site is mostly connections (twenty NETIOs, sixty displays,
+ *    each a name and an address), and that is a spreadsheet job.
+ *
+ * Both read `useConnectionsStore` (hydrated + live via the shared socket), so a
+ * bulk save shows up in the list immediately and vice versa.
  */
 import { computed, onMounted, ref } from 'vue'
-import { CableIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from '@lucide/vue'
+import {
+  CableIcon,
+  ListIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  SheetIcon,
+  Trash2Icon,
+} from '@lucide/vue'
 import type { ConnectionView } from '@/stores/connections'
 import { useConnectionsStore } from '@/stores/connections'
 import { useDriversStore } from '@/stores/drivers'
@@ -13,7 +28,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +46,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ConnectionFormDialog from '@/components/admin/ConnectionFormDialog.vue'
+import ConnectionSheet from '@/components/admin/bulk/ConnectionSheet.vue'
+
+/** Which editor is on screen; one-off editing stays the default. */
+const view = ref<'list' | 'sheet'>('list')
 
 const store = useConnectionsStore()
 const drivers = useDriversStore()
@@ -96,75 +123,110 @@ async function confirmDelete(): Promise<void> {
 
 <template>
   <div class="flex flex-col gap-4 p-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-2">
-        <div class="relative">
-          <SearchIcon class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
-          <Input v-model="search" placeholder="Search connections…" class="w-56 pl-8" />
+    <Tabs v-model="view">
+      <TabsList class="self-start">
+        <TabsTrigger value="list">
+          <ListIcon class="size-4" />
+          List
+        </TabsTrigger>
+        <TabsTrigger value="sheet">
+          <SheetIcon class="size-4" />
+          Sheet
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="list" class="flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <SearchIcon
+                class="text-muted-foreground absolute left-2.5 top-1/2 size-4 -translate-y-1/2"
+              />
+              <Input v-model="search" placeholder="Search connections…" class="w-56 pl-8" />
+            </div>
+            <p class="text-muted-foreground text-sm">{{ rows.length }} connection(s)</p>
+          </div>
+          <Button @click="openCreate">
+            <PlusIcon class="size-4" />
+            New connection
+          </Button>
         </div>
-        <p class="text-muted-foreground text-sm">{{ rows.length }} connection(s)</p>
-      </div>
-      <Button @click="openCreate">
-        <PlusIcon class="size-4" />
-        New connection
-      </Button>
-    </div>
 
-    <div class="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Driver</TableHead>
-            <TableHead>Address</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead class="w-24">Enabled</TableHead>
-            <TableHead class="w-24 text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="c in rows" :key="c.id">
-            <TableCell class="font-medium">{{ c.name }}</TableCell>
-            <TableCell>
-              <Badge variant="secondary">{{ driverName(c.driverId) }}</Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              <span v-if="c.host">{{ c.host }}<span v-if="c.port">:{{ c.port }}</span></span>
-              <span v-else>—</span>
-            </TableCell>
-            <TableCell>
-              <span class="flex items-center gap-2 text-sm">
-                <span class="size-2 rounded-full" :class="stateClass(c.state)" />
-                {{ STATE_LABEL[c.state] ?? c.state }}
-                <span v-if="c.status.lastError" class="text-destructive truncate" :title="c.status.lastError">
-                  · {{ c.status.lastError }}
-                </span>
-              </span>
-            </TableCell>
-            <TableCell>
-              <Switch :model-value="c.enabled" @update:model-value="store.setEnabled(c.id, $event)" />
-            </TableCell>
-            <TableCell class="text-right">
-              <div class="flex justify-end gap-1">
-                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(c)">
-                  <PencilIcon class="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(c)">
-                  <Trash2Icon class="size-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
+        <div class="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Driver</TableHead>
+                <TableHead>Address</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead class="w-24">Enabled</TableHead>
+                <TableHead class="w-24 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="c in rows" :key="c.id">
+                <TableCell class="font-medium">{{ c.name }}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{{ driverName(c.driverId) }}</Badge>
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  <span v-if="c.host"
+                    >{{ c.host }}<span v-if="c.port">:{{ c.port }}</span></span
+                  >
+                  <span v-else>—</span>
+                </TableCell>
+                <TableCell>
+                  <span class="flex items-center gap-2 text-sm">
+                    <span class="size-2 rounded-full" :class="stateClass(c.state)" />
+                    {{ STATE_LABEL[c.state] ?? c.state }}
+                    <span
+                      v-if="c.status.lastError"
+                      class="text-destructive truncate"
+                      :title="c.status.lastError"
+                    >
+                      · {{ c.status.lastError }}
+                    </span>
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <Switch
+                    :model-value="c.enabled"
+                    @update:model-value="store.setEnabled(c.id, $event)"
+                  />
+                </TableCell>
+                <TableCell class="text-right">
+                  <div class="flex justify-end gap-1">
+                    <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(c)">
+                      <PencilIcon class="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete"
+                      @click="askDelete(c)"
+                    >
+                      <Trash2Icon class="size-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
 
-          <TableRow v-if="!rows.length">
-            <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
-              <CableIcon class="mx-auto mb-2 size-6 opacity-50" />
-              No connections yet. Add one to start talking to a device.
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+              <TableRow v-if="!rows.length">
+                <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
+                  <CableIcon class="mx-auto mb-2 size-6 opacity-50" />
+                  No connections yet. Add one to start talking to a device.
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="sheet">
+        <ConnectionSheet />
+      </TabsContent>
+    </Tabs>
 
     <ConnectionFormDialog v-model:open="formOpen" :connection="editing" />
 
@@ -173,8 +235,8 @@ async function confirmDelete(): Promise<void> {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{{ toDelete?.name }}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            This stops its driver and removes the connection. Devices that still reference it must be
-            deleted first.
+            This stops its driver and removes the connection. Devices that still reference it must
+            be deleted first.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

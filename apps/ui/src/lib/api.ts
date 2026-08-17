@@ -15,6 +15,10 @@ import type { DriverManifest } from '@gallery/driver-core'
 import type {
   BulkApplyInput,
   BulkApplyResult,
+  BulkConnectionApplyInput,
+  BulkConnectionApplyResult,
+  BulkConnectionDeleteInput,
+  BulkConnectionDeleteResult,
   BulkDeleteInput,
   BulkDeleteResult,
   CameraDTO,
@@ -185,7 +189,12 @@ export const api = {
    */
   bulk: {
     applyDevices: (input: BulkApplyInput) => post<BulkApplyResult>('/bulk/devices', input),
-    deleteDevices: (input: BulkDeleteInput) => post<BulkDeleteResult>('/bulk/devices/delete', input),
+    deleteDevices: (input: BulkDeleteInput) =>
+      post<BulkDeleteResult>('/bulk/devices/delete', input),
+    applyConnections: (input: BulkConnectionApplyInput) =>
+      post<BulkConnectionApplyResult>('/bulk/connections', input),
+    deleteConnections: (input: BulkConnectionDeleteInput) =>
+      post<BulkConnectionDeleteResult>('/bulk/connections/delete', input),
   },
 
   connections: {
@@ -307,7 +316,8 @@ export const api = {
     /** Every placed instance (a scene/device may have any number of these). */
     list: () => get<WorkflowTargetDTO[]>('/workflow-targets'),
     get: (id: string) => get<WorkflowTargetDTO>(`/workflow-targets/${id}`),
-    create: (input: WorkflowTargetCreateInput) => post<WorkflowTargetDTO>('/workflow-targets', input),
+    create: (input: WorkflowTargetCreateInput) =>
+      post<WorkflowTargetDTO>('/workflow-targets', input),
     update: (id: string, input: WorkflowTargetUpdateInput) =>
       put<WorkflowTargetDTO>(`/workflow-targets/${id}`, input),
     remove: (id: string) => del(`/workflow-targets/${id}`),

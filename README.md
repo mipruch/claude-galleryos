@@ -1724,11 +1724,30 @@ list: rack 64 displejů je 128 záznamů (každý displej je vlastní `connectio
 zkontrolovatelných — selhání na 57. řádku by nechalo systém rozpracovaný.
 
 ```
+POST   /bulk/connections         - { rows: BulkConnectionRowInput[], dryRun?: boolean }
+                                   → BulkConnectionApplyResult
+POST   /bulk/connections/delete  - { connectionIds: string[] }
+                                   → BulkConnectionDeleteResult
 POST   /bulk/devices             - { rows: BulkDeviceRowInput[], dryRun?: boolean }
                                    → BulkApplyResult
 POST   /bulk/devices/delete      - { deviceIds: string[], deleteOrphanedConnections?: boolean }
                                    → BulkDeleteResult
 ```
+
+**Connections vs. devices.** Postavit lokaci = založit spoustu *connections*
+(dvacet NETIÍ, šedesát displejů), z nichž každá je jen jméno a adresa. Ta
+rovina má vlastní endpoint, protože nepotřebuje rozhodnout žádný endpoint
+zařízení dopředu. Dva rozdíly oproti device apply plynou z toho, že řádek nese
+jediný záznam:
+
+- **Config se doplní z manifestu.** Vše, co má v `connectionSchema` `default`,
+  server doplní sám (`withSchemaDefaults`), takže sheet se sloupci
+  jméno/host/port vyrobí platné connections a nepotřebuje žádné config sloupce.
+- **Chyby míří na holé klíče sloupců** (`host`, ne `connection.host`) — není tu
+  druhý záznam, vůči kterému by se to muselo kvalifikovat.
+
+Mazání odmítne connection, na které ještě visí zařízení (nikdy nekaskáduje) —
+stejně jako jednozáznamová routa.
 
 - **Nejdřív validace, pak zápis.** Každý řádek se ověří proti manifestům
   (config connection, adresa endpointu) a proti referencovaným
@@ -2035,63 +2054,68 @@ UI, oddělený jen routami a layoutem (tím se uzavírá [DECIDE] **G7** v PLAN.
 - **Další vendorované primitivy**: `form` (vee-validate), `select`, `dialog`,
   `alert-dialog`, `separator`, `skeleton`, `textarea`, `alert`.
 
-#### Implementováno (Bulk device management — záložka *Sheet*)
+#### Implementováno (Bulk management — záložky *Sheet*)
 
-Přidávat 64 Samsung MDC displejů po jednom dialogu (a ke každému zvlášť
-connection) je 128 průchodů formulářem. `/admin/devices` proto má dvě záložky
-nad stejnými daty — protože **upravit jedno zařízení a postavit šedesát čtyři
-jsou jiné úlohy**:
+Přidávat 64 displejů (nebo 20 NETIÍ) po jednom dialogu je stovky průchodů
+formulářem. `/admin/connections` i `/admin/devices` proto mají vedle původního
+seznamu záložku **Sheet** — tabulkový editor. Původní *List* s dialogy zůstává
+výchozí a pro editaci jednoho záznamu je dál správným nástrojem.
 
-- **List** (výchozí) — původní tabulka s `DeviceFormDialog`. Beze změny; pro
-  jednorázovou editaci zůstává správným nástrojem.
-- **Sheet** (`components/admin/bulk/DeviceSheet.vue`) — tabulkový editor
-  v duchu Notionu/DataGripu.
+**`SheetGrid.vue` — jeden grid pro obě záložky.** Vlastní jen interakci; co
+sloupce znamenají a kam se řádky ukládají řeší konzument. Chová se tak, jak to
+čeká někdo přicházející z DataGripu, Notionu nebo Google Sheets:
 
-**Řádek = jeden fyzický box, ne jeden DB záznam.** U driveru, který v manifestu
-deklaruje `soloEndpointType` (§6 — Samsung/Iiyama displej na vlastní IP, PJLink
-projektor), nese řádek sloupce connection (host, port, …) i device a uloží obojí
-naráz. Gateway drivery (DALI, Extron, BSS, NETIO) se chovají beze změny:
-connection se vybere jednou nad gridem a řádky jsou endpointy na ní. Datový
-model se nemění — sjednocení je čistě ve vrstvě UI + `POST /bulk/devices`.
+- **Jeden výběr, ne dva.** Zaškrtnutí řádku a výběr jeho buněk je totéž —
+  checkboxy zrcadlí výběr buněk a řádkové akce (mazání) pracují s tím, co je
+  zvýrazněné. Neexistuje druhý, neviditelný výběr, na který by mazání sáhlo.
+- **Výběr je seznam obdélníků.** Tažením se zametá, Shift rozšiřuje,
+  ⌘/Ctrl+klik přidá nesouvislý blok — řádky 4, 6 a 7 jde vyjádřit.
+- **Vložení vyplní výběr.** Zkopírovat jednu buňku, označit třicet, vložit →
+  všech třicet ji dostane. Větší blok se položí od kurzoru a dorovná řádky.
+- **⌘/Ctrl+Z vrací zpět** (edity, vložení, fill down i přidané řádky),
+  ⌘/Ctrl+Shift+Z opakuje.
+- **Sloupce se nehýbou.** Layout je `table-fixed`; editor se nad buňkou
+  „vyzvedne“ (Notion styl) místo aby roztahoval sloupec při psaní.
+- **Nic není schované.** Všechny sloupce jsou vidět, tabulka scrolluje do
+  stran.
+- **Kategoriální buňky otevřou picker aplikace** a volba se propíše do *všech
+  vybraných buněk v daném sloupci* — tím je vyřešené hromadné přiřazení
+  místnosti, typu i čehokoli dalšího, bez samostatného ovladače jinde.
+- **Řádky se přidávají dole**, a to dvojím způsobem: *Add row* (prázdný) nebo
+  *Add continuing the series* (pokračuje v řadě — „Displej 01“ → „Displej 02“,
+  `10.0.1.1` → `10.0.1.2`, včetně přechodu přes /24).
 
-**Sloučení řádku ale neslučuje jména.** Grid má v 1:1 režimu **dva jmenné
-sloupce vedle sebe**, protože je čte někdo jiný:
+Postavené na vendorovaných shadcn-vue `Table` primitivech, `Switch` pro
+booleany a `Popover` pro picker, takže grid vypadá jako zbytek adminu.
 
-- **Name** — přívětivý název, který vidí kustod na panelu („Osvětlení panelu“).
-- **Connection name** — technický název v *Connections*, podle kterého se
-  integrátor orientuje v racku („Hall 1 – Netio 2“).
+**`/admin/connections` → Sheet** (`ConnectionSheet.vue`, `lib/connectionSheet.ts`)
+— **hlavní pracovní plocha pro zakládání**. Všechny connections v jedné
+tabulce, bez filtrování: driver je *sloupec*, ne předpoklad. Sloupce jsou
+jméno, driver, host, port, `enabled` a k tomu jen ty config položky, které
+driver skutečně **vyžaduje** (např. MAC adresa pro Wake-on-LAN u Iiyamy);
+všechno ostatní doplní server z manifestu.
 
-Kterýkoli z nich smí zůstat prázdný a **převezme hodnotu toho druhého**, takže
-pojmenovat 64 boxů stojí jeden sloupec, ne dva — ale rozdíl mezi „co to je“ a
-„kde to visí“ se nikam neztratí.
+**`/admin/devices` → Sheet** (`DeviceSheet.vue`, `lib/bulkSheet.ts`) — otevře se
+rovnou se **všemi** zařízeními (jméno, connection, typ, místnost, enabled), ať
+patří pod jakýkoli driver. Výběr driveru (a u driverů s více typy i typu
+endpointu) sheet *zúží* a přidá adresní sloupce — to je režim pro BSS DSP, kde
+se rack crosspointů liší jen pár čísly na řádek, a jediný režim, ve kterém lze
+zakládat nové endpointy (bez znalosti adresování to nejde). U 1:1 driveru
+(`soloEndpointType`) nese zúžený sheet i sloupce connection, takže jeden řádek
+= jedna krabice; ostatní connections se zakládají v Connections sheetu.
 
-Ovládání gridu (`lib/bulkSheet.ts`, unit-testované v `__tests__/bulkSheet.spec.ts`):
+**Dvě jména zůstávají oddělená.** V 1:1 řádku jsou vedle sebe **Name**
+(přívětivý, vidí ho kustod na panelu) a **Connection name** (technický, podle
+něj se integrátor orientuje v racku). Kterýkoli smí zůstat prázdný a převezme
+ten druhý.
 
-- **Klávesnice** — šipky a Tab posouvají kurzor, Shift roztahuje obdélníkový
-  výběr, Enter/F2 nebo psaní začne editaci, Delete maže obsah buněk.
-- **Schránka** — ⌘/Ctrl+C a ⌘/Ctrl+V vyměňují TSV s Google Sheets nebo Excelem
-  včetně uvozovaných buněk (tab/newline uvnitř hodnoty). Vložení si dorovná
-  chybějící řádky. Sloupce s výběrem se párují **podle popisku**, takže sloupec
-  s názvy místností se vloží rovnou a přeloží se na room id — operátor nikdy
-  nevidí UUID.
-- **Řada místo kopie** — ⌘/Ctrl+D (a tlačítko *Add rows*) pokračuje v řadě:
-  „Displej 01“ → „Displej 02“ (zachová vedoucí nuly), `10.0.1.1` → `10.0.1.2`
-  (jako 32bitové číslo, takže `10.0.1.255` následuje `10.0.2.0`). Dvě vyplněné
-  buňky určí krok. Holé číslo (port, timeout, Display ID) se naopak **drží**,
-  dokud druhý seed neřekne jinak — je to nastavení, ne čítač. Vyplněné volby
-  (typ, místnost, enabled) se kopírují dolů.
-- **Výběr řádků** zaškrtávátky → hromadné *Assign room* / *Enable* / *Disable* /
-  *Delete* (přesně ten „vyber 6 řádků a přiřaď jim místnost“ případ).
-- **Sloupce** driveru, které mají v manifestu default (timeouty, delimitery,
-  jméno connection), jsou schované pod přepínačem *Columns*, aby grid nebyl
-  zbytečně široký.
-- **Nic se nezapíše do *Save*.** Uložení pošle jen změněné řádky v jednom
-  all-or-nothing requestu; odmítnutá dávka obarví konkrétní buňky (server vrací
-  `field` shodné s klíči sloupců) a nezapíše nic. *Check* je stejná validace
-  nasucho (`dryRun`).
+**Nic se nezapíše do *Save*.** Uloží se jen změněné řádky v jednom
+all-or-nothing requestu; odmítnutá dávka obarví konkrétní buňky (server vrací
+`field` shodné s klíči sloupců) a nezapíše nic. *Check* je stejná validace
+nasucho (`dryRun`).
 
-`DEVICE_TYPES` je nově sdílený export z `lib/devices.ts` (dřív lokální konstanta
-v `DeviceFormDialog`), aby se nabídka typů v dialogu a v gridu nerozešla.
+`DEVICE_TYPES` je sdílený export z `lib/devices.ts`, aby se nabídka typů
+v dialogu a v gridu nerozešla.
 
 #### Implementováno (třetí řez — Scenes & Schedules CRUD)
 
