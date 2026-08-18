@@ -251,6 +251,7 @@ async function testRun(): Promise<void> {
 
           <aside v-if="selection" class="w-96 shrink-0 overflow-y-auto border-l p-5">
             <SceneStepInspector
+              :key="selection.action.key"
               :action="selection.action"
               :stage-number="selection.stageIndex + 1"
               :card-number="selection.index + 1"

@@ -10,6 +10,14 @@
  * Parallel grouping is no longer edited here — which stage column a card
  * lives in *is* its `parallelGroup` (see `lib/sceneStages.ts`), set by
  * dragging the card on the board, not a number typed in this panel.
+ *
+ * The parent (`SceneEditorDialog`) keys this component on the selected
+ * action's `key`, so a fresh instance mounts per selection — same pattern
+ * `TriggerInspector`/`WorkflowTargetInspector` use. Without it, switching
+ * the selected card would reuse this instance's `watch(() => action.deviceId, …)`
+ * across two different actions: the watcher would see *some other card's*
+ * deviceId change and wipe that card's already-set command/params, thinking
+ * the user had just edited the device field.
  */
 import { computed, watch } from 'vue'
 import { ChevronDownIcon, ChevronUpIcon, LinkIcon, SlidersHorizontalIcon, Trash2Icon, XIcon } from '@lucide/vue'
