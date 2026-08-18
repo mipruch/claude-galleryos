@@ -124,7 +124,7 @@ export const useRoomsStore = defineStore('rooms', () => {
     }
   }
 
-  function getRoomName(id: string): string {
+  function getRoomName(id: string | null | undefined): string {
     const room = records.value.find((r) => r.id === id)
     return room?.name ?? 'Unknown'
   }
