@@ -2130,6 +2130,72 @@ nasucho (`dryRun`).
 `DEVICE_TYPES` je sdílený export z `lib/devices.ts`, aby se nabídka typů
 v dialogu a v gridu nerozešla.
 
+#### Implementováno (Hromadné zakládání zařízení z connections)
+
+Sheet vyřešil zakládání *connections*. Zůstala druhá polovina: sto televizí je
+sto connections **a sto zařízení**, a ta druhá stovka je čistá administrativa —
+u driveru zapojeného 1:1 (`soloEndpointType`) má každý socket právě jeden
+endpoint, jeho typ je v manifestu a adresa je celá z defaultů. Connection bez
+zařízení je přitom všude, kde na tom záleží, **neviditelná** (nejde dát na
+panel, do scény ani do palety), takže hromadný import connections tiše vyrobí
+systém, který vypadá poloprázdný a nikde neřekne proč.
+
+Tok má tři kroky a nikde nezapisuje bez potvrzení:
+
+1. **Upozornění nad seznamem zařízení** (`ProvisionNudge.vue`) — „9 connections
+   nemá zařízení“ plus shrnutí po driverech. Jde zavřít; je klíčované počtem,
+   takže pozdější import ho vrátí, místo aby zůstalo umlčené navždy.
+2. **Přepracovaný výběr connection v dialogu *Nové zařízení***
+   (`ConnectionPicker.vue`) — původní `<Select>` vypisoval všechny connections
+   jménem, což na instalaci se stovkou displejů přestává fungovat: sto skoro
+   stejných jmen bez adres. Nově se filtruje psaním (podle jména **i hostu** —
+   integrátor u racku zná IP, ne štítek), řádky nesou svůj endpoint a nahoře
+   stojí sekce **Bez zařízení · N** se zkratkou **Create all**. Connections, na
+   kterých už něco visí, jsou níž s počtem zařízení (gateway legitimně dostane
+   druhý, třetí i šedesátý čtvrtý endpoint, takže zůstávají vybíratelné).
+3. **Revizní přehled** (`DeviceProvisionDialog.vue`) — ne potvrzovací dialog,
+   ale *přehled*: řádky seskupené po driverech (stejný hardware = jeden blok,
+   který jde přijmout nebo přeskočit najednou), jméno předvyplněné z connection
+   a editovatelné na místě, místnost uhodnutá z toho jména, a hromadné
+   *Assign room* pro celý výběr. Zapisuje se jedním
+   `POST /api/v1/bulk/devices` — tedy stejnou all-or-nothing cestou jako Sheet,
+   takže co je platné zařízení, definuje server na jednom místě, ne na dvou.
+
+**Co se záměrně nezakládá** (a proč se to přesto ukazuje). Řádek, který nelze
+založit bez člověka, se **nezahazuje ze seznamu** — zešedne, dostane důvod a
+sloupec místnosti řekne *Skipped*. Kdo naimportoval devět connections a dostane
+nabídnuto sedm, potřebuje vidět které dvě a proč; tiše kratší seznam je způsob,
+jak pak někdo hledá „šest svítidel, co se neimportovala“. Blokují tři věci:
+
+- **gateway driver** (DALI sběrnice, Extron matice, BSS DSP) — jedna connection
+  opravdu vějířem míří na mnoho endpointů a kolik jich je a na jakých adresách
+  je otázka na fyzickou sběrnici, ne na databázi (→ Sheet),
+- **adresa, kterou nelze doplnit z defaultů** — povinná property bez `default`
+  je hodnota, kterou zná jen instalatér; hádat ji znamená vyrobit zařízení
+  mluvící na cizí hardware,
+- **nenainstalovaný driver** — jeho endpointy nejsou známé.
+
+**Offline connection se řeší podle kontextu** (`initialRows`). Když část
+connections odpovídá, jsou ty mlčící anomálie (překlep, špatné zapojení,
+vyřazená krabice) a startují **nezaškrtnuté** — jinak by na panelu tiše přibyla
+natrvalo červená dlaždice. Když neodpovídá **nic**, offline nenese informaci:
+to je systém konfigurovaný dřív, než je hardware na síti, což je na montáži
+normální pořadí práce — a odškrtnout tam všechno by znamenalo nabídnout
+přehled, který nic nezaloží. Tam se tedy zaškrtne vše založitelné. V obou
+případech zůstává na řádku odznak *Offline since …*, takže je vidět, co člověk
+přijímá.
+
+**Kategorie zařízení (`devices.type`) se odvozuje z driveru** (`deviceTypeOf`),
+protože manifest ji nemá — driver popisuje, *jak* se s hardwarem mluví, ne k
+čemu je. Je to jen předvyplnění (fallback `custom`) a zároveň zdroj popisku
+skupiny: 1:1 driver je „display driver“, gateway „lighting bus“.
+
+Logika je celá v `lib/deviceProvisioning.ts` (čisté funkce, testy
+v `__tests__/deviceProvisioning.spec.ts`), komponenty v
+`components/admin/device-provisioning/`. Modrý akcent `--brand` je stejný jako
+ve scene editoru — checkboxy, odkazy *Select group* / *Create all*, tlačítko
+*Review*.
+
 #### Implementováno (třetí řez — Scenes & Schedules CRUD)
 
 - **`/admin/scenes`** (`views/admin/ScenesView.vue`) — tabulka scén (přepínač

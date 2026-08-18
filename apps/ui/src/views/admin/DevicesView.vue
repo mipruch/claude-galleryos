@@ -11,6 +11,12 @@
  *
  * Both read `useDevicesStore` (hydrated + live via the shared socket app-wide),
  * so a bulk save shows up in the list immediately and vice versa.
+ *
+ * The list also carries the provisioning nudge: connections imported in bulk
+ * arrive without endpoints, and a connection with no device is invisible in
+ * every part of the app that matters. The banner says how many are bare and
+ * opens the review sheet that creates them all at once — see
+ * `components/admin/device-provisioning/`.
  */
 import { computed, onMounted, ref } from 'vue'
 import {
@@ -29,8 +35,22 @@ import { useDriversStore } from '@/stores/drivers'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
@@ -45,6 +65,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import DeviceFormDialog from '@/components/admin/DeviceFormDialog.vue'
 import DeviceSheet from '@/components/admin/bulk/DeviceSheet.vue'
+import DeviceProvisionDialog from '@/components/admin/device-provisioning/DeviceProvisionDialog.vue'
+import ProvisionNudge from '@/components/admin/device-provisioning/ProvisionNudge.vue'
+import { buildCandidates } from '@/lib/deviceProvisioning'
 
 /** Which editor is on screen; the list is the default, one-off editing stays a dialog. */
 const view = ref<'list' | 'sheet'>('list')
@@ -59,7 +82,8 @@ onMounted(() => {
   drivers.load()
 })
 
-const roomName = (id: string | null) => (id ? (devices.rooms.find((r) => r.id === id)?.name ?? '—') : '—')
+const roomName = (id: string | null) =>
+  id ? (devices.rooms.find((r) => r.id === id)?.name ?? '—') : '—'
 const connName = (id: string) => connections.connections.find((c) => c.id === id)?.name ?? id
 const types = computed(() => [...new Set(devices.records.map((d) => d.type))].sort())
 
@@ -114,6 +138,29 @@ async function confirmDelete(): Promise<void> {
   if (d) await devices.removeDevice(d.id)
   toDelete.value = null
 }
+
+// ── bulk provisioning (connections with no device yet) ──────────────────────
+const provisionOpen = ref(false)
+/** Count the nudge was dismissed at — a later import brings it back. */
+const dismissedAt = ref<number | null>(null)
+
+const candidates = computed(() =>
+  buildCandidates(
+    connections.connections,
+    devices.records,
+    (driverId) => drivers.get(driverId),
+    devices.rooms,
+    (connectionId) => connections.statuses[connectionId],
+  ),
+)
+const showNudge = computed(
+  () => candidates.value.length > 0 && dismissedAt.value !== candidates.value.length,
+)
+
+function openProvision(): void {
+  formOpen.value = false
+  provisionOpen.value = true
+}
 </script>
 
 <template>
@@ -131,6 +178,13 @@ async function confirmDelete(): Promise<void> {
       </TabsList>
 
       <TabsContent value="list" class="flex flex-col gap-4">
+        <ProvisionNudge
+          v-if="showNudge"
+          :candidates="candidates"
+          @review="openProvision"
+          @dismiss="dismissedAt = candidates.length"
+        />
+
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <div class="relative">
@@ -239,7 +293,8 @@ async function confirmDelete(): Promise<void> {
       </TabsContent>
     </Tabs>
 
-    <DeviceFormDialog v-model:open="formOpen" :device="editing" />
+    <DeviceFormDialog v-model:open="formOpen" :device="editing" @provision="openProvision" />
+    <DeviceProvisionDialog v-model:open="provisionOpen" />
 
     <AlertDialog v-model:open="deleteOpen">
       <AlertDialogContent>

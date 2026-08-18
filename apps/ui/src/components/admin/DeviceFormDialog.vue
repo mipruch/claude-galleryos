@@ -26,16 +26,28 @@ import {
 } from '@/components/ui/dialog'
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import SchemaFields from './SchemaFields.vue'
 import ArrayObjectField from './ArrayObjectField.vue'
+import ConnectionPicker from './device-provisioning/ConnectionPicker.vue'
 
 const props = defineProps<{ open: boolean; device?: DeviceRecord | null }>()
-const emit = defineEmits<{ 'update:open': [boolean] }>()
+// `provision` hands off to the bulk review sheet, mounted by the devices view:
+// someone who just imported a hundred connections is not filling this form a
+// hundred times (see `components/admin/device-provisioning/`).
+const emit = defineEmits<{ 'update:open': [boolean]; provision: [] }>()
 
 const devices = useDevicesStore()
 const connections = useConnectionsStore()
@@ -51,7 +63,9 @@ const isEdit = computed(() => !!props.device)
 const connectionId = ref('')
 const subtype = ref('')
 
-const driverId = computed(() => connections.connections.find((c) => c.id === connectionId.value)?.driverId)
+const driverId = computed(
+  () => connections.connections.find((c) => c.id === connectionId.value)?.driverId,
+)
 const endpointTypes = computed(() => drivers.endpointTypes(driverId.value))
 const endpointType = computed(() => drivers.endpointType(driverId.value, subtype.value))
 const addressSchema = computed(() => endpointType.value?.addressSchema)
@@ -106,7 +120,10 @@ function hydrate(): void {
   const address = (d?.address as Record<string, unknown> | undefined) ?? {}
   // Seed array-of-object fields from the saved address (or empty).
   arrays.value = Object.fromEntries(
-    arrayProperties.value.map((p) => [p.key, Array.isArray(address[p.key]) ? (address[p.key] as Record<string, unknown>[]) : []]),
+    arrayProperties.value.map((p) => [
+      p.key,
+      Array.isArray(address[p.key]) ? (address[p.key] as Record<string, unknown>[]) : [],
+    ]),
   )
   resetForm({
     values: {
@@ -155,7 +172,9 @@ const submit = handleSubmit(async (values) => {
   // (derived from its commands) would persist as an empty list.
   if (!connectionId.value || !subtype.value || !endpointType.value) return
   const address = pruneEmpty(
-    Object.fromEntries(addressFields.value.map((f) => [f.key, (values as Record<string, unknown>)[f.key]])),
+    Object.fromEntries(
+      addressFields.value.map((f) => [f.key, (values as Record<string, unknown>)[f.key]]),
+    ),
   )
   // Merge in array-of-object fields (the meters list), which live outside the form.
   for (const p of arrayProperties.value) address[p.key] = arrays.value[p.key] ?? []
@@ -190,18 +209,22 @@ const submit = handleSubmit(async (values) => {
       </DialogHeader>
 
       <form class="flex flex-col gap-4" @submit="submit">
-        <!-- Connection picker (resolves the driver + endpoint types; not a vee-validate field). -->
+        <!-- Connection picker (resolves the driver + endpoint types; not a vee-validate field).
+             Searchable rather than a flat select: a site with a hundred displays
+             has a hundred near-identical names, and the address is what tells
+             them apart. -->
         <div class="space-y-2">
           <Label>Connection</Label>
-          <Select v-model="connectionId" :disabled="isEdit">
-            <SelectTrigger><SelectValue placeholder="Select a connection…" /></SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem v-for="c in connections.connections" :key="c.id" :value="c.id">{{ c.name }}</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <p v-if="isEdit" class="text-muted-foreground text-sm">The connection can't be changed after creation.</p>
+          <ConnectionPicker
+            v-model="connectionId"
+            :connections="connections.connections"
+            :devices="devices.records"
+            :disabled="isEdit"
+            @provision="emit('provision')"
+          />
+          <p v-if="isEdit" class="text-muted-foreground text-sm">
+            The connection can't be changed after creation.
+          </p>
         </div>
 
         <div v-if="connectionId" class="space-y-2">
@@ -210,19 +233,27 @@ const submit = handleSubmit(async (values) => {
             <SelectTrigger><SelectValue placeholder="Select an endpoint type…" /></SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectLabel v-if="!endpointTypes.length">No endpoint types for this driver</SelectLabel>
-                <SelectItem v-for="e in endpointTypes" :key="e.type" :value="e.type">{{ e.name }}</SelectItem>
+                <SelectLabel v-if="!endpointTypes.length"
+                  >No endpoint types for this driver</SelectLabel
+                >
+                <SelectItem v-for="e in endpointTypes" :key="e.type" :value="e.type">{{
+                  e.name
+                }}</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
-          <p v-if="endpointType?.description" class="text-muted-foreground text-sm">{{ endpointType.description }}</p>
+          <p v-if="endpointType?.description" class="text-muted-foreground text-sm">
+            {{ endpointType.description }}
+          </p>
         </div>
 
         <template v-if="connectionId && subtype">
           <FormField v-slot="{ componentField }" name="name">
             <FormItem>
               <FormLabel>Name</FormLabel>
-              <FormControl><Input placeholder="e.g. Lectern mic" v-bind="componentField" /></FormControl>
+              <FormControl
+                ><Input placeholder="e.g. Lectern mic" v-bind="componentField"
+              /></FormControl>
               <FormMessage />
             </FormItem>
           </FormField>
@@ -258,7 +289,9 @@ const submit = handleSubmit(async (values) => {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem :value="NONE">No room</SelectItem>
-                    <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{ r.name }}</SelectItem>
+                    <SelectItem v-for="r in devices.rooms" :key="r.id" :value="r.id">{{
+                      r.name
+                    }}</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -292,15 +325,22 @@ const submit = handleSubmit(async (values) => {
             <FormItem>
               <div class="flex items-center justify-between gap-4">
                 <FormLabel>Enabled</FormLabel>
-                <FormControl><Switch :model-value="!!value" @update:model-value="handleChange" /></FormControl>
+                <FormControl
+                  ><Switch :model-value="!!value" @update:model-value="handleChange"
+                /></FormControl>
               </div>
             </FormItem>
           </FormField>
         </template>
 
         <DialogFooter>
-          <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>
-          <Button type="submit" :disabled="!connectionId || !subtype || !endpointType || isSubmitting">
+          <Button type="button" variant="outline" @click="emit('update:open', false)"
+            >Cancel</Button
+          >
+          <Button
+            type="submit"
+            :disabled="!connectionId || !subtype || !endpointType || isSubmitting"
+          >
             {{ isEdit ? 'Save changes' : 'Create' }}
           </Button>
         </DialogFooter>

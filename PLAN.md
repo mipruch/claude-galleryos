@@ -1317,11 +1317,43 @@ device.
 - [x] **`ConnectionSheet.vue`** — every connection in one table, no filtering:
       the driver is a column, not a prerequisite.
 
+- [x] **Bulk device provisioning from connections**
+      (`apps/ui/src/components/admin/device-provisioning/`, logic in
+      `lib/deviceProvisioning.ts`) — the other half of the same problem: the
+      sheets made *connections* cheap to create, but a hundred TVs is a hundred
+      connections **and** a hundred devices, and a connection with no endpoint
+      is invisible everywhere it matters (no panel, no scene, no palette). So a
+      bulk import silently produces a system that looks half-empty and says
+      nowhere why. Three entry points, none of which write without confirmation:
+      a dismissible nudge on the devices list ("9 connections have no device",
+      count-keyed so a later import brings it back), a redesigned
+      searchable connection picker in the New-device dialog (filters on name
+      *and* host, rows carry their endpoint, with a "Without a device · N"
+      section and a **Create all** shortcut), and the review sheet itself —
+      grouped by driver, names pre-filled from the connection and editable
+      inline, rooms guessed out of those names, with per-group and bulk
+      selection. The batch posts to the existing `POST /bulk/devices`, which
+      already derives `subtype` from `soloEndpointType`, fills the address from
+      the schema defaults and projects capabilities off the endpoint's commands
+      — so what counts as a valid device stays defined server-side, once.
+      **No server change was needed.** Rows that can't be provisioned
+      unattended (a gateway driver, an address with no default, an uninstalled
+      driver) are shown greyed with the reason rather than dropped, because a
+      silently shorter list is how someone ends up hunting for the six fixtures
+      that "didn't import". Offline connections are read in context: unselected
+      when others are answering (they're the anomaly), selected when nothing is
+      (a system configured before the hardware is on the network — the normal
+      order of work on a commissioning job). Logic unit-tested in
+      `__tests__/deviceProvisioning.spec.ts` (27 cases).
+
 **Not done / deliberately left:** no CSV file import (the clipboard covers the
 same ground without a file picker), no column reordering or per-user column
 widths, and no bulk editing of scenes/rooms — the same grid could serve them
 later, but nothing today needs it. Undo history is in-memory and per-mount, and
-resets when the sheet is re-scoped.
+resets when the sheet is re-scoped. Provisioning deliberately does not try to
+create endpoints on a gateway (no bus scan / discovery — `capabilities.discovery`
+is false for every shipped driver), and the device category it pre-fills is a
+keyword guess off the driver name, not a manifest field.
 
 ---
 
