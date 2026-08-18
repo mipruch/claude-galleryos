@@ -11,7 +11,9 @@ import { Loader2Icon } from '@lucide/vue'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { sceneIcon } from '@/lib/scenes'
 import { useScenesStore } from '@/stores/scenes'
+import { useRoomsStore } from '@/stores/rooms'
 
+const rooms = useRoomsStore()
 const scenes = useScenesStore()
 </script>
 
@@ -24,7 +26,7 @@ const scenes = useScenesStore()
           type="button"
           :disabled="scenes.isRunning(scene.id)"
           :aria-label="`Run scene ${scene.name}`"
-          class="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-60"
+          class="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring inline-flex items-center gap-2 rounded-md border px-3 py-2 font-medium transition-colors outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-60"
           @click="scenes.execute(scene.id)"
         >
           <Loader2Icon v-if="scenes.isRunning(scene.id)" class="size-4 shrink-0 animate-spin" />
@@ -34,7 +36,12 @@ const scenes = useScenesStore()
             class="size-4 shrink-0"
             :style="scene.color ? { color: scene.color } : undefined"
           />
-          <span class="truncate">{{ scene.name }}</span>
+          <div class="grid text-left ml-1">
+            <span class="truncate text-muted-foreground text-tiny uppercase">{{
+              rooms.getRoomName(scene.roomId)
+            }}</span>
+            <span class="truncate text-sm" v-if="scene.roomId">{{ scene.name }}</span>
+          </div>
         </TooltipTrigger>
         <TooltipContent v-if="scene.description">
           {{ scene.description }}
