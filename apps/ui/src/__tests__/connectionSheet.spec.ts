@@ -245,3 +245,37 @@ describe('ConnectionSheet', () => {
     expect(payload.rows[0]).toMatchObject({ connectionId: 'c1', host: '10.0.2.99' })
   })
 })
+
+describe('deleting rows', () => {
+  it('keeps the other unsaved rows when some of them are deleted', async () => {
+    const wrapper: VueWrapper = mount(ConnectionSheet, { attachTo: document.body })
+    await flush()
+
+    // Add ten rows, then delete two of them: the other eight must survive.
+    // (They didn't: the delete path re-read the store, which knows nothing
+    // about rows that were never saved.)
+    await wrapper.find('input[aria-label="Rows to add"]').setValue('10')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('continuing the series'))!
+      .trigger('click')
+    await flush()
+
+    const sheet = wrapper.vm as unknown as {
+      rows: { key: string; connectionId?: string }[]
+      askDelete: (keys: string[]) => void
+      confirmDelete: () => Promise<void>
+    }
+    const added = sheet.rows.filter((row) => !row.connectionId)
+    expect(added).toHaveLength(10)
+
+    sheet.askDelete([added[2]!.key, added[5]!.key])
+    await sheet.confirmDelete()
+    await flush()
+
+    expect(sheet.rows.filter((row) => !row.connectionId)).toHaveLength(8)
+    // The saved connections are untouched, and nothing was sent to the server.
+    expect(sheet.rows.filter((row) => row.connectionId)).toHaveLength(2)
+    expect(mocked.bulk!.deleteConnections!).not.toHaveBeenCalled()
+  })
+})

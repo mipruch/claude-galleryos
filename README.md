@@ -2065,15 +2065,24 @@ výchozí a pro editaci jednoho záznamu je dál správným nástrojem.
 sloupce znamenají a kam se řádky ukládají řeší konzument. Chová se tak, jak to
 čeká někdo přicházející z DataGripu, Notionu nebo Google Sheets:
 
-- **Jeden výběr, ne dva.** Zaškrtnutí řádku a výběr jeho buněk je totéž —
-  checkboxy zrcadlí výběr buněk a řádkové akce (mazání) pracují s tím, co je
-  zvýrazněné. Neexistuje druhý, neviditelný výběr, na který by mazání sáhlo.
+- **Jeden výběr, ne dva.** Číslo řádku *je* jeho úchyt — kliknutím se vybere
+  celý řádek, ⌘/Ctrl+klik ho přidá a podbarvení jen zrcadlí výběr buněk.
+  Žádný samostatný checkbox, tedy ani druhý, neviditelný výběr, na který by
+  mazání sáhlo.
 - **Výběr je seznam obdélníků.** Tažením se zametá, Shift rozšiřuje,
   ⌘/Ctrl+klik přidá nesouvislý blok — řádky 4, 6 a 7 jde vyjádřit.
 - **Vložení vyplní výběr.** Zkopírovat jednu buňku, označit třicet, vložit →
   všech třicet ji dostane. Větší blok se položí od kurzoru a dorovná řádky.
-- **⌘/Ctrl+Z vrací zpět** (edity, vložení, fill down i přidané řádky),
+- **⌘/Ctrl+Z vrací zpět** (edity, vložení, fill down, řazení i přidané řádky),
   ⌘/Ctrl+Shift+Z opakuje.
+- **⌘/Ctrl+D duplikuje** vybrané řádky — kopie sedne hned pod svůj vzor a je to
+  *nový* záznam (ne druhý odkaz na tentýž), takže uložením vznikne další
+  krabice. Fill down se přesunul na ⌘/Ctrl+↓. **Pravé tlačítko** nad řádkem
+  nabídne obojí plus smazání.
+- **Řazení** má vlastní ovladač v hlavičce (šipka vedle názvu sloupce; klik na
+  název dál vybírá sloupec). Řadí se skutečné pole řádků, ne pohled nad ním —
+  všechno indexové (výběr, vložení, fill down) tak dál znamená, co říká — a
+  řazení jde vrátit zpět jako cokoli jiného. Prázdné buňky končí vždy dole.
 - **Sloupce se nehýbou.** Layout je `table-fixed`; editor se nad buňkou
   „vyzvedne“ (Notion styl) místo aby roztahoval sloupec při psaní.
 - **Nic není schované.** Všechny sloupce jsou vidět, tabulka scrolluje do
@@ -2085,8 +2094,12 @@ sloupce znamenají a kam se řádky ukládají řeší konzument. Chová se tak,
   *Add continuing the series* (pokračuje v řadě — „Displej 01“ → „Displej 02“,
   `10.0.1.1` → `10.0.1.2`, včetně přechodu přes /24).
 
-Postavené na vendorovaných shadcn-vue `Table` primitivech, `Switch` pro
-booleany a `Popover` pro picker, takže grid vypadá jako zbytek adminu.
+Postavené na vendorovaných shadcn-vue primitivech (`Table`, `ContextMenu`,
+`Popover`, `Switch`), takže grid vypadá jako zbytek adminu. **Záměrně to není
+shadcn-vue DataTable**: ten je postavený na TanStack Table jako read-and-filter
+tabulka a jeho row model si nesedne s výběrem rozsahů a editací v místě, což je
+tady celá pointa. Jediná věc, kterou by DataTable přinesl navíc — řazení — je
+implementovaná přímo (viz výše).
 
 **`/admin/connections` → Sheet** (`ConnectionSheet.vue`, `lib/connectionSheet.ts`)
 — **hlavní pracovní plocha pro zakládání**. Všechny connections v jedné

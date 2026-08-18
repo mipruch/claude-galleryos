@@ -17,8 +17,15 @@
  *  - **Paste fills the selection.** Copy one cell, select thirty, paste: all
  *    thirty take it. A block bigger than a cell lays down from the cursor and
  *    grows the sheet to fit.
- *  - **⌘/Ctrl+Z undoes**, all the way back through edits, pastes, fills and
- *    added rows.
+ *  - **⌘/Ctrl+Z undoes**, all the way back through edits, pastes, fills, sorts
+ *    and added rows.
+ *  - **⌘/Ctrl+D duplicates** the selected rows in place (each copy lands
+ *    directly under its source and is a *new* record, not a second reference to
+ *    the same one); fill-down moved to ⌘/Ctrl+↓. Right-clicking a row offers
+ *    both, plus delete.
+ *  - **Columns sort** from a control in their header, which reorders the rows
+ *    array itself — every index-based behaviour keeps meaning what it says, and
+ *    the sort is undoable like anything else.
  *  - **Columns never move.** The layout is fixed; the editor floats above its
  *    cell (Notion-style) instead of stretching the column while you type.
  *  - **Every column is visible**, and the grid scrolls sideways. Nothing is
@@ -27,11 +34,24 @@
  *    every selected cell in that column — that is the whole bulk-assign story,
  *    with no separate control anywhere else.
  *
- * Built on the vendored shadcn-vue `Table` primitives, so it looks like the
- * rest of the admin rather than like a widget.
+ * Built on the vendored shadcn-vue `Table` primitives (plus `ContextMenu`,
+ * `Popover` and `Switch`), so it looks like the rest of the admin rather than
+ * like a widget. Deliberately *not* shadcn-vue's DataTable recipe: that is a
+ * TanStack-backed read-and-filter table, and its row model fights range
+ * selection and in-place editing, which are the whole point here. Sorting —
+ * the one DataTable feature this needs — is a dozen lines below.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { CheckIcon, ChevronDownIcon, PlusIcon, Trash2Icon } from '@lucide/vue'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronsUpDownIcon,
+  CopyIcon,
+  PlusIcon,
+  Trash2Icon,
+} from '@lucide/vue'
 import {
   appendRows,
   blankRow,
@@ -58,6 +78,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   Table,
   TableBody,
@@ -251,6 +278,19 @@ const stopDragging = (): void => {
   dragging = false
 }
 
+/**
+ * Right-clicking outside the current selection moves it to the row under the
+ * pointer first, so the menu always acts on what the operator is pointing at —
+ * and right-clicking *inside* a selection leaves it alone, so "duplicate these
+ * six" works.
+ */
+function onRowContextMenu(rowIndex: number): void {
+  if (isRowSelected(rowIndex)) return
+  selection.value = [wholeRow(rowIndex, props.columns.length)]
+  anchor.value = { row: rowIndex, col: 0 }
+  cursor.value = { row: rowIndex, col: 0 }
+}
+
 /** Ticking a row selects its cells — one selection, not two. */
 function toggleRow(rowIndex: number, additive: boolean): void {
   const full = wholeRow(rowIndex, props.columns.length)
@@ -265,7 +305,8 @@ function toggleRow(rowIndex: number, additive: boolean): void {
   cursor.value = { row: rowIndex, col: 0 }
 }
 
-function toggleAllRows(): void {
+/** The `#` header doubles as select-all / clear. */
+function selectAllRows(): void {
   const all = props.rows.length > 0 && selectedRows.value.length === props.rows.length
   selection.value = all ? [] : props.rows.map((_, index) => wholeRow(index, props.columns.length))
 }
@@ -443,6 +484,72 @@ function fillDown(): void {
   setCells(targets)
 }
 
+/**
+ * Copy the selected rows in immediately below themselves.
+ *
+ * A duplicate is a *new* row even when its source is saved: it drops the record
+ * id and keeps the values, so saving it creates a second box rather than
+ * rewriting the first. That's what makes it the fastest way to add "one more
+ * like this one".
+ */
+function duplicateSelectedRows(): void {
+  const indices = selectedRowIndices(selection.value)
+  if (!indices.length) return
+  const lowest = indices[0] as number
+  mutate((rows) => {
+    // Insert from the bottom up so earlier indices stay valid.
+    for (const index of [...indices].reverse()) {
+      const source = rows[index]
+      if (!source) continue
+      rows.splice(index + 1, 0, {
+        key: `new:${newRowSeq++}`,
+        values: { ...source.values },
+      })
+    }
+  })
+  void nextTick(() => moveCursor(lowest + 1, cursor.value?.col ?? 0))
+}
+
+// ── sorting ─────────────────────────────────────────────────────────────────
+/** Which column the operator last sorted by, and in which direction. */
+const sortKey = ref<string | null>(null)
+const sortDescending = ref(false)
+
+/**
+ * Sort by a column, toggling direction on a repeat click.
+ *
+ * The rows array is genuinely reordered rather than sorted through a view, so
+ * every index-based thing in the grid (selection, paste targets, fill-down)
+ * keeps meaning what it says. It goes through `mutate`, so ⌘/Ctrl+Z puts the
+ * old order back.
+ */
+function sortByColumn(column: SheetColumn): void {
+  sortDescending.value = sortKey.value === column.key ? !sortDescending.value : false
+  sortKey.value = column.key
+  const direction = sortDescending.value ? -1 : 1
+  mutate((rows) => {
+    rows.sort((left, right) => {
+      const a = left.values[column.key]
+      const b = right.values[column.key]
+      // Blanks sort last in both directions — an empty cell is "not yet filled
+      // in", not a value that belongs at one end of the range.
+      const aEmpty = a === null || a === undefined || a === ''
+      const bEmpty = b === null || b === undefined || b === ''
+      if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1
+      if (typeof a === 'number' && typeof b === 'number') return (a - b) * direction
+      if (typeof a === 'boolean' && typeof b === 'boolean') {
+        return (Number(a) - Number(b)) * direction
+      }
+      // Numeric-aware so "Displej 2" precedes "Displej 10".
+      return (
+        formatCell(column, a).localeCompare(formatCell(column, b), undefined, { numeric: true }) *
+        direction
+      )
+    })
+  })
+  selection.value = cursor.value ? [rangeBetween(cursor.value, cursor.value)] : []
+}
+
 // ── rows ────────────────────────────────────────────────────────────────────
 /** A single blank row — for when there is no series to continue. */
 function addEmptyRow(): void {
@@ -474,6 +581,12 @@ function handleShortcut(event: KeyboardEvent): boolean {
     return true
   }
   if (key === 'd') {
+    // Duplicating a row is the far more common ask in a sheet of hardware;
+    // fill-down keeps ⌘/Ctrl+↓ and a context-menu entry.
+    duplicateSelectedRows()
+    return true
+  }
+  if (event.key === 'ArrowDown') {
     fillDown()
     return true
   }
@@ -525,13 +638,16 @@ function handleNavigation(event: KeyboardEvent, cell: CellRef): boolean {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  const cell = cursor.value
-  if (!cell || editing.value) return
+  if (editing.value) return
 
+  // Chords first, and without requiring a focused cell — undo has to work
+  // straight after a sort, which leaves nothing selected.
   if (event.metaKey || event.ctrlKey) {
     if (handleShortcut(event)) event.preventDefault()
     return
   }
+  const cell = cursor.value
+  if (!cell) return
   if (handleNavigation(event, cell)) {
     event.preventDefault()
     return
@@ -569,7 +685,8 @@ onBeforeUnmount(() => window.removeEventListener('mouseup', stopDragging))
         </span>
       </template>
       <span v-else class="opacity-70">
-        Drag to select · ⌘/Ctrl-click adds · ⌘/Ctrl+D fills down · ⌘/Ctrl+Z undoes
+        Drag to select · ⌘/Ctrl-click adds · ⌘/Ctrl+D duplicates · ⌘/Ctrl+↓ fills down · right-click
+        for more · ⌘/Ctrl+Z undoes
       </span>
     </div>
 
@@ -583,181 +700,211 @@ onBeforeUnmount(() => window.removeEventListener('mouseup', stopDragging))
     >
       <Table class="table-fixed">
         <colgroup>
-          <col style="width: 2.5rem" />
-          <col style="width: 2.75rem" />
+          <col style="width: 3rem" />
           <col v-for="column in columns" :key="column.key" :style="{ width: widthOf(column) }" />
         </colgroup>
         <TableHeader>
           <TableRow class="hover:bg-transparent">
-            <TableHead :class="[STICKY_HEAD, 'px-0 text-center']">
-              <button
-                type="button"
-                class="border-input hover:border-primary mx-auto flex size-4 items-center justify-center rounded-[4px] border"
-                :class="
-                  rows.length && selectedRows.length === rows.length
-                    ? 'bg-primary border-primary text-primary-foreground'
-                    : ''
-                "
-                aria-label="Select all rows"
-                @click="toggleAllRows"
-              >
-                <CheckIcon
-                  v-if="rows.length && selectedRows.length === rows.length"
-                  class="size-3"
-                />
-              </button>
+            <TableHead
+              :class="[STICKY_HEAD, 'cursor-pointer text-right text-xs font-normal select-none']"
+              title="Select every row"
+              @click="selectAllRows"
+            >
+              #
             </TableHead>
-            <TableHead :class="[STICKY_HEAD, 'text-right text-xs font-normal']">#</TableHead>
             <TableHead
               v-for="(column, colIndex) in columns"
               :key="column.key"
-              :class="[STICKY_HEAD, 'text-foreground cursor-pointer border-l select-none']"
+              :class="[STICKY_HEAD, 'text-foreground border-l select-none']"
               :title="column.description"
-              @click="selectColumn(colIndex, $event.metaKey || $event.ctrlKey)"
             >
-              <span class="truncate">{{ column.label }}</span>
-              <span v-if="column.required && !column.requiredUnless" class="text-destructive"
-                >*</span
-              >
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center text-left"
+                  :title="`Select the ${column.label} column`"
+                  @click="selectColumn(colIndex, $event.metaKey || $event.ctrlKey)"
+                >
+                  <span class="truncate">{{ column.label }}</span>
+                  <span v-if="column.required && !column.requiredUnless" class="text-destructive">
+                    *
+                  </span>
+                </button>
+                <!-- Sorting is its own affordance so clicking the label can go
+                     on selecting the column. -->
+                <button
+                  type="button"
+                  class="hover:text-foreground shrink-0 opacity-60 hover:opacity-100"
+                  :class="sortKey === column.key ? 'text-foreground opacity-100' : ''"
+                  :aria-label="`Sort by ${column.label}`"
+                  @click.stop="sortByColumn(column)"
+                >
+                  <ArrowUpIcon v-if="sortKey === column.key && !sortDescending" class="size-3.5" />
+                  <ArrowDownIcon v-else-if="sortKey === column.key" class="size-3.5" />
+                  <ChevronsUpDownIcon v-else class="size-3.5" />
+                </button>
+              </div>
             </TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
-          <TableRow
-            v-for="(row, rowIndex) in rows"
-            :key="row.key"
-            :class="
-              dirtyKeys?.has(row.key)
-                ? 'bg-amber-50/60 hover:bg-amber-100/60 dark:bg-amber-950/20 dark:hover:bg-amber-950/40'
-                : undefined
-            "
-          >
-            <TableCell class="px-0 text-center">
-              <button
-                type="button"
-                class="border-input hover:border-primary mx-auto flex size-4 items-center justify-center rounded-[4px] border"
+          <ContextMenu v-for="(row, rowIndex) in rows" :key="row.key">
+            <ContextMenuTrigger as-child>
+              <TableRow
                 :class="
-                  isRowSelected(rowIndex) ? 'bg-primary border-primary text-primary-foreground' : ''
+                  dirtyKeys?.has(row.key)
+                    ? 'bg-amber-50/60 hover:bg-amber-100/60 dark:bg-amber-950/20 dark:hover:bg-amber-950/40'
+                    : undefined
                 "
-                :aria-label="`Select row ${rowIndex + 1}`"
-                @click="toggleRow(rowIndex, $event.metaKey || $event.ctrlKey)"
+                @contextmenu="onRowContextMenu(rowIndex)"
               >
-                <CheckIcon v-if="isRowSelected(rowIndex)" class="size-3" />
-              </button>
-            </TableCell>
-            <TableCell class="text-muted-foreground text-right text-xs tabular-nums">
-              {{ rowIndex + 1 }}
-            </TableCell>
-
-            <TableCell
-              v-for="(column, colIndex) in columns"
-              :key="column.key"
-              class="cell relative border-l p-0"
-              :class="{
-                selected: isSelected(selection, rowIndex, colIndex),
-                cursor: cursor?.row === rowIndex && cursor?.col === colIndex,
-                invalid: !!cellError(rowIndex, column),
-              }"
-              :title="cellError(rowIndex, column) ?? undefined"
-              @mousedown="onCellMouseDown(rowIndex, colIndex, $event)"
-              @mouseenter="onCellMouseEnter(rowIndex, colIndex)"
-              @dblclick="startEditing()"
-            >
-              <!-- The editor floats above the cell so the column never resizes.
-                   Its Enter/Tab/Esc must not bubble: they clear `editing` on the
-                   way out, so the grid's own handler would see a finished edit
-                   and immediately start another one. -->
-              <input
-                v-if="editing && cursor?.row === rowIndex && cursor?.col === colIndex"
-                :ref="setEditorEl"
-                v-model="draft"
-                class="border-primary bg-background absolute top-0 left-0 z-30 h-8 w-[calc(100%+6rem)] max-w-[24rem] rounded-sm border px-2 shadow-lg outline-none"
-                @keydown.enter.prevent.stop="commitEdit('down')"
-                @keydown.tab.prevent.stop="commitEdit('right')"
-                @keydown.esc.prevent.stop="editing = false"
-                @blur="commitEdit()"
-              />
-
-              <!-- Categorical cells open the app's picker; a choice lands on every selected cell. -->
-              <Popover
-                v-else-if="
-                  column.kind === 'select' && cursor?.row === rowIndex && cursor?.col === colIndex
-                "
-                :open="pickerOpen"
-                @update:open="pickerOpen = $event"
-              >
-                <PopoverTrigger as-child>
-                  <button
-                    type="button"
-                    class="flex h-8 w-full items-center justify-between gap-1 px-2 text-left"
-                    @click="pickerOpen = true"
-                  >
-                    <span class="truncate">{{ cellText(rowIndex, column) || '—' }}</span>
-                    <ChevronDownIcon class="size-3.5 shrink-0 opacity-50" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent class="w-56 p-1" align="start">
-                  <Input
-                    v-if="(column.options?.length ?? 0) > 8"
-                    v-model="pickerFilter"
-                    placeholder="Search…"
-                    class="mb-1 h-8"
-                  />
-                  <div class="max-h-64 overflow-y-auto">
-                    <button
-                      type="button"
-                      class="hover:bg-accent flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm"
-                      @click="pickOption(null)"
-                    >
-                      <span class="text-muted-foreground">—</span>
-                      <CheckIcon v-if="!row.values[column.key]" class="size-3.5" />
-                    </button>
-                    <button
-                      v-for="option in pickerOptions"
-                      :key="option.value"
-                      type="button"
-                      class="hover:bg-accent flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm"
-                      @click="pickOption(option.value)"
-                    >
-                      <span class="truncate">{{ option.label }}</span>
-                      <CheckIcon
-                        v-if="String(row.values[column.key] ?? '') === option.value"
-                        class="size-3.5"
-                      />
-                    </button>
-                    <p
-                      v-if="!pickerOptions.length"
-                      class="text-muted-foreground px-2 py-1.5 text-sm"
-                    >
-                      No match
-                    </p>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <div
-                v-else-if="column.kind === 'boolean'"
-                class="flex h-8 items-center justify-center"
-              >
-                <Switch
-                  :model-value="row.values[column.key] !== false"
-                  @update:model-value="
-                    setCells(
-                      cursor?.row === rowIndex && cursor?.col === colIndex
-                        ? siblingsOfActive().map((t) => ({ ...t, value: $event }))
-                        : [{ row: rowIndex, col: colIndex, value: $event }],
-                    )
+                <!-- The row number is also the row handle: clicking it selects
+                     the row, ⌘/Ctrl-click adds it to the selection. -->
+                <TableCell
+                  class="text-muted-foreground cursor-pointer text-right text-xs tabular-nums select-none"
+                  :class="
+                    isRowSelected(rowIndex) ? 'bg-primary/15 text-foreground font-medium' : ''
                   "
-                />
-              </div>
+                  :aria-label="`Select row ${rowIndex + 1}`"
+                  @click="toggleRow(rowIndex, $event.metaKey || $event.ctrlKey)"
+                >
+                  {{ rowIndex + 1 }}
+                </TableCell>
 
-              <div v-else class="h-8 truncate px-2 leading-8">{{ cellText(rowIndex, column) }}</div>
-            </TableCell>
-          </TableRow>
+                <TableCell
+                  v-for="(column, colIndex) in columns"
+                  :key="column.key"
+                  class="cell relative border-l p-0"
+                  :class="{
+                    selected: isSelected(selection, rowIndex, colIndex),
+                    cursor: cursor?.row === rowIndex && cursor?.col === colIndex,
+                    invalid: !!cellError(rowIndex, column),
+                  }"
+                  :title="cellError(rowIndex, column) ?? undefined"
+                  @mousedown="onCellMouseDown(rowIndex, colIndex, $event)"
+                  @mouseenter="onCellMouseEnter(rowIndex, colIndex)"
+                  @dblclick="startEditing()"
+                >
+                  <!-- The editor floats above the cell so the column never resizes.
+                       Its Enter/Tab/Esc must not bubble: they clear `editing` on the
+                       way out, so the grid's own handler would see a finished edit
+                       and immediately start another one. -->
+                  <input
+                    v-if="editing && cursor?.row === rowIndex && cursor?.col === colIndex"
+                    :ref="setEditorEl"
+                    v-model="draft"
+                    class="border-primary bg-background absolute top-0 left-0 z-30 h-8 w-[calc(100%+6rem)] max-w-[24rem] rounded-sm border px-2 shadow-lg outline-none"
+                    @keydown.enter.prevent.stop="commitEdit('down')"
+                    @keydown.tab.prevent.stop="commitEdit('right')"
+                    @keydown.esc.prevent.stop="editing = false"
+                    @blur="commitEdit()"
+                  />
+
+                  <!-- Categorical cells open the app's picker; a choice lands on every selected cell. -->
+                  <Popover
+                    v-else-if="
+                      column.kind === 'select' &&
+                      cursor?.row === rowIndex &&
+                      cursor?.col === colIndex
+                    "
+                    :open="pickerOpen"
+                    @update:open="pickerOpen = $event"
+                  >
+                    <PopoverTrigger as-child>
+                      <button
+                        type="button"
+                        class="flex h-8 w-full items-center justify-between gap-1 px-2 text-left"
+                        @click="pickerOpen = true"
+                      >
+                        <span class="truncate">{{ cellText(rowIndex, column) || '—' }}</span>
+                        <ChevronDownIcon class="size-3.5 shrink-0 opacity-50" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent class="w-56 p-1" align="start">
+                      <Input
+                        v-if="(column.options?.length ?? 0) > 8"
+                        v-model="pickerFilter"
+                        placeholder="Search…"
+                        class="mb-1 h-8"
+                      />
+                      <div class="max-h-64 overflow-y-auto">
+                        <button
+                          type="button"
+                          class="hover:bg-accent flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm"
+                          @click="pickOption(null)"
+                        >
+                          <span class="text-muted-foreground">—</span>
+                          <CheckIcon v-if="!row.values[column.key]" class="size-3.5" />
+                        </button>
+                        <button
+                          v-for="option in pickerOptions"
+                          :key="option.value"
+                          type="button"
+                          class="hover:bg-accent flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm"
+                          @click="pickOption(option.value)"
+                        >
+                          <span class="truncate">{{ option.label }}</span>
+                          <CheckIcon
+                            v-if="String(row.values[column.key] ?? '') === option.value"
+                            class="size-3.5"
+                          />
+                        </button>
+                        <p
+                          v-if="!pickerOptions.length"
+                          class="text-muted-foreground px-2 py-1.5 text-sm"
+                        >
+                          No match
+                        </p>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <div
+                    v-else-if="column.kind === 'boolean'"
+                    class="flex h-8 items-center justify-center"
+                  >
+                    <Switch
+                      :model-value="row.values[column.key] !== false"
+                      @update:model-value="
+                        setCells(
+                          cursor?.row === rowIndex && cursor?.col === colIndex
+                            ? siblingsOfActive().map((t) => ({ ...t, value: $event }))
+                            : [{ row: rowIndex, col: colIndex, value: $event }],
+                        )
+                      "
+                    />
+                  </div>
+
+                  <div v-else class="h-8 truncate px-2 leading-8">
+                    {{ cellText(rowIndex, column) }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </ContextMenuTrigger>
+
+            <ContextMenuContent class="w-48">
+              <ContextMenuItem @select="duplicateSelectedRows">
+                <CopyIcon />
+                Duplicate {{ selectedRows.length > 1 ? `${selectedRows.length} rows` : 'row' }}
+                <span class="text-muted-foreground ml-auto text-xs">⌘D</span>
+              </ContextMenuItem>
+              <ContextMenuItem @select="fillDown">
+                <ArrowDownIcon />
+                Fill down
+                <span class="text-muted-foreground ml-auto text-xs">⌘↓</span>
+              </ContextMenuItem>
+              <ContextMenuItem @select="clearSelection">Clear cells</ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem variant="destructive" @select="emit('delete', selectedRowKeys)">
+                <Trash2Icon />
+                Delete {{ selectedRows.length > 1 ? `${selectedRows.length} rows` : 'row' }}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
 
           <TableRow v-if="!rows.length" class="hover:bg-transparent">
-            <TableCell :colspan="columns.length + 2" class="text-muted-foreground p-10 text-center">
+            <TableCell :colspan="columns.length + 1" class="text-muted-foreground p-10 text-center">
               {{ emptyLabel }}
             </TableCell>
           </TableRow>

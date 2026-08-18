@@ -80,7 +80,8 @@ const currentRows = (wrapper: VueWrapper): SheetRow[] =>
 const cells = (wrapper: VueWrapper) => wrapper.findAll('tbody td.cell')
 /** Index of the cell at (row, col) in the flat `td.cell` list. */
 const at = (rowIndex: number, colIndex: number): number => rowIndex * COLUMN_COUNT + colIndex
-const rowChecks = (wrapper: VueWrapper) => wrapper.findAll('tbody button[aria-label^="Select row"]')
+/** The row number doubles as the row handle. */
+const rowHandles = (wrapper: VueWrapper) => wrapper.findAll('tbody [aria-label^="Select row"]')
 
 const paste = async (wrapper: VueWrapper, text: string): Promise<void> => {
   await wrapper.find('.sheet').trigger('paste', { clipboardData: { getData: () => text } })
@@ -109,7 +110,7 @@ describe('selection', () => {
     expect(cells(wrapper)[at(1, 0)]!.classes()).not.toContain('selected')
   })
 
-  it('mirrors the cell selection in the row checkboxes', async () => {
+  it('marks the row number of every row whose cells are selected', async () => {
     const wrapper = mountGrid()
 
     await cells(wrapper)[at(1, 0)]!.trigger('mousedown')
@@ -117,9 +118,16 @@ describe('selection', () => {
 
     // Rows 2 and 3 read as selected because their cells are — there is no
     // second, invisible selection a delete could act on instead.
-    expect(rowChecks(wrapper)[0]!.classes()).not.toContain('bg-primary')
-    expect(rowChecks(wrapper)[1]!.classes()).toContain('bg-primary')
-    expect(rowChecks(wrapper)[2]!.classes()).toContain('bg-primary')
+    expect(rowHandles(wrapper)[0]!.classes()).not.toContain('bg-primary/15')
+    expect(rowHandles(wrapper)[1]!.classes()).toContain('bg-primary/15')
+    expect(rowHandles(wrapper)[2]!.classes()).toContain('bg-primary/15')
+  })
+
+  it('has no checkbox column — the row number is the handle', () => {
+    const wrapper = mountGrid()
+
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(rowHandles(wrapper)[0]!.text()).toBe('1')
   })
 
   it('deletes exactly the rows that are highlighted', async () => {
@@ -135,10 +143,10 @@ describe('selection', () => {
     expect(wrapper.emitted('delete')?.[0]).toEqual([['b', 'c']])
   })
 
-  it('ticking a row box selects that row’s cells', async () => {
+  it('clicking a row number selects that row’s cells', async () => {
     const wrapper = mountGrid()
 
-    await rowChecks(wrapper)[1]!.trigger('click')
+    await rowHandles(wrapper)[1]!.trigger('click')
 
     expect(wrapper.findAll('td.cell.selected')).toHaveLength(COLUMN_COUNT)
     expect(cells(wrapper)[at(1, 0)]!.classes()).toContain('selected')
@@ -147,7 +155,8 @@ describe('selection', () => {
   it('selects a whole column from its header', async () => {
     const wrapper = mountGrid()
 
-    await wrapper.findAll('thead th')[2]!.trigger('click')
+    // th[0] is the row-number header; th[1] is the first data column.
+    await wrapper.findAll('thead th')[2]!.find('button').trigger('click')
 
     expect(wrapper.findAll('td.cell.selected')).toHaveLength(3)
   })
@@ -258,7 +267,7 @@ describe('fill down', () => {
 
     await cells(wrapper)[at(0, 0)]!.trigger('mousedown')
     await cells(wrapper)[at(2, 1)]!.trigger('mouseenter')
-    await wrapper.find('.sheet').trigger('keydown', { key: 'd', metaKey: true })
+    await wrapper.find('.sheet').trigger('keydown', { key: 'ArrowDown', metaKey: true })
 
     expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
       'Displej 01',
@@ -334,13 +343,140 @@ describe('columns', () => {
     const wrapper = mountGrid()
 
     const headers = wrapper.findAll('thead th').map((th) => th.text().replace('*', '').trim())
-    expect(headers).toEqual(['', '#', 'Name', 'Host', 'Port', 'Room', 'Enabled'])
+    expect(headers).toEqual(['#', 'Name', 'Host', 'Port', 'Room', 'Enabled'])
   })
 
   it('lays out at fixed widths so a column never moves while typing', () => {
     const wrapper = mountGrid()
 
     expect(wrapper.find('table').classes()).toContain('table-fixed')
-    expect(wrapper.findAll('colgroup col')).toHaveLength(COLUMN_COUNT + 2)
+    expect(wrapper.findAll('colgroup col')).toHaveLength(COLUMN_COUNT + 1)
+  })
+})
+
+describe('duplicating rows', () => {
+  it('copies the selected row in directly below it on ⌘/Ctrl+D', async () => {
+    const wrapper = mountGrid()
+
+    await cells(wrapper)[at(1, 0)]!.trigger('mousedown')
+    await wrapper.find('.sheet').trigger('keydown', { key: 'd', metaKey: true })
+
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
+      'Displej 01',
+      'Displej 02',
+      'Displej 02',
+      'Displej 03',
+    ])
+  })
+
+  it('gives the copy a fresh identity, so saving it creates a second record', async () => {
+    const wrapper = mountGrid([
+      {
+        key: 'saved',
+        connectionId: 'c1',
+        values: { name: 'One', host: '', port: 1515, roomId: null, enabled: true },
+      },
+    ])
+
+    await cells(wrapper)[at(0, 0)]!.trigger('mousedown')
+    await wrapper.find('.sheet').trigger('keydown', { key: 'd', metaKey: true })
+
+    const [original, copy] = currentRows(wrapper)
+    expect(original!.connectionId).toBe('c1')
+    expect(copy!.connectionId).toBeUndefined()
+    expect(copy!.values.name).toBe('One')
+  })
+
+  it('duplicates every selected row, keeping each copy under its source', async () => {
+    const wrapper = mountGrid()
+
+    await cells(wrapper)[at(0, 0)]!.trigger('mousedown')
+    await cells(wrapper)[at(2, 0)]!.trigger('mousedown', { metaKey: true })
+    await wrapper.find('.sheet').trigger('keydown', { key: 'd', metaKey: true })
+
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
+      'Displej 01',
+      'Displej 01',
+      'Displej 02',
+      'Displej 03',
+      'Displej 03',
+    ])
+  })
+
+  it('is undoable like any other change', async () => {
+    const wrapper = mountGrid()
+
+    await cells(wrapper)[at(0, 0)]!.trigger('mousedown')
+    await wrapper.find('.sheet').trigger('keydown', { key: 'd', metaKey: true })
+    expect(currentRows(wrapper)).toHaveLength(4)
+
+    await wrapper.find('.sheet').trigger('keydown', { key: 'z', metaKey: true })
+    expect(currentRows(wrapper)).toHaveLength(3)
+  })
+})
+
+describe('sorting', () => {
+  const sortButton = (wrapper: VueWrapper, label: string) =>
+    wrapper.find(`thead button[aria-label="Sort by ${label}"]`)
+
+  it('sorts by a column, and reverses on a second click', async () => {
+    const wrapper = mountGrid([
+      row('a', 'Displej 10', '10.0.1.10'),
+      row('b', 'Displej 2', '10.0.1.2'),
+      row('c', 'Displej 1', '10.0.1.1'),
+    ])
+
+    await sortButton(wrapper, 'Name').trigger('click')
+    // Numeric-aware: 2 comes before 10.
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
+      'Displej 1',
+      'Displej 2',
+      'Displej 10',
+    ])
+
+    await sortButton(wrapper, 'Name').trigger('click')
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
+      'Displej 10',
+      'Displej 2',
+      'Displej 1',
+    ])
+  })
+
+  it('keeps blank cells at the bottom in either direction', async () => {
+    const wrapper = mountGrid([
+      row('a', 'Beta', '10.0.1.2'),
+      { key: 'b', values: { name: '', host: '', port: 1515, roomId: null, enabled: true } },
+      row('c', 'Alpha', '10.0.1.1'),
+    ])
+
+    await sortButton(wrapper, 'Name').trigger('click')
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual(['Alpha', 'Beta', ''])
+
+    await sortButton(wrapper, 'Name').trigger('click')
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual(['Beta', 'Alpha', ''])
+  })
+
+  it('is undoable, so a sort never costs the operator their own order', async () => {
+    const wrapper = mountGrid()
+
+    await sortButton(wrapper, 'Name').trigger('click')
+    await sortButton(wrapper, 'Name').trigger('click')
+    expect(currentRows(wrapper)[0]!.values.name).toBe('Displej 03')
+
+    await wrapper.find('.sheet').trigger('keydown', { key: 'z', metaKey: true })
+    await wrapper.find('.sheet').trigger('keydown', { key: 'z', metaKey: true })
+    expect(currentRows(wrapper).map((r) => r.values.name)).toEqual([
+      'Displej 01',
+      'Displej 02',
+      'Displej 03',
+    ])
+  })
+
+  it('leaves the column selectable — sorting has a control of its own', async () => {
+    const wrapper = mountGrid()
+
+    await wrapper.findAll('thead th')[1]!.find('button').trigger('click')
+
+    expect(wrapper.findAll('td.cell.selected')).toHaveLength(3)
   })
 })

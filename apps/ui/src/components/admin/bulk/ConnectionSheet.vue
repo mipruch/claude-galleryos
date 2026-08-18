@@ -52,12 +52,22 @@ const deleteOpen = ref(false)
 const changed = computed(() => dirtyRows(rows.value, originals.value))
 const dirtyKeys = computed(() => new Set(changed.value.map((row) => row.key)))
 
-function hydrate(): void {
+/**
+ * Rebuild the sheet from the store.
+ *
+ * `keepUnsaved` decides what happens to rows the operator has added but not
+ * saved: Discard and a successful save drop them (they either aren't wanted or
+ * have come back from the server), while a delete keeps them — deleting two of
+ * ten freshly added rows must leave eight, not none.
+ */
+function hydrate(keepUnsaved = false): void {
+  const unsaved = keepUnsaved ? rows.value.filter((row) => !originals.value.has(row.key)) : []
   serverErrors.value = new Map()
   rows.value = [...connections.connections]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
     .map((connection) => rowFromConnection(connection, columns.value))
   originals.value = new Map(rows.value.map((row) => [row.key, cloneRow(row)]))
+  if (unsaved.length) rows.value = [...rows.value, ...unsaved]
 }
 
 watch(columns, hydrate)
@@ -142,8 +152,8 @@ async function confirmDelete(): Promise<void> {
       toast.error('Could not delete connections', { description: errMsg(err) })
       return
     }
+    hydrate(true)
   }
-  hydrate()
 }
 
 onMounted(async () => {

@@ -1257,7 +1257,11 @@ device.
       drag and ⌘-click, undo/redo, paste that fills a selection, fixed column
       widths with a floating editor, every column visible, an in-cell picker
       that bulk-assigns any categorical column, and row adding at the bottom
-      (empty or series-continuing). Covered by `__tests__/sheetGrid.spec.ts`,
+      (empty or series-continuing). A second review round dropped the checkbox
+      column (the row number is the handle), added per-column sorting, made
+      ⌘/Ctrl+D duplicate rows (fill-down moved to ⌘/Ctrl+↓) and put both plus
+      delete on a right-click menu, and fixed a delete that re-read the store
+      and so wiped every unsaved row. Covered by `__tests__/sheetGrid.spec.ts`,
       which is written as one case per reported complaint.
 - [x] **`ConnectionSheet.vue`** — every connection in one table, no filtering:
       the driver is a column, not a prerequisite.
