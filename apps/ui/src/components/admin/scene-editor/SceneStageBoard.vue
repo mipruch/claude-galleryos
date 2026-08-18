@@ -29,10 +29,15 @@ const DRAG_GROUP = 'scene-editor-steps'
 function select(key: string): void {
   emit('update:selectedKey', key)
 }
+
+/** Clicking anywhere on the board that isn't a card (or one of its buttons, which stop propagation) deselects — same "click empty space to deselect" behaviour the old canvas editor's `@pane-click` had. */
+function deselect(): void {
+  emit('update:selectedKey', null)
+}
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
+  <div class="flex h-full min-h-0 flex-col" @click="deselect">
     <div class="flex shrink-0 items-center gap-2 px-6 pt-5 pb-3">
       <Badge variant="outline" class="gap-1.5 py-1 uppercase">
         <FlagIcon class="size-3" />
@@ -59,7 +64,7 @@ function select(key: string): void {
           item-key="key"
           class="flex min-h-12 flex-col gap-2 rounded-lg"
         >
-          <div v-for="action in stage" :key="action.key" @click="select(action.key)">
+          <div v-for="action in stage" :key="action.key" @click.stop="select(action.key)">
             <SceneStepCard :action="action" :selected="action.key === props.selectedKey" />
           </div>
         </VueDraggable>
@@ -67,7 +72,7 @@ function select(key: string): void {
         <button
           type="button"
           class="border-muted-foreground/30 text-muted-foreground hover:border-brand hover:text-brand hover:bg-brand/5 flex items-center justify-center gap-1.5 rounded-md border-2 border-dashed py-2 text-xs font-medium transition-colors"
-          @click="emit('add-step', stageIndex)"
+          @click.stop="emit('add-step', stageIndex)"
         >
           <PlusIcon class="size-3.5" />
           Add step
@@ -78,7 +83,7 @@ function select(key: string): void {
         type="button"
         aria-label="Add stage"
         class="border-muted-foreground/30 text-muted-foreground hover:border-brand hover:text-brand hover:bg-brand/5 flex w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed py-6 text-xs font-medium transition-colors"
-        @click="emit('add-stage')"
+        @click.stop="emit('add-stage')"
       >
         <PlusIcon class="size-5" />
         Stage

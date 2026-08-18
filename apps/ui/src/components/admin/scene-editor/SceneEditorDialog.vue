@@ -259,9 +259,6 @@ async function testRun(): Promise<void> {
               @close="selectedKey = null"
             />
           </aside>
-          <aside v-else class="text-muted-foreground flex w-96 shrink-0 items-center justify-center border-l p-5 text-center text-sm">
-            Select a step to edit it.
-          </aside>
         </div>
 
         <div class="text-muted-foreground flex shrink-0 items-center justify-between border-t px-6 py-3 text-xs">

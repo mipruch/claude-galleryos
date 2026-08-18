@@ -4,8 +4,12 @@
  * — the only way to set a scene's colour. No hex text entry anywhere: every
  * value this emits is one of `PALETTE_COLORS`, so `scene.color` always stays a
  * value the rest of the UI (`SceneBar`, this picker) recognizes.
+ *
+ * The selected swatch is marked by a ring in its own colour (via the
+ * `--tw-ring-color` custom property Tailwind's `ring-*` utilities read) rather
+ * than a fixed outline colour or a checkmark glyph — the swatch itself is the
+ * only indicator.
  */
-import { CheckIcon } from '@lucide/vue'
 import { PALETTE_COLORS } from '@/lib/palette'
 
 defineProps<{ modelValue: string }>()
@@ -22,12 +26,10 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>()
       :aria-checked="modelValue === color.value"
       :aria-label="color.label"
       :title="color.label"
-      class="ring-offset-background focus-visible:ring-ring size-7 shrink-0 rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-offset-2"
-      :class="modelValue === color.value ? 'ring-foreground ring-2 ring-offset-2' : ''"
-      :style="{ backgroundColor: color.value }"
+      class="ring-offset-background size-7 shrink-0 rounded-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-offset-2"
+      :class="modelValue === color.value ? 'ring-2 ring-offset-2' : ''"
+      :style="{ backgroundColor: color.value, '--tw-ring-color': color.value }"
       @click="emit('update:modelValue', color.value)"
-    >
-      <CheckIcon v-if="modelValue === color.value" class="mx-auto size-3.5 text-white mix-blend-difference" />
-    </button>
+    />
   </div>
 </template>
