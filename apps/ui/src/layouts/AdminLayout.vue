@@ -9,6 +9,7 @@ import { useRoute } from 'vue-router'
 import { WifiIcon, WifiOffIcon } from '@lucide/vue'
 import AdminSidebar from '@/components/layout/AdminSidebar.vue'
 import ConnectionStatus from '@/components/connections/ConnectionStatus.vue'
+import SceneEditorDialog from '@/components/admin/scene-editor/SceneEditorDialog.vue'
 import { useRealtimeStore } from '@/stores/realtime'
 
 const route = useRoute()
@@ -55,4 +56,5 @@ const pageSubtitle = computed(() =>
       </div>
     </div>
   </div>
+  <SceneEditorDialog />
 </template>

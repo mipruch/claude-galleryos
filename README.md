@@ -2145,6 +2145,9 @@ v dialogu a v gridu nerozešla.
     spravované jako prostý reaktivní stav; čisté konvertory v
     `lib/sceneActions.ts` (unit-testované) mapují na/z serverového tvaru a
     parametry příkazů se na submitu převedou na typy dle `paramsSchema`.
+  > **Nahrazeno redesignem scene editoru** (viz "Scene editor redesign" níže):
+  > `SceneFormDialog` i samostatný canvas `/admin/workflows/scenes/:id` jsou
+  > pryč, obojí sloučeno do jediného `SceneEditorDialog`.
 - **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — tabulka (scéna,
   cron, timezone, náhled příštího běhu, enable/disable, edit, mazání) +
   `ScheduleFormDialog` (vee-validate + Zod). Cron má klientský sanity-check
@@ -2155,6 +2158,65 @@ v dialogu a v gridu nerozešla.
   > `scene_id` zmizel ze schématu, `ScheduleFormDialog` byl smazán a sloupec
   > "Scéna" nahrazen sloupcem "Next run" bez cíle — vytváření a zapojování
   > akcí se přesunulo na canvas.
+
+#### Implementováno (Scene editor redesign — jeden sloučený editor)
+
+Dřív existovaly **dvě** cesty k editaci scény: metadata-only modál
+(`SceneFormDialog` na `/admin/scenes`, plochý přeřaditelný seznam kroků) a
+samostatná stránka s Vue Flow canvasem (`/admin/workflows/scenes/:id`,
+akce rozložené do sloupců podle `parallel_group`). Obojí smazáno a nahrazeno
+jedním **`SceneEditorDialog`** (`components/admin/scene-editor/`) — skoro
+fullscreen modál (`92vh` × `96vw`, `DialogContent` má nový `hideClose` prop,
+aby si dialog kreslil vlastní close tlačítko v custom headeru místo
+výchozího rohového). Otevírá se odkudkoli přes `useSceneEditor()`
+(`openEditor(id?)`/`close()`, sdílený `ref` stejného tvaru jako
+`useCommandPalette`) a je namountovaný jednou v `AdminLayout.vue`, takže se
+vždy vykreslí jako overlay nad aktuální admin stránkou:
+
+- Z `/admin/scenes` (New/Edit tlačítka) i z `/admin/workflows`
+  (`WorkflowTargetInspector`'s "Edit scene steps") jde o **stejnou** instanci
+  dialogu — druhý případ ho teď otevře přímo nad routing mapou, žádný
+  `router.push` na samostatnou route. Route `admin-workflow-scene`
+  (`/admin/workflows/scenes/:id`) i `WorkflowSceneView.vue` jsou smazané.
+- **Stage board místo Vue Flow canvasu.** Akce scény se needitují jako
+  volně umístitelné uzly na plátně, ale jako sloupce ("stages", pořád jen UI
+  projekce `parallel_group` — žádná nová perzistovaná entita) s kartami
+  seřazenými uvnitř. Tažení karty mezi sloupci přeřadí `parallel_group`,
+  tažení uvnitř sloupce mění `stepOrder` — obojí přes `vue-draggable-plus`
+  (`VueDraggable`, sdílený `group` napříč sloupci), který si sám
+  přesplicuje pole na obou koncích draggu. Nové čisté helpery v
+  `lib/sceneStages.ts` (`groupIntoStages`, `flattenStages`,
+  `estimateRunTimeMs`, …, unit-testované) nahradily souřadnicovou matematiku
+  původního `buildSceneStageGraph`/`columnIndexFromX` z `lib/workflowGraph.ts`
+  (ten teď obsahuje jen routing-mapu).
+- **Barvy a ikony už nejdou napsat jako text.** `scene.color`/`scene.icon`
+  zůstávají stejné DB sloupce (`varchar(7)` hex / `varchar(50)` name), ale UI
+  nabízí jen výběr z pevné, globální sady: `lib/palette.ts`
+  (`PALETTE_COLORS`, 5 švihů) a `lib/icons.ts` (`SCENE_ICONS`, ~16 Lucide
+  ikon — přesunuto sem z `lib/scenes.ts`, které teď jen `sceneIcon()`
+  deleguje na sdílený seznam, aby picker a resolver nikdy nerozjely). Nové
+  `ColorPicker.vue` (řada kruhových švihů) a `IconPicker.vue` (popover s
+  gridem) tuhle sadu vykreslují — nikde není textový input pro hex/lucide
+  název.
+- **Modrá accent barva.** Celý design systém je jinak čistě šedý OKLCH
+  (`--primary` = černá/bílá podle theme, žádný barevný accent). Přidán nový
+  pár tokenů `--brand`/`--brand-foreground` (`style.css`, `:root` i `.dark`)
+  použitý cíleně jen v editoru — tlačítko *Save scene*, slider u
+  ohraničeného number parametru, segmentované přepínače (Device
+  command/Run scene, Continue/Abort) a modrý ring na vybrané kartě. Zbytek
+  aplikace zůstává beze změny (žádný plošný re-theme).
+- **Typové tagy na kartách.** Malý `Badge` (`variant="device"`/`"scene"`,
+  nové varianty v `components/ui/badge/index.ts`) na každé kartě i v hlavičce
+  inspectoru napoví na první pohled, jestli krok ovládá zařízení nebo spouští
+  pod-scénu — inspirováno starším seznamovým editorem, který tohle uměl a
+  canvas ne.
+- Inspector (`SceneStepInspector.vue`, nahrazuje `SceneActionRow.vue`) ztratil
+  ruční pole "Parallel group" — grouping teď plyne výhradně z toho, do
+  kterého sloupce je karta zatažená.
+- **Test run** tlačítko v headeru volá existující
+  `POST /scenes/:id/execute/dry-run` (server to uměl už dřív, jen to nebylo
+  v UI zapojené) — deaktivované, dokud scéna není uložená (dry-run potřebuje
+  reálné `sceneId`).
 
 #### Implementováno (čtvrtý řez — Settings)
 
@@ -2298,19 +2360,28 @@ Zbývající admin stránka (layouts) přidá další řez — viz PLAN §"Prior
 
 #### `/scenes` — Scény
 
-- Grid view scén s ikonami a barvami
-- Filtrování dle místnosti, oblíbené, tagy
-- Scene detail editor:
-  - Metadata (jméno, popis, ikona, barva, místnost, tagy)
-  - **Action Timeline editor:**
-    - Drag & drop akce do skupin (parallel_group)
-    - Každá akce: výběr zařízení → výběr příkazu → formulář params (z manifest)
-    - Nastavení delay_ms a on_failure per akce
-    - Live preview časové osy (ganttový diagram skupin)
-  - Tlačítko “Testovat (dry run)” — spustí scénu s `dryRun: true`, zobrazí log
-  - Tlačítko “Spustit” — reálné spuštění
-  - Historie verzí — dropdown s verzemi, diff view, tlačítko restore
-- Rychlé vytvoření scény z šablony (výběr “Přednáška”, “Projekce”, “Reset místnosti”)
+> **Skutečný stav (viz "Scene editor redesign" výše)** — tabulka scén
+> (ikona, barva, tagy, oblíbené, *Run*/edit/mazání, filtr dle místnosti) +
+> jeden sloučený **`SceneEditorDialog`**, skoro fullscreen modál otevřený i
+> z `/admin/workflows`:
+> - **Metadata** vlevo: jméno, místnost, popis, ikona a barva (jen výběr
+>   z pevné globální sady — `ColorPicker`/`IconPicker`, žádný text input),
+>   tagy jako odebiratelné chipy, favourite switch.
+> - **Stage board** uprostřed: akce seřazené do sloupců podle
+>   `parallel_group` ("stages" — pořád jen UI projekce, ne nová entita),
+>   karty uvnitř sloupce přeřaditelné i přetahovatelné mezi sloupci
+>   (`vue-draggable-plus`); každá karta nese malý typový tag ("Device"/
+>   "Scene").
+> - **Inspector** vpravo: vybraná karta — buď příkaz zařízení (výběr
+>   zařízení → příkazu → typovaná pole z `paramsSchema`, ohraničené číslo
+>   jako Slider) nebo pod-scéna, plus `delayMs` a `onFailure`
+>   (Continue/Abort). `parallelGroup` se needituje ručně — plyne ze sloupce.
+> - Tlačítko **Test run** volá `POST /scenes/:id/execute/dry-run`
+>   (deaktivované pro neuloženou scénu); **Save scene** uloží metadata +
+>   akce jedním requestem.
+> - Historie verzí a šablony ze zbytku téhle sekce **nejsou implementované**
+>   (viz PLAN.md — `scene_versions` zůstává ve schématu pro budoucí použití,
+>   bez version-on-save logiky).
 
 #### `/schedules` — Harmonogramy
 
@@ -2393,15 +2464,22 @@ stránky výše slouží jen k monitorování, přepnutí enable/disable a smaz�
     "Use a value" — přepne widget na prostý textový vstup pro token
     `{arg[0]}` / `{:name}`; instance zapojená jen na schedule dráty přepínač
     vůbec nemá (cron fire nemá signál, na který by šlo šablonovat).
-- Klik na "Edit scene steps" v inspectoru scénové instance otevře její vlastní
-  canvas (`/admin/workflows/scenes/:id`) s akcemi seřazenými do "stage"
-  sloupců podle `parallel_group`. Záměrně bez hran mezi jednotlivými akcemi —
-  `SceneEngine` nezná závislost mezi akcemi, jen bariéry mezi skupinami
-  (`planGroups`), takže spojnice mezi kroky by tvrdila závislost, která
-  neexistuje. Tažení uzlu mezi sloupci akci přeřadí do jiné `parallel_group`.
-- Perzistovaný `position` (jsonb) nese `scene_actions` (krok uvnitř scény),
-  `input_mappings` / `scheduled_jobs` (trigger) a `workflow_targets`
-  (instance) — čistě rozvržení, nic exekučního. `trigger_actions` vlastní
+- Klik na "Edit scene steps" v inspectoru scénové instance otevře **sdílený
+  `SceneEditorDialog`** (viz "Scene editor redesign" u `/admin/scenes` výše)
+  přes `useSceneEditor().openEditor(sceneId)` — modál nad aktuální stránkou,
+  ne navigace na samostatnou route (ta — `/admin/workflows/scenes/:id` — byla
+  smazaná spolu s canvasem, který na ní běžel). Akce jsou uvnitř dialogu
+  pořád seřazené do "stage" sloupců podle `parallel_group`, teď jako
+  přetahovatelné karty (`vue-draggable-plus`) místo Vue Flow uzlů; záměrně
+  bez hran mezi jednotlivými akcemi — `SceneEngine` nezná závislost mezi
+  akcemi, jen bariéry mezi skupinami (`planGroups`), takže spojnice mezi
+  kroky by tvrdila závislost, která neexistuje.
+- Perzistovaný `position` (jsonb) nese `input_mappings` / `scheduled_jobs`
+  (trigger) a `workflow_targets` (instance) na téhle routing mapě — čistě
+  rozvržení, nic exekučního. `scene_actions.position` ve schématu zůstává
+  (`SceneActionInput.position` se stále round-tripuje), ale nový stage board
+  ho nečte ani nezapisuje smysluplně — pořadí a grouping teď nese jen pozice
+  v poli/sloupci, ne uložené x/y. `trigger_actions` vlastní
   `position` nemá (viz výše — na mapě ji zastupuje hrana, ne uzel).
   Neumístěné triggery se automaticky rozloží knihovnou `dagre`; instance
   naproti tomu má `position` vždy (`NOT NULL` — existence řádku *je*

@@ -5,86 +5,35 @@
  * The record *type* comes from the shared `@gallery/types` package (a `SceneDTO`
  * is the serialized `scenes` row returned by `GET /api/v1/scenes`). The DB carries
  * a free-text `icon` name; we map it to a Lucide component here so scenes render
- * with the same icon set as the device widgets (never a raw DB string/emoji).
+ * with the same icon set as the device widgets (never a raw DB string/emoji). The
+ * curated name→component list itself lives in `lib/icons.ts` (shared with
+ * `IconPicker`, so the picker's selectable set and this resolver's known set can
+ * never drift apart).
  */
 
 import type { Component } from 'vue'
-import {
-  BlindsIcon,
-  FilmIcon,
-  HomeIcon,
-  LightbulbIcon,
-  MicIcon,
-  MoonIcon,
-  MusicIcon,
-  PlayIcon,
-  PowerIcon,
-  PresentationIcon,
-  ProjectorIcon,
-  SparklesIcon,
-  SunIcon,
-  TheaterIcon,
-  Volume2Icon,
-  ZapIcon,
-} from '@lucide/vue'
 import type { RoomDTO, SceneDTO } from '@gallery/types'
+import { DEFAULT_SCENE_ICON, SCENE_ICONS, normalizeIconName } from './icons'
 import { ROOM_UNASSIGNED } from './devices'
 import { matchesAllTerms, normalize, searchTerms } from './text'
 
 // Re-exported under a UI-local name so components import scene types from here.
 export type { SceneDTO as SceneRecord } from '@gallery/types'
 
+export { DEFAULT_SCENE_ICON }
+
+const ICON_BY_NAME = new Map(SCENE_ICONS.map((option) => [option.name, option.icon]))
+
 /**
- * Map a DB `icon` name to a Lucide component. Names are matched loosely (case-
- * insensitive, ignoring a `-icon`/`lucide:` prefix) so seed data like "lightbulb",
- * "Power" or "projector" all resolve. Unknown / missing names fall back to a
- * generic scene icon, mirroring how device widgets pick their icon.
+ * Map a DB `icon` name to a Lucide component from the curated set (`lib/icons.ts`).
+ * Names are matched loosely (case-insensitive, ignoring a `-icon`/`lucide:` prefix,
+ * and a handful of older aliases) so seed data like "lightbulb", "Power" or
+ * "projector" all resolve. Unknown / missing names fall back to a generic scene
+ * icon, mirroring how device widgets pick their icon.
  */
-const ICONS: Record<string, Component> = {
-  play: PlayIcon,
-  power: PowerIcon,
-  off: PowerIcon,
-  lightbulb: LightbulbIcon,
-  light: LightbulbIcon,
-  lights: LightbulbIcon,
-  sun: SunIcon,
-  day: SunIcon,
-  moon: MoonIcon,
-  night: MoonIcon,
-  film: FilmIcon,
-  movie: FilmIcon,
-  cinema: FilmIcon,
-  video: FilmIcon,
-  projector: ProjectorIcon,
-  presentation: PresentationIcon,
-  lecture: PresentationIcon,
-  theater: TheaterIcon,
-  theatre: TheaterIcon,
-  stage: TheaterIcon,
-  music: MusicIcon,
-  audio: Volume2Icon,
-  volume: Volume2Icon,
-  mic: MicIcon,
-  microphone: MicIcon,
-  blinds: BlindsIcon,
-  curtains: BlindsIcon,
-  home: HomeIcon,
-  all: HomeIcon,
-  zap: ZapIcon,
-  sparkles: SparklesIcon,
-}
-
-/** Fallback icon for scenes with no/unknown DB icon name. */
-export const DEFAULT_SCENE_ICON: Component = SparklesIcon
-
 export function sceneIcon(name?: string | null): Component {
-  if (!name) return DEFAULT_SCENE_ICON
-  const key = name
-    .toLowerCase()
-    .replace(/^lucide:/, '')
-    .replace(/-?icon$/, '')
-    .trim()
-  return ICONS[key] ?? DEFAULT_SCENE_ICON
+  const canonical = normalizeIconName(name)
+  return (canonical && ICON_BY_NAME.get(canonical)) || DEFAULT_SCENE_ICON
 }
 
 /** A scene's room key (its `roomId`, or the shared unassigned sentinel). */

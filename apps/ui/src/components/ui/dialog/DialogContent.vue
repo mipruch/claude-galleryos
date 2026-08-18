@@ -14,10 +14,12 @@ import { cn } from "@/lib/utils"
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<DialogContentProps & { class?: HTMLAttributes["class"] }>()
+const props = defineProps<
+  DialogContentProps & { class?: HTMLAttributes["class"]; hideClose?: boolean }
+>()
 const emits = defineEmits<DialogContentEmits>()
 
-const delegatedProps = reactiveOmit(props, "class")
+const delegatedProps = reactiveOmit(props, "class", "hideClose")
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
@@ -40,6 +42,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       <slot />
 
       <DialogClose
+        v-if="!hideClose"
         class="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none"
       >
         <XIcon class="size-4" />

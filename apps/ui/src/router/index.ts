@@ -109,12 +109,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Workflows', subtitle: 'Trigger routing map' },
       },
       {
-        path: 'workflows/scenes/:id',
-        name: 'admin-workflow-scene',
-        component: () => import('@/views/admin/WorkflowSceneView.vue'),
-        meta: { title: 'Workflows', subtitle: 'Scene action graph' },
-      },
-      {
         path: 'layouts',
         name: 'admin-layouts',
         component: () => import('@/views/admin/LayoutsView.vue'),

@@ -12,6 +12,9 @@ export const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-white",
         outline: "text-foreground",
+        // Step "kind" tags — device command vs. sub-scene composition, at a glance.
+        device: "border-transparent bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
+        scene: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
       },
     },
     defaultVariants: {

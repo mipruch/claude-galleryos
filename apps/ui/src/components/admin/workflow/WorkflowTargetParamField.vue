@@ -3,8 +3,8 @@
  * One workflow-target param field: a typed widget resolved from the command's
  * schema — a Switch for booleans, a Select for enums, a Slider for a bounded
  * number (both `minimum`/`maximum` declared, e.g. a 0..1 fader level), a plain
- * Input otherwise — the same pattern `SceneActionRow.vue` uses for scene
- * actions — or, once toggled, a raw text field for a template token
+ * Input otherwise — the same pattern the scene editor's step inspector uses
+ * for scene actions — or, once toggled, a raw text field for a template token
  * (`{arg[0]}`/`{:name}`). Split out of `WorkflowTargetInspector.vue` so the
  * per-kind widget switch doesn't balloon that template's branching alongside
  * its own command-picker and summary logic.

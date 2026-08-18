@@ -1,14 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyAction } from '@/lib/sceneActions'
-import {
-  buildRoutingGraph,
-  buildSceneStageGraph,
-  columnIndexFromX,
-  distinctGroups,
-  orderActionsForSave,
-  parseNodeId,
-  patternParamNames,
-} from '@/lib/workflowGraph'
+import { buildRoutingGraph, parseNodeId, patternParamNames } from '@/lib/workflowGraph'
 import { makeDevice, makeMapping, makeSchedule, makeScene, makeTriggerAction, makeWorkflowTarget } from './fixtures'
 
 describe('parseNodeId', () => {
@@ -339,88 +330,5 @@ describe('buildRoutingGraph', () => {
       expect(data?.kind === 'target' && data.hasSignalWire).toBe(false)
       expect(data?.kind === 'target' && data.availableArgs).toEqual([])
     })
-  })
-})
-
-describe('distinctGroups', () => {
-  it('returns sorted unique parallelGroup values', () => {
-    const actions = [
-      { ...emptyAction(), parallelGroup: '2' },
-      { ...emptyAction(), parallelGroup: '0' },
-      { ...emptyAction(), parallelGroup: '2' },
-    ]
-    expect(distinctGroups(actions)).toEqual([0, 2])
-  })
-
-  it('treats a blank parallelGroup as 0', () => {
-    expect(distinctGroups([{ ...emptyAction(), parallelGroup: '' }])).toEqual([0])
-  })
-})
-
-describe('columnIndexFromX', () => {
-  it('rounds to the nearest column centre', () => {
-    expect(columnIndexFromX(280, 3)).toBe(0)
-  })
-
-  it('clamps to the existing column range', () => {
-    expect(columnIndexFromX(-500, 3)).toBe(0)
-    expect(columnIndexFromX(10000, 3)).toBe(2)
-  })
-
-  it('has nothing to clamp into on an empty scene', () => {
-    expect(columnIndexFromX(500, 0)).toBe(0)
-  })
-})
-
-describe('buildSceneStageGraph', () => {
-  it('always renders a start node and an add-stage button, even with no actions', () => {
-    const { nodes, columnCount } = buildSceneStageGraph([])
-    expect(nodes.map((n) => n.id)).toEqual(['start', 'add-stage'])
-    expect(columnCount).toBe(0)
-  })
-
-  it('groups actions into one stage column per distinct parallelGroup', () => {
-    const actions = [
-      { ...emptyAction(), key: 'a', parallelGroup: '0' },
-      { ...emptyAction(), key: 'b', parallelGroup: '0' },
-      { ...emptyAction(), key: 'c', parallelGroup: '1' },
-    ]
-    const { nodes, columnCount } = buildSceneStageGraph(actions)
-
-    expect(columnCount).toBe(2)
-    expect(nodes.filter((n) => n.type === 'action')).toHaveLength(3)
-    expect(nodes.find((n) => n.id === 'stage:0')?.data).toMatchObject({ kind: 'stage', groupIndex: 0, count: 2 })
-  })
-
-  it('adds an add-action button per stage and one trailing add-stage button', () => {
-    const actions = [
-      { ...emptyAction(), key: 'a', parallelGroup: '0' },
-      { ...emptyAction(), key: 'b', parallelGroup: '1' },
-    ]
-    const { nodes } = buildSceneStageGraph(actions)
-
-    expect(nodes.find((n) => n.id === 'add-action:0')?.data).toEqual({ kind: 'add-action', groupIndex: 0 })
-    expect(nodes.find((n) => n.id === 'add-action:1')?.data).toEqual({ kind: 'add-action', groupIndex: 1 })
-    expect(nodes.find((n) => n.id === 'add-stage')?.data).toEqual({ kind: 'add-stage' })
-  })
-
-  it('never lets two actions in the same stage share a render position, even when one has a stale saved y close to another', () => {
-    const actions = [
-      { ...emptyAction(), key: 'a', parallelGroup: '0', position: null },
-      { ...emptyAction(), key: 'b', parallelGroup: '0', position: { x: 0, y: 133.76 } },
-    ]
-    const { nodes } = buildSceneStageGraph(actions)
-    const positions = nodes.filter((n) => n.type === 'action').map((n) => `${n.position.x},${n.position.y}`)
-    expect(new Set(positions).size).toBe(2)
-  })
-})
-
-describe('orderActionsForSave', () => {
-  it('orders by parallelGroup ascending, then by canvas y', () => {
-    const a = { ...emptyAction(), key: 'a', parallelGroup: '1', position: { x: 0, y: 50 } }
-    const b = { ...emptyAction(), key: 'b', parallelGroup: '0', position: { x: 0, y: 10 } }
-    const c = { ...emptyAction(), key: 'c', parallelGroup: '0', position: { x: 0, y: 5 } }
-
-    expect(orderActionsForSave([a, b, c]).map((x) => x.key)).toEqual(['c', 'b', 'a'])
   })
 })

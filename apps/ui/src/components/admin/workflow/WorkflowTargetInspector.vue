@@ -23,7 +23,6 @@
  * pattern).
  */
 import { computed, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ExternalLinkIcon, PlayCircleIcon, SlidersHorizontalIcon, Trash2Icon } from '@lucide/vue'
 import type { WorkflowTargetDTO } from '@gallery/types'
 import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
@@ -31,6 +30,7 @@ import { useTriggerActionsStore } from '@/stores/triggerActions'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
 import { useDeviceCommands } from '@/composables/useDeviceCommands'
+import { useSceneEditor } from '@/composables/useSceneEditor'
 import { schemaToFields } from '@/lib/schemaForm'
 import { resolveTargetNames, targetSummary, usesParams } from '@/lib/workflowTargets'
 import { Label } from '@/components/ui/label'
@@ -41,7 +41,7 @@ import WorkflowTargetParamField from './WorkflowTargetParamField.vue'
 const props = defineProps<{ target: WorkflowTargetDTO; availableArgs: string[]; hasSignalWire: boolean }>()
 const emit = defineEmits<{ remove: [] }>()
 
-const router = useRouter()
+const { openEditor } = useSceneEditor()
 const targetsStore = useWorkflowTargetsStore()
 const triggerActionsStore = useTriggerActionsStore()
 const scenes = useScenesStore()
@@ -88,7 +88,7 @@ async function submit(): Promise<void> {
 }
 
 function openSceneEditor(): void {
-  router.push({ name: 'admin-workflow-scene', params: { id: props.target.targetId } })
+  openEditor(props.target.targetId)
 }
 
 async function remove(): Promise<void> {

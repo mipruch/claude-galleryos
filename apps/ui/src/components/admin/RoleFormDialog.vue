@@ -3,7 +3,7 @@
  * Create / edit a role. `isAdmin` grants full admin-portal access and every
  * device, ignoring the list below. Otherwise `deviceIds` — the devices this
  * role may see in the User UI — is plain reactive state edited as a full
- * replacement set (same reasoning as SceneFormDialog's action list: a
+ * replacement set (same reasoning as the scene editor's stage board: a
  * per-device toggle list doesn't fit a flat validation schema).
  */
 import { computed, ref, watch } from 'vue'

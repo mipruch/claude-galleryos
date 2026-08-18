@@ -547,13 +547,9 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           type filters, online dot, enable/disable, edit, delete +
           `DeviceFormDialog`.
     - [x] **`/admin/scenes`** (`views/admin/ScenesView.vue`) — table (favourite
-          toggle, run, edit, delete; room filter) + `SceneFormDialog`: flat
-          metadata (vee-validate + Zod) plus an ordered, reorderable **actions
-          editor** (`SceneActionRow`). Each action targets a device command —
-          command list + param fields resolved from the driver manifest via
-          `composables/useDeviceCommands` — or a sub-scene. Pure converters in
-          `lib/sceneActions.ts` (unit-tested); params coerced to the command's
-          schema on submit.
+          toggle, run, edit, delete; room filter) opens the shared
+          **`SceneEditorDialog`** (see "Scene editor redesign" below) instead of
+          the old `SceneFormDialog`.
     - [x] **`/admin/schedules`** (`views/admin/SchedulesView.vue`) — table (scene,
           cron, timezone, next-run preview, enable/disable, edit, delete) +
           `ScheduleFormDialog` (vee-validate + Zod, client-side `isValidCron`
@@ -1118,6 +1114,61 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
           ("All scenes are on the canvas") was stale from before the
           library-always-shows-everything redesign — fixed to distinguish
           "nothing exists yet" from "nothing matches the search."
+  - [x] **Scene editor redesign — one merged, near-fullscreen editor.** Direct
+        design ask: stop maintaining two separate scene editors (the
+        metadata-only `SceneFormDialog` modal on `/admin/scenes`, and the
+        Vue Flow action-stage canvas on its own route,
+        `/admin/workflows/scenes/:id`). Both deleted; replaced with a single
+        **`SceneEditorDialog`** (`components/admin/scene-editor/`) — a
+        `92vh`×`96vw` dialog, opened from anywhere via `useSceneEditor()`
+        (`openEditor(id?)`/`close()`, a shared `ref` singleton mirroring
+        `useCommandPalette`) and mounted once in `AdminLayout.vue`, so it
+        always renders as an overlay over whichever admin page is
+        underneath — including `/admin/workflows`, whose
+        `WorkflowTargetInspector` "Edit scene steps" button now calls
+        `openEditor(targetId)` instead of `router.push`-ing to the old route.
+        - **Stage board replaces the Vue Flow canvas.** A scene's actions are
+          edited as an array of stage columns (`lib/sceneStages.ts`'s
+          `SceneStage = EditAction[]`) instead of freely-positioned nodes —
+          `parallel_group` stays a UI-only projection (no new persisted
+          entity), but the board is a fixed-column list, not a pan/zoom
+          canvas. Cross-column drag re-groups a card, in-column drag
+          reorders it, both via `vue-draggable-plus`'s `VueDraggable` (shared
+          `group` across columns splices both ends' bound arrays itself — no
+          coordinate-to-column math to reconcile on save, unlike the old
+          `columnIndexFromX`/`buildSceneStageGraph`, both removed from
+          `lib/workflowGraph.ts`, which now only builds the routing-map
+          graph). `scene_actions.position` stays in the schema (still
+          round-tripped through `SceneActionInput.position`) but is no longer
+          meaningfully read or written by this editor.
+        - **Colour and icon are pick-only, from a new global set** — no more
+          free-text hex/Lucide-name inputs. `lib/palette.ts`
+          (`PALETTE_COLORS`, 5 swatches) and `lib/icons.ts` (`SCENE_ICONS`,
+          the curated Lucide list moved out of `lib/scenes.ts`, which now has
+          `sceneIcon()` delegate to it so the picker's set and the resolver's
+          set can't drift) back two new components, `ColorPicker.vue` and
+          `IconPicker.vue`.
+        - **New `--brand`/`--brand-foreground` accent tokens** (`style.css`) —
+          the app's design system is otherwise pure grayscale OKLCH (`--primary`
+          is just "black or white depending on theme"). Scoped to the editor
+          only: the Save button, the bounded-number Slider, the segmented
+          Device-command/Run-scene and Continue/Abort toggles, and the
+          selected card's ring. No app-wide re-theme.
+        - **Per-step type tag** (`Badge` `variant="device"`/`"scene"`, new
+          variants in `components/ui/badge/index.ts`) on every card and in the
+          inspector header, so a step's kind reads at a glance — carried over
+          from the old flat `SceneActionRow` list design, which had this and
+          the canvas didn't.
+        - `SceneStepInspector.vue` (replaces `SceneActionRow.vue`) drops the
+          manual "Parallel group" number field — grouping is now purely which
+          column a card's dragged into.
+        - **Test run** button wires the already-existing
+          `POST /scenes/:id/execute/dry-run` endpoint into the UI for the
+          first time (disabled until the scene is saved — dry-run needs a real
+          `sceneId`).
+        - `apps/ui/src/__tests__/sceneStages.spec.ts` (new, unit-tested:
+          `groupIntoStages`/`flattenStages`/`estimateRunTimeMs`/…);
+          `workflowGraph.spec.ts` trimmed to just the routing-graph tests.
 
 See README §5, §10–11 for full spec; see §11 for the implemented slice.
 

@@ -26,9 +26,9 @@
  * new instance, never "moves" an existing one) or created that way earlier.
  *
  * A scene-type target has nothing else to configure (a scene run takes no
- * params), so its inspector shows a button into its own action-stage canvas
- * (`WorkflowSceneView`) instead, a separate route reusing the same
- * graph/canvas building blocks at a deeper zoom level.
+ * params), so its inspector shows a button that opens the shared scene editor
+ * (`SceneEditorDialog`, via `useSceneEditor`) over this page instead, rather
+ * than navigating away to a separate route.
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

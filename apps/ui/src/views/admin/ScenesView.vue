@@ -2,14 +2,15 @@
 /**
  * Admin scenes list — every scene with its room, tags and favourite flag, plus
  * run, edit and delete. Reuses `useScenesStore` (now with CRUD + favourite) and
- * `useDevicesStore` for room names. The editor (`SceneFormDialog`) loads a
- * scene's full actions on open.
+ * `useDevicesStore` for room names. Editing opens the shared scene editor
+ * (`SceneEditorDialog`, mounted once in `AdminLayout`) via `useSceneEditor`.
  */
 import { computed, onMounted, ref } from 'vue'
 import { PencilIcon, PlayIcon, PlusIcon, SparklesIcon, StarIcon, Trash2Icon } from '@lucide/vue'
 import type { SceneDTO } from '@gallery/types'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
+import { useSceneEditor } from '@/composables/useSceneEditor'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -24,10 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import SceneFormDialog from '@/components/admin/SceneFormDialog.vue'
 
 const store = useScenesStore()
 const devices = useDevicesStore()
+const { openEditor } = useSceneEditor()
 
 onMounted(() => {
   store.fetchAll()
@@ -45,20 +46,10 @@ const rows = computed(() =>
     .sort((a, b) => a.name.localeCompare(b.name)),
 )
 
-// ── dialog + delete state ───────────────────────────────────────────────────
-const formOpen = ref(false)
-const editing = ref<SceneDTO | null>(null)
+// ── delete state ─────────────────────────────────────────────────────────
 const toDelete = ref<SceneDTO | null>(null)
 const deleteOpen = ref(false)
 
-function openCreate(): void {
-  editing.value = null
-  formOpen.value = true
-}
-function openEdit(s: SceneDTO): void {
-  editing.value = s
-  formOpen.value = true
-}
 function askDelete(s: SceneDTO): void {
   toDelete.value = s
   deleteOpen.value = true
@@ -83,7 +74,7 @@ async function confirmDelete(): Promise<void> {
           </SelectGroup>
         </SelectContent>
       </Select>
-      <Button @click="openCreate">
+      <Button @click="openEditor()">
         <PlusIcon class="size-4" />
         New scene
       </Button>
@@ -133,7 +124,7 @@ async function confirmDelete(): Promise<void> {
                 >
                   <PlayIcon class="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEdit(s)">
+                <Button variant="ghost" size="icon-sm" aria-label="Edit" @click="openEditor(s.id)">
                   <PencilIcon class="size-4" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="askDelete(s)">
@@ -152,8 +143,6 @@ async function confirmDelete(): Promise<void> {
         </TableBody>
       </Table>
     </div>
-
-    <SceneFormDialog v-model:open="formOpen" :scene="editing" />
 
     <AlertDialog v-model:open="deleteOpen">
       <AlertDialogContent>
