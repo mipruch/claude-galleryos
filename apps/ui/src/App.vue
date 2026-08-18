@@ -25,10 +25,12 @@ import { useCamerasStore } from '@/stores/cameras'
 import { useDriversStore } from '@/stores/drivers'
 import { useConnectionsStore } from '@/stores/connections'
 import { WifiOffIcon } from '@lucide/vue'
+import { useRoomsStore } from './stores/rooms'
 
 const auth = useAuthStore()
 const store = useDevicesStore()
 const scenes = useScenesStore()
+const rooms = useRoomsStore()
 const realtime = useRealtimeStore()
 const cameras = useCamerasStore()
 const drivers = useDriversStore()
@@ -51,6 +53,7 @@ watch(
     store.init()
     scenes.fetchAll()
     cameras.fetchAll()
+    rooms.fetchAll()
     // Needed to resolve each device's generic widgets (driver manifest +
     // connection → driver id) — see composables/useDeviceWidgets.ts.
     drivers.load()
