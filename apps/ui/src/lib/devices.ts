@@ -207,8 +207,8 @@ function byType(devices: DeviceRecord[]): DeviceSubgroup[] {
     .sort((a, b) => a.title!.localeCompare(b.title!))
 }
 
-/** Subgroups by room, ordered by the room's `displayOrder` (then name), unassigned last. */
-function byRoom(devices: DeviceRecord[], rooms: RoomDTO[]): DeviceSubgroup[] {
+/** Subgroups by room, ordered by the room's `displayOrder` (then name), unassigned last. Exported as `groupDevicesByRoom` for callers that only need the room level (e.g. the workflow library panel), without the type subgrouping `groupDevices('room', …)` adds. */
+export function byRoom(devices: DeviceRecord[], rooms: RoomDTO[]): DeviceSubgroup[] {
   const byId = new Map(rooms.map((r) => [r.id, r]))
   return collect(devices, roomKeyOf)
     .map((g) => {

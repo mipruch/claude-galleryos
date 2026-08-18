@@ -36,6 +36,26 @@ export function formatDateTime(iso: string | null | undefined, locale?: string, 
   }).format(ms)
 }
 
+/**
+ * Format a UTC ISO timestamp's date part only, e.g. "Mon 24 Aug 2026" — the
+ * left column of the cron trigger form's "Next runs" list, paired with
+ * {@link formatTimePart}'s right column. Returns `''` for a missing/invalid value.
+ */
+export function formatDatePart(iso: string | null | undefined, locale?: string, timeZone?: string): string {
+  if (!iso) return ''
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return ''
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone }).format(ms)
+}
+
+/** Format a UTC ISO timestamp's time part only, e.g. "08:30". Returns `''` for a missing/invalid value. */
+export function formatTimePart(iso: string | null | undefined, locale?: string, timeZone?: string): string {
+  if (!iso) return ''
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return ''
+  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(ms)
+}
+
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR

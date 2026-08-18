@@ -106,7 +106,9 @@ const routes: RouteRecordRaw[] = [
         path: 'workflows',
         name: 'admin-workflows',
         component: () => import('@/views/admin/WorkflowsView.vue'),
-        meta: { title: 'Workflows', subtitle: 'Trigger routing map' },
+        // Full-bleed: WorkflowsView renders its own header (breadcrumb + Save
+        // workflow), so AdminLayout's own title bar is redundant here.
+        meta: { title: 'Workflow', subtitle: 'Trigger routing map', fullBleed: true },
       },
       {
         path: 'layouts',

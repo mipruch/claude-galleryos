@@ -18,9 +18,15 @@
  * a second, local `overlayHovered` flag and OR-ing it into `showOverlay`
  * keeps the overlay up for as long as the pointer is anywhere on either
  * piece, so moving onto the button to click it never hides it first.
+ *
+ * Routed with `getSmoothStepPath` (right-angle corners) rather than a bezier
+ * curve — every trigger and target sits at the same rank-driven X per
+ * `workflowGraph.ts`'s dagre layout, so edges fanning out of one trigger (or
+ * into one target) share the same vertical run and read as a single routed
+ * bus splitting into branches, not a tangle of independent curves.
  */
 import { computed, ref } from 'vue'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@vue-flow/core'
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@vue-flow/core'
 import type { Position } from '@vue-flow/core'
 import { XIcon } from '@lucide/vue'
 import type { RoutingEdgeData } from '@/lib/workflowGraph'
@@ -43,13 +49,14 @@ const props = defineProps<{
 const store = useTriggerActionsStore()
 
 const pathData = computed(() =>
-  getBezierPath({
+  getSmoothStepPath({
     sourceX: props.sourceX,
     sourceY: props.sourceY,
     sourcePosition: props.sourcePosition,
     targetX: props.targetX,
     targetY: props.targetY,
     targetPosition: props.targetPosition,
+    borderRadius: 6,
   }),
 )
 const path = computed(() => pathData.value[0])

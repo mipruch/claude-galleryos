@@ -46,13 +46,15 @@ import { Controls } from '@vue-flow/controls'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
-import { PlusIcon, WaypointsIcon } from '@lucide/vue'
+import { toast } from 'vue-sonner'
+import { PlusIcon } from '@lucide/vue'
 import { useMappingsStore } from '@/stores/mappings'
 import { useSchedulesStore } from '@/stores/schedules'
 import { useTriggerActionsStore } from '@/stores/triggerActions'
 import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
 import { useScenesStore } from '@/stores/scenes'
 import { useDevicesStore } from '@/stores/devices'
+import { useRoomsStore } from '@/stores/rooms'
 import {
   buildRoutingGraph,
   mappingNodeId,
@@ -65,10 +67,13 @@ import {
   type TriggerOwnerKind,
 } from '@/lib/workflowGraph'
 import { readLibraryDragPayload } from '@/lib/libraryDrag'
+import { recordRecentLibraryItem } from '@/lib/recentLibraryItems'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import TriggerNode from '@/components/admin/workflow/TriggerNode.vue'
 import TargetNode from '@/components/admin/workflow/TargetNode.vue'
 import TriggerActionEdge from '@/components/admin/workflow/TriggerActionEdge.vue'
+import NodeContextMenu from '@/components/admin/workflow/NodeContextMenu.vue'
 import LibraryPanel from '@/components/admin/workflow/LibraryPanel.vue'
 import TriggerInspector from '@/components/admin/workflow/TriggerInspector.vue'
 import WorkflowTargetInspector from '@/components/admin/workflow/WorkflowTargetInspector.vue'
@@ -81,6 +86,7 @@ const triggerActionsStore = useTriggerActionsStore()
 const workflowTargetsStore = useWorkflowTargetsStore()
 const scenesStore = useScenesStore()
 const devicesStore = useDevicesStore()
+const roomsStore = useRoomsStore()
 const { fitView, project, vueFlowRef } = useVueFlow()
 const nodesInitialized = useNodesInitialized()
 
@@ -92,11 +98,24 @@ onMounted(async () => {
     workflowTargetsStore.fetchAll(),
     scenesStore.fetchAll(),
     devicesStore.fetchAll(),
+    roomsStore.init(),
   ])
   // Deep-link from the Mappings/Schedules list pages' Edit action.
   const select = route.query.select
   if (typeof select === 'string') selectedNodeId.value = select
 })
+
+/** Toolbar's "N unfinished" count — device-command targets with no command picked yet (an amber "NEEDS COMMAND" card). A not-connected trigger has its own inline badge but isn't tallied here. */
+const unfinishedCount = computed(
+  () => workflowTargetsStore.records.filter((t) => t.targetType === 'device.command' && !t.targetCommand).length,
+)
+
+function saveWorkflow(): void {
+  // Every field already round-trips to the server on its own submit/drag —
+  // there is no separate staged/dirty state to flush. This is a reassurance
+  // action, honest about that: it confirms what's already persisted.
+  toast.success('Workflow saved')
+}
 
 const graphInput = computed(() => ({
   mappings: mappingsStore.records,
@@ -109,6 +128,10 @@ const graphInput = computed(() => ({
 const graph = computed(() => buildRoutingGraph(graphInput.value))
 const nodes = computed<RoutingNode[]>(() => graph.value.nodes)
 const edges = computed<RoutingEdge[]>(() => graph.value.edges)
+
+function hasOutgoingWire(nodeId: string): boolean {
+  return edges.value.some((e) => e.source === nodeId)
+}
 
 // `fit-view-on-init` fits as soon as <VueFlow> mounts — before the fetches
 // above resolve and before Vue Flow has measured the real nodes' bounds
@@ -288,23 +311,118 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
     targetId: payload.id,
     position: dropPosition(event),
   })
+  if (created) recordRecentLibraryItem(payload)
   selectNodeIfCreated(created, targetNodeId)
+}
+
+// ── right-click context menu: delete / duplicate / unwire ─────────────────
+
+/** Deletes any node kind — same effect as its inspector's own trash button, callable from the context menu without a node being selected first. */
+async function deleteNode(nodeId: string): Promise<void> {
+  const { kind, value } = parseNodeId(nodeId)
+  if (kind === 'mapping') await mappingsStore.remove(value)
+  else if (kind === 'schedule') await schedulesStore.remove(value)
+  else if (kind === 'target') {
+    await workflowTargetsStore.remove(value)
+    triggerActionsStore.removeByWorkflowTargetId(value)
+  }
+  if (selectedNodeId.value === nodeId) clearSelection()
+}
+
+/** Removes every wire touching a node (its outgoing wires for a trigger, incoming for a target) without deleting the node itself. */
+async function unwireNode(nodeId: string): Promise<void> {
+  const { kind, value } = parseNodeId(nodeId)
+  const toRemove = triggerActionsStore.records.filter((action) => {
+    if (kind === 'mapping') return action.mappingId === value
+    if (kind === 'schedule') return action.scheduleId === value
+    if (kind === 'target') return action.workflowTargetId === value
+    return false
+  })
+  await Promise.all(toRemove.map((action) => triggerActionsStore.remove(action.id)))
+}
+
+const DUPLICATE_OFFSET: NodePosition = { x: 48, y: 48 }
+
+/** Per-kind duplicator, keyed the same way `parseNodeId` tags a node id — mirrors `POSITION_UPDATERS` above. Each copies the source row's own fields into a brand-new, unwired instance (wires are per-instance, so duplicating never carries them along) and selects it once created. */
+const DUPLICATORS: Record<string, (id: string, position: NodePosition) => Promise<void>> = {
+  async mapping(id, position) {
+    const original = mappingsStore.records.find((m) => m.id === id)
+    if (!original) return
+    selectNodeIfCreated(
+      await mappingsStore.create({
+        name: `${original.name} copy`,
+        protocol: original.protocol,
+        pattern: original.pattern,
+        enabled: original.enabled,
+        position,
+      }),
+      mappingNodeId,
+    )
+  },
+  async schedule(id, position) {
+    const original = schedulesStore.records.find((s) => s.id === id)
+    if (!original) return
+    selectNodeIfCreated(
+      await schedulesStore.create({
+        name: `${original.name} copy`,
+        cron: original.cron,
+        timezone: original.timezone,
+        enabled: original.enabled,
+        position,
+      }),
+      scheduleNodeId,
+    )
+  },
+  async target(id, position) {
+    const original = workflowTargetsStore.records.find((t) => t.id === id)
+    if (!original) return
+    selectNodeIfCreated(
+      await workflowTargetsStore.create({
+        targetType: original.targetType,
+        targetId: original.targetId,
+        targetCommand: original.targetCommand,
+        params: { ...original.params },
+        position,
+      }),
+      targetNodeId,
+    )
+  },
+}
+
+/** Places a duplicate just below the original's current position. */
+async function duplicateNode(nodeId: string): Promise<void> {
+  const source = nodes.value.find((n) => n.id === nodeId)
+  if (!source) return
+  const position: NodePosition = { x: source.position.x + DUPLICATE_OFFSET.x, y: source.position.y + DUPLICATE_OFFSET.y }
+  const { kind, value } = parseNodeId(nodeId)
+  await DUPLICATORS[kind]?.(value, position)
 }
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
-      <div class="flex items-center gap-2">
-        <WaypointsIcon class="text-muted-foreground size-4" />
-        <p class="font-medium">Trigger routing</p>
+      <p class="text-sm font-semibold">Workflow</p>
+      <Button size="sm" @click="saveWorkflow">Save workflow</Button>
+    </div>
+
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
+      <div class="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
+        <span class="flex items-center gap-1.5"><span class="size-2 rounded-sm bg-emerald-500" /> Ingress</span>
+        <span class="flex items-center gap-1.5"><span class="bg-brand size-2 rounded-sm" /> CRON</span>
+        <span class="flex items-center gap-1.5"><span class="size-2 rounded-sm bg-violet-500" /> Command</span>
+        <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-amber-500" /> Scene</span>
+        <Badge v-if="unfinishedCount > 0" variant="warning" class="ml-1">
+          <span class="bg-amber-600 inline-block size-1.5 rounded-full dark:bg-amber-400" />
+          {{ unfinishedCount }} unfinished
+        </Badge>
       </div>
       <div class="flex items-center gap-2">
         <Button variant="outline" size="sm" @click="createTrigger('schedule')">
           <PlusIcon class="size-4" />
           New schedule
         </Button>
-        <Button size="sm" @click="createTrigger('mapping')">
+        <Button variant="outline" size="sm" @click="createTrigger('mapping')">
           <PlusIcon class="size-4" />
           New mapping
         </Button>
@@ -312,8 +430,8 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
     </div>
 
     <div class="flex min-h-0 flex-1">
-      <aside class="w-56 shrink-0 overflow-y-auto border-r p-3">
-        <LibraryPanel :scenes="scenesStore.records" :devices="devicesStore.records" />
+      <aside class="w-64 shrink-0 overflow-y-auto border-r p-3">
+        <LibraryPanel :scenes="scenesStore.records" :devices="devicesStore.records" :rooms="roomsStore.records" />
       </aside>
 
       <div class="min-w-0 flex-1" @dragover.prevent @drop="onLibraryDrop">
@@ -332,11 +450,15 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
         >
           <Background :gap="20" />
           <Controls :show-interactive="false" />
-          <template #node-trigger="props">
-            <TriggerNode :data="props.data" :selected="props.selected" />
+          <template #node-trigger="nodeProps">
+            <NodeContextMenu :node-id="nodeProps.id" :on-duplicate="duplicateNode" :on-unwire="unwireNode" :on-delete="deleteNode">
+              <TriggerNode :data="nodeProps.data" :selected="nodeProps.selected" :connected="hasOutgoingWire(nodeProps.id)" />
+            </NodeContextMenu>
           </template>
-          <template #node-target="props">
-            <TargetNode :data="props.data" :selected="props.selected" />
+          <template #node-target="nodeProps">
+            <NodeContextMenu :node-id="nodeProps.id" :on-duplicate="duplicateNode" :on-unwire="unwireNode" :on-delete="deleteNode">
+              <TargetNode :data="nodeProps.data" :selected="nodeProps.selected" />
+            </NodeContextMenu>
           </template>
           <template #edge-trigger-action="props">
             <TriggerActionEdge
@@ -364,6 +486,7 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
           :key="selectedNodeId ?? undefined"
           :data="selection.data"
           @remove="clearSelection"
+          @close="clearSelection"
         />
         <WorkflowTargetInspector
           v-else
@@ -373,6 +496,7 @@ async function onLibraryDrop(event: DragEvent): Promise<void> {
           :available-args="selection.data.availableArgs"
           :has-signal-wire="selection.data.hasSignalWire"
           @remove="clearSelection"
+          @close="clearSelection"
         />
       </aside>
     </div>

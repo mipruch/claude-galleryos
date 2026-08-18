@@ -50,6 +50,32 @@ export function filterScenesByRooms(scenes: SceneDTO[], roomKeys: string[]): Sce
   return scenes.filter((s) => allow.has(sceneRoomKey(s)))
 }
 
+/** One room's scenes, for a room-grouped list (e.g. the workflow library panel). */
+export interface SceneRoomGroup {
+  key: string
+  title: string
+  scenes: SceneDTO[]
+}
+
+/** Group scenes by room, ordered by the room's `displayOrder` then name (unassigned last) — mirrors `lib/devices.ts`'s device room grouping. */
+export function groupScenesByRoom(scenes: SceneDTO[], rooms: RoomDTO[]): SceneRoomGroup[] {
+  const byId = new Map(rooms.map((r) => [r.id, r]))
+  const buckets = new Map<string, SceneDTO[]>()
+  for (const scene of scenes) {
+    const key = sceneRoomKey(scene)
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(scene)
+    else buckets.set(key, [scene])
+  }
+  return [...buckets.entries()]
+    .map(([key, sceneList]) => {
+      const room = byId.get(key)
+      return { key, title: room?.name ?? 'Unassigned', order: room?.displayOrder ?? Number.MAX_SAFE_INTEGER, scenes: sceneList }
+    })
+    .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+    .map(({ key, title, scenes: sceneList }) => ({ key, title, scenes: sceneList }))
+}
+
 /** All human-readable text a scene can be matched on, normalized. */
 function sceneHaystack(scene: SceneDTO, roomName: string | undefined): string {
   return normalize([scene.name, scene.description ?? '', roomName ?? '', ...scene.tags].join(' '))

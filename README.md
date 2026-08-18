@@ -2401,6 +2401,14 @@ adresu + args, uvidíš, která pravidla by matchla a jaké path params by zachy
 
 #### `/admin/workflows` — Workflow canvas
 
+> **Aktualizováno ve workflow page redesignu** (viz "Implementováno (Workflow
+> page redesign)" níže, hned za touto sekcí): vizuální přepracování podle
+> dodaných mockupů — nová hlavička, barevná legenda, typované karty s badges,
+> pravoúhlé (orthogonal) propojení, right-click menu na kartách, a úplně nový
+> CRON formulář (Repeats picker místo holého textového pole). Datový model a
+> základní interakce (drag z knihovny, tažení drátu, klik otevře inspector)
+> popsané níže zůstávají beze změny.
+
 2D canvas (Vue Flow) nad daty, která už spravují stránky Mappings/Schedules/Scenes
 — nejde o nový automatizační engine, jen o jejich prostorové zobrazení a propojení.
 Je to **jediné místo**, kde se trigger/instance/drát vytváří, zapojuje a maže
@@ -2503,6 +2511,107 @@ stránky výše slouží jen k monitorování, přepnutí enable/disable a smaz�
   obě sekce podle jména, sdílené s vyhledáváním v gridu zařízení a v seznamu
   scén (`lib/text.ts` — `searchTerms`/`normalize`/`matchesAllTerms`, stejné
   diakritice-insensitivní víceslovné AND matchování).
+
+#### Implementováno (Workflow page redesign — knihovna po místnostech, typované karty, orthogonal wiring, CRON builder)
+
+Vizuální a interakční redesign stránky `/admin/workflows` podle dodaných
+mockupů. Datový model (`input_mappings`/`scheduled_jobs`/`workflow_targets`/
+`trigger_actions`, viz `lib/workflowGraph.ts`) i základní interakce (drag z
+knihovny zakládá novou instanci, tažení hrany z triggeru na instanci ji
+zapojí, klik na uzel otevře jeho inspector) zůstávají beze změny — mění se
+vzhled karet/hran a přibývá pár doplňkových akcí.
+
+- **Full-bleed layout.** Route `admin-workflows` nese `meta.fullBleed`, které
+  `AdminLayout.vue` respektuje vynecháním vlastní horní lišty (jinak by se
+  pod vlastní hlavičkou stránky zdvojil titulek) — postranní `AdminSidebar`
+  zůstává kvůli navigaci mezi stránkami.
+- **Nová hlavička** — bold "Workflow" (dřív "Trigger routing"), tlačítko
+  **Save workflow**. Preview tlačítko z mockupu je vědomě vynechané (na
+  přímou žádost zadání). Save workflow jen potvrdí toastem, že je vše
+  uložené — appka nemá staged-changes model, každé pole se ukládá zvlášť
+  okamžitě přes vlastní Save/drag, takže tlačítko nic dalšího flushovat
+  nemusí a nepředstírá funkcionalitu, kterou nemá.
+- **Druhý řádek — legenda + počítadlo.** Barevné tečky Ingress (emerald) /
+  CRON (`--brand` modrá — recyklovaný accent token ze scene editoru, ne nová
+  barva) / Command (violet) / Scene (amber), plus badge "N unfinished" —
+  počet `workflow_targets` typu `device.command` bez vybraného příkazu
+  (schedule/mapping bez zapojení má vlastní "NOT CONNECTED" badge přímo na
+  kartě, ale do "unfinished" se nepočítá — to sčítá jen chybějící příkazy).
+  Tlačítka New schedule/New mapping se sem přesunula z bývalé jediné lišty.
+- **Typované karty místo obyčejných.** `TriggerNode`/`TargetNode` nesou
+  `Badge` (nové varianty `ingress`/`cron`/`command`/`warning` v
+  `components/ui/badge/index.ts`, `scene` recyklovaná ze scene editoru) podle
+  druhu: `OSC · INGRESS` / `CRON` (nebo `NOT CONNECTED`, přebíjí normální
+  badge, když uzel nemá žádný odchozí drát) na triggeru; `SCENE` / `DEVICE` /
+  `NEEDS COMMAND` (přebíjí, když `device.command` instance nemá vybraný
+  příkaz) na akci. Trigger navíc zobrazuje krátký humanizovaný popis cronu
+  (nová `lib/cron.ts`'s `describeCron`, např. "daily, 08:00" / "weekdays,
+  08:30" / "Mondays, 01:40"); akce zobrazuje řádek "Command" s hodnotou (nebo
+  amber "Pick a command…", stejná barva jako u nedokončené karty ve scene
+  editoru).
+- **Orthogonal wiring.** `TriggerActionEdge` kreslí `getSmoothStepPath`
+  (pravoúhlé rohy) místo `getBezierPath` — protože dagre layout drží uzly ve
+  stejném sloupci/ranku, dráty vycházející z jednoho triggeru (nebo mířící do
+  jednoho cíle) sdílí stejný svislý běh a vizuálně čtou jako jeden routovaný
+  "bus" větvící se do jednotlivých karet, přesně jak ukazoval mockup.
+- **Pravé tlačítko na kartě → Delete / Duplicate / Unwire** (nový
+  `NodeContextMenu.vue`, sdílený pro trigger i target uzly, shadcn
+  `ContextMenu`). Duplicate zkopíruje vlastní pole uzlu (mapping:
+  protocol+pattern; schedule: cron+timezone; target: targetType+targetId+
+  targetCommand+params) do nové, nezapojené instance posazené kousek pod
+  originál — dráty se nekopírují (jsou per-instance, ne per-scéna/zařízení).
+  Unwire smaže všechny dráty dotýkající se uzlu (odchozí u triggeru,
+  příchozí u targetu), aniž by smazal uzel samotný.
+- **Knihovna po místnostech + Recent.** `LibraryPanel.vue` má segmentovaný
+  přepínač Scenes/Devices (stejný `bg-brand`/`text-brand-foreground` vzor
+  jako Device-command/Run-scene toggle ve scene editoru) a obě sekce jsou
+  seskupené po místnosti (nová `lib/scenes.ts`'s `groupScenesByRoom`,
+  `lib/devices.ts`'s dřív modul-privátní `byRoom` teď exportovaná) — stejný
+  room-first browsing model jako grid zařízení jinde v appce. Pod tím sekce
+  "Recent {Scenes/Devices}" s naposledy přetaženými položkami (nová
+  `lib/recentLibraryItems.ts`, malý `localStorage` seznam zapisovaný z
+  `onLibraryDrop` po úspěšném vytvoření instance), skrytá při aktivním
+  hledání.
+- **Přepracovaný CRON formulář.** `TriggerInspector.vue` je teď jen tenký
+  dispatcher mezi `MappingTriggerForm.vue` (ingress trigger, funkčně beze
+  změny) a novým `CronScheduleForm.vue` — místo holých textových polí "cron
+  expression" + "timezone" nabízí:
+  - Segmentovaný picker **Repeats**: Daily / Weekly / Monthly / Interval /
+    Custom (nová `lib/cron.ts`'s `CronBuilderState`/`stateFromCron`/
+    `cronFromState` — obousměrný převod mezi picker stavem a syrovým
+    5-polovým cron výrazem; tvary, co picker neumí popsat, spadají do
+    "Custom" a needitují se jako syrový text).
+  - Weekly nabízí přepínací tlačítka Mo–Su, Monthly den v měsíci, Interval
+    hodnotu+jednotku (minutes/hours), Custom needituje syrový výraz s
+    `isValidCron` validací (vyděleno do `CronRepeatFields.vue`, aby hlavní
+    formulář nezabalil vlastní template přílišnou větvenou logikou).
+  - Zvýrazněný souhrn nahoře — celá věta (`describeCronSentence`, např.
+    "Every Monday at 01:40") je čistá funkce z rozpracovaného picker stavu,
+    takže se mění okamžitě při každém kliknutí, bez round-tripu na server.
+    Řádek "Next run"/"NEXT RUNS" seznam naproti tomu čte reálný cron-engine
+    výpočet ze store cache (`GET /schedules/:id/next`, přes
+    `schedulesStore.previewsFor`), a je proto vědomě navázaný na **naposledy
+    uložený** výraz: dokud picker neodpovídá tomu, co je uložené, ukazuje se
+    poctivě "Save to preview upcoming runs" místo zavádějících starých dat.
+  - **Edit expression** přepne mode na Custom a předvyplní ho aktuálně
+    vygenerovaným výrazem — zkratka pro cokoliv, co čtyři šablony nepokryjí.
+  - Časové pole **At** je nativní `<input type="time">` (prohlížeč sám
+    kreslí HH:MM segmenty se spinnerem). **Timezone** je `Select` z
+    `Intl.supportedValuesOf('timeZone')` — s ručně přidaným "UTC" (v tomhle
+    seznamu chybí, i když je to běžná defaultní zóna prohlížeče/serveru) a
+    aktuální hodnotou schedule, aby select nikdy nezůstal prázdný pro
+    hodnotu, kterou enumerace nezná.
+  - Tlačítko koš + X (close) v hlavičce inspectoru mají teď obě formy
+    (`MappingTriggerForm`/`CronScheduleForm`) i `WorkflowTargetInspector`
+    sjednocené — `close` je nová událost oddělená od `remove` (zavření beze
+    smazání), `WorkflowsView.vue` obě napojuje na stejné `clearSelection`.
+- Ověřeno naživo (seed data + Playwright přes lokální dev server), což
+  odhalilo a opravilo dva reálné bugy, které typecheck a testy nezachytily:
+  chybějící `min-w-0` na hlavičce formuláře nechávalo Close tlačítko vysunout
+  mimo viditelnou oblast panelu, když byl název dost dlouhý na to, aby
+  netruncoval; a chybějící "UTC" v `Intl.supportedValuesOf('timeZone')`
+  nechávalo Timezone select prázdný pro nový schedule založený v prohlížeči
+  se systémovou zónou UTC (běžné pro servery i headless prohlížeče).
 
 #### `/layouts` — Builder User UI
 

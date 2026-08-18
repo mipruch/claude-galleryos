@@ -1169,6 +1169,75 @@ Single Vue 3 app (`apps/ui`) — admin portal and user panel in one Vite project
         - `apps/ui/src/__tests__/sceneStages.spec.ts` (new, unit-tested:
           `groupIntoStages`/`flattenStages`/`estimateRunTimeMs`/…);
           `workflowGraph.spec.ts` trimmed to just the routing-graph tests.
+  - [x] **Workflow page redesign — library rail, typed cards, orthogonal
+        wiring, CRON builder.** Direct design ask, matched against supplied
+        mockups. Purely visual/interaction on top of the existing routing-map
+        data model and Vue Flow canvas (`workflowGraph.ts` untouched) —
+        creation/wiring/deletion still work exactly as before.
+        - `admin-workflows` route gained `meta.fullBleed`; `AdminLayout.vue`
+          skips its own title bar for it (the page now renders its own
+          header) but keeps `AdminSidebar` for navigation.
+        - New header ("Workflow" + **Save workflow**, no Preview per the
+          request) and a second toolbar row: a colour-keyed legend
+          (Ingress/CRON/Command/Scene) plus an "N unfinished" count (device-
+          command targets with no command picked), with New schedule/New
+          mapping moved there.
+        - `TriggerNode`/`TargetNode` now carry a `Badge` per kind (new
+          `ingress`/`cron`/`command`/`warning` variants in
+          `components/ui/badge/index.ts`, `scene` reused) — `OSC · INGRESS`/
+          `CRON` (or `NOT CONNECTED`, overriding it, for a trigger with no
+          outgoing wire) on a trigger; `SCENE`/`DEVICE`/`NEEDS COMMAND`
+          (overriding, for a commandless `device.command` instance) on an
+          action, plus a humanized cron subtitle (new `lib/cron.ts`'s
+          `describeCron`, e.g. "daily, 08:00"/"weekdays, 08:30").
+        - `TriggerActionEdge` switched from `getBezierPath` to
+          `getSmoothStepPath` — since dagre keeps every node in the same
+          rank/column, wires fanning out of one trigger (or into one target)
+          share the same vertical run and read as one routed bus branching
+          into cards, matching the mockup's orthogonal wiring.
+        - New `NodeContextMenu.vue` (shadcn `ContextMenu`, shared by both
+          node kinds) — right-click **Delete / Duplicate / Unwire**.
+          Duplicate copies a node's own fields into a new, unwired instance
+          near the original (wires are per-instance, never copied); Unwire
+          drops every wire touching a node without deleting it.
+        - `LibraryPanel.vue` gained a Scenes/Devices segmented tab (the
+          scene editor's Device-command/Run-scene toggle pattern), both kinds
+          grouped by room (new `lib/scenes.ts`'s `groupScenesByRoom`,
+          `lib/devices.ts`'s `byRoom` now exported), plus a "Recent" shelf
+          from a new small `localStorage` tracker (`lib/recentLibraryItems.ts`),
+          hidden while searching.
+        - **Cron trigger form redesign** — `TriggerInspector.vue` is now a
+          thin dispatcher between `MappingTriggerForm.vue` (unchanged
+          ingress form) and a new `CronScheduleForm.vue`: a Repeats picker
+          (Daily/Weekly/Monthly/Interval/Custom, new `lib/cron.ts`'s
+          `CronBuilderState`/`stateFromCron`/`cronFromState`, an unrecognized
+          shape falling back to Custom) replaces the old bare cron+timezone
+          text fields, with mode-specific fields split into
+          `CronRepeatFields.vue`. A highlighted summary sentence
+          (`describeCronSentence`) updates live from the in-progress picker
+          state (pure function, no round-trip); the Next run/Next runs
+          preview, by contrast, is real cron-engine math from the schedules
+          store's cached `/schedules/:id/next` preview, so it's deliberately
+          tied to the *last saved* expression — shown as "Save to preview
+          upcoming runs" instead of stale dates while the picker doesn't
+          match what's saved yet. "Edit expression" jumps to Custom
+          prefilled with the generated string. `At` is a native
+          `<input type="time">`; `Timezone` is a `Select` over
+          `Intl.supportedValuesOf('timeZone')` with "UTC" added explicitly
+          (missing from that enumeration despite being a common browser/
+          server default) plus the schedule's own current value, so the
+          select is never left blank.
+        - Verified live against a seeded dev instance with Playwright, which
+          caught two real bugs neither the type-checker nor the unit tests
+          did: a missing `min-w-0` on the inspector header let a long trigger
+          name push the Close button outside the panel's visible width; and
+          the missing "UTC" timezone (above) left the Timezone select blank
+          for a browser-default schedule.
+        - `apps/ui/src/lib/cron.ts` (new, unit-tested:
+          `apps/ui/src/__tests__/cron.spec.ts`). `WorkflowsView.vue`'s
+          `duplicateNode` also got a `DUPLICATORS` per-kind dispatch map
+          (mirroring the existing `POSITION_UPDATERS`) to keep it out of one
+          large branching function.
 
 See README §5, §10–11 for full spec; see §11 for the implemented slice.
 

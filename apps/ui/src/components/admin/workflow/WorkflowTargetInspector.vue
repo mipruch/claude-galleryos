@@ -23,7 +23,7 @@
  * pattern).
  */
 import { computed, reactive, ref, watch } from 'vue'
-import { ExternalLinkIcon, PlayCircleIcon, SlidersHorizontalIcon, Trash2Icon } from '@lucide/vue'
+import { ExternalLinkIcon, PlayCircleIcon, SlidersHorizontalIcon, Trash2Icon, XIcon } from '@lucide/vue'
 import type { WorkflowTargetDTO } from '@gallery/types'
 import { useWorkflowTargetsStore } from '@/stores/workflowTargets'
 import { useTriggerActionsStore } from '@/stores/triggerActions'
@@ -35,11 +35,12 @@ import { schemaToFields } from '@/lib/schemaForm'
 import { resolveTargetNames, targetSummary, usesParams } from '@/lib/workflowTargets'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import WorkflowTargetParamField from './WorkflowTargetParamField.vue'
 
 const props = defineProps<{ target: WorkflowTargetDTO; availableArgs: string[]; hasSignalWire: boolean }>()
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; close: [] }>()
 
 const { openEditor } = useSceneEditor()
 const targetsStore = useWorkflowTargetsStore()
@@ -49,6 +50,7 @@ const devices = useDevicesStore()
 const { commandsFor, paramsSchemaFor } = useDeviceCommands()
 
 const isScene = computed(() => props.target.targetType === 'scene.execute')
+const needsCommand = computed(() => !isScene.value && !props.target.targetCommand)
 const summary = computed(() =>
   targetSummary(props.target.targetType, resolveTargetNames(props.target, scenes.records, devices.records)),
 )
@@ -105,10 +107,20 @@ defineExpose({ remove })
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-2">
-      <p class="text-sm font-medium">Action</p>
-      <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="remove">
-        <Trash2Icon class="size-4" />
-      </Button>
+      <div class="flex items-center gap-2">
+        <Badge v-if="needsCommand" variant="warning" class="text-[10px] tracking-wide uppercase">Needs command</Badge>
+        <Badge v-else :variant="isScene ? 'scene' : 'command'" class="text-[10px] tracking-wide uppercase">
+          {{ isScene ? 'Scene action' : 'Device action' }}
+        </Badge>
+      </div>
+      <div class="flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="icon-sm" aria-label="Delete" @click="remove">
+          <Trash2Icon class="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Close" @click="emit('close')">
+          <XIcon class="size-4" />
+        </Button>
+      </div>
     </div>
 
     <div class="flex items-center gap-2 rounded-md border px-3 py-2">

@@ -21,6 +21,8 @@ const pageTitle = computed(() =>
 const pageSubtitle = computed(() =>
   typeof route.meta.subtitle === 'string' ? route.meta.subtitle : '',
 )
+/** A page that renders its own full header (e.g. the workflow routing map) skips this layout's own title bar, rather than showing two stacked headers. */
+const fullBleed = computed(() => route.meta.fullBleed === true)
 </script>
 
 <template>
@@ -29,7 +31,7 @@ const pageSubtitle = computed(() =>
       <AdminSidebar />
 
       <div class="flex min-w-0 flex-1 flex-col">
-        <header class="flex items-center justify-between gap-4 border-b px-6 py-4">
+        <header v-if="!fullBleed" class="flex items-center justify-between gap-4 border-b px-6 py-4">
           <div class="min-w-0">
             <h2 class="truncate text-xl font-semibold tracking-tight">{{ pageTitle }}</h2>
             <p v-if="pageSubtitle" class="text-muted-foreground text-sm">{{ pageSubtitle }}</p>
